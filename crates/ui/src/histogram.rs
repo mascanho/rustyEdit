@@ -43,7 +43,6 @@ fn paint_histogram(
 ) {
     let width = f32::from(bounds.size.width);
     let height = f32::from(bounds.size.height);
-    eprintln!("TEMP-DEBUG paint_histogram bounds={bounds:?}");
 
     for quarter in 1..4 {
         let x = bounds.origin.x + px(width * quarter as f32 / 4.0);
