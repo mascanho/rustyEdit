@@ -1,4 +1,8 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::{atomic::AtomicUsize, Arc},
+    time::Duration,
+};
 
 use gpui::Context;
 use rustyedit_core::Catalog;
@@ -81,12 +85,28 @@ impl Workspace {
 
             let thumb_assets = assets.clone();
             let thumb_cache = cache.clone();
-            let thumbnails = cx
-                .background_executor()
-                .spawn(
-                    async move { rustyedit_io::generate_thumbnails(&thumb_cache, &thumb_assets) },
-                )
-                .await;
+            let done = Arc::new(AtomicUsize::new(0));
+            let worker_done = done.clone();
+            this.update(cx, |this, _| {
+                this.import_progress = Some((done, thumb_assets.len()));
+            })
+            .ok();
+            let job = cx.background_executor().spawn(async move {
+                rustyedit_io::generate_thumbnails(&thumb_cache, &thumb_assets, &worker_done)
+            });
+            // Repaint a few times a second so the loader's progress bar moves.
+            let ticker = cx.spawn({
+                let this = this.clone();
+                async move |cx| {
+                    while this.update(cx, |_, cx| cx.notify()).is_ok() {
+                        cx.background_executor()
+                            .timer(Duration::from_millis(100))
+                            .await;
+                    }
+                }
+            });
+            let thumbnails = job.await;
+            drop(ticker);
 
             // `scan_folder` assigns ids as list positions, so look each one up
             // directly instead of searching (which is O(n²) on big imports).
@@ -114,6 +134,7 @@ impl Workspace {
                 this.catalog = Catalog::new(folder, assets);
                 this.thumbnail_cache = Some(Arc::new(cache));
                 this.is_importing = false;
+                this.import_progress = None;
                 this.status_message = None;
                 this.mark_catalog_dirty(cx);
                 // Asset ids restart at 0 per folder, so cached histograms
@@ -121,6 +142,10 @@ impl Workspace {
                 this.histogram_cache.clear();
                 this.histogram_loading = None;
                 this.develop_histogram = None;
+                this.metadata_cache.clear();
+                this.metadata_loading.clear();
+                this.loupe_paths.clear();
+                this.loupe_loading.clear();
 
                 let selected =
                     select.and_then(|path| this.catalog.assets.iter().position(|a| a.path == path));

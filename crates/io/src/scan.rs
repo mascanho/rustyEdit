@@ -11,6 +11,7 @@ pub(crate) fn has_supported_extension(path: &Path) -> bool {
         .map(|ext| {
             let lower = ext.to_ascii_lowercase();
             SUPPORTED_EXTENSIONS.contains(&lower.as_str())
+                || crate::decode::raw_extensions().contains(&lower.as_str())
         })
         .unwrap_or(false)
 }

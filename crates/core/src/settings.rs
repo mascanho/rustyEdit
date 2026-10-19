@@ -21,11 +21,19 @@ pub struct Settings {
     pub develop: DevelopPreferences,
 }
 
+/// Bounds and step for the Grid card size, shared by Settings and the
+/// grid's own +/- control.
+pub const GRID_CARD_MIN: u32 = 90;
+pub const GRID_CARD_MAX: u32 = 420;
+pub const GRID_CARD_STEP: u32 = 20;
+pub const GRID_CARD_DEFAULT: u32 = 180;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LibrarySettings {
     pub startup_view: StartupView,
-    pub grid_columns: u32,
+    /// Width of a grid card in pixels; the column count follows from it.
+    pub grid_card_size: u32,
     pub show_left_panel: bool,
     pub show_right_panel: bool,
 }
@@ -34,7 +42,7 @@ impl Default for LibrarySettings {
     fn default() -> Self {
         Self {
             startup_view: StartupView::Loupe,
-            grid_columns: 6,
+            grid_card_size: GRID_CARD_DEFAULT,
             show_left_panel: true,
             show_right_panel: true,
         }
@@ -438,15 +446,15 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                     },
                 },
                 SettingItem {
-                    label: "Grid columns",
-                    description: "Number of thumbnails per row in Grid view.",
+                    label: "Thumbnail size",
+                    description: "Width of each card in Grid view; the number of columns follows.",
                     control: SettingControl::Stepper {
-                        min: 2,
-                        max: 12,
-                        step: 1,
-                        unit: "",
-                        get: |s| s.library.grid_columns as i64,
-                        set: |s, v| s.library.grid_columns = v as u32,
+                        min: GRID_CARD_MIN as i64,
+                        max: GRID_CARD_MAX as i64,
+                        step: GRID_CARD_STEP as i64,
+                        unit: " px",
+                        get: |s| s.library.grid_card_size as i64,
+                        set: |s, v| s.library.grid_card_size = v as u32,
                     },
                 },
             ],

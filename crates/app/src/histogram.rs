@@ -104,3 +104,51 @@ impl Workspace {
         )
     }
 }
+
+impl Workspace {
+    /// What the loupe should display for `asset`: the original when GPUI can
+    /// render it directly, otherwise the generated large preview, falling
+    /// back to the small thumbnail while that is still being produced.
+    pub(crate) fn loupe_source(&self, asset: &rustyedit_core::Asset) -> std::path::PathBuf {
+        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(&asset.path) {
+            return asset.path.clone();
+        }
+        self.loupe_paths
+            .get(&asset.id)
+            .cloned()
+            .unwrap_or_else(|| asset.display_source().to_path_buf())
+    }
+
+    /// Generates a loupe-size preview in the background for formats the UI
+    /// can't render natively (RAW). No-op for everything else.
+    pub(crate) fn request_loupe(&mut self, cx: &mut Context<Self>) {
+        let Some(asset) = self.catalog.selected_asset() else {
+            return;
+        };
+        let Some(cache) = self.thumbnail_cache.clone() else {
+            return;
+        };
+        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(&asset.path)
+            || self.loupe_paths.contains_key(&asset.id)
+            || !self.loupe_loading.insert(asset.id)
+        {
+            return;
+        }
+        let (asset_id, path) = (asset.id, asset.path.clone());
+        let job = cx
+            .background_executor()
+            .spawn(async move { cache.ensure_loupe(&path).ok() });
+        cx.spawn(async move |this, cx| {
+            let result = job.await;
+            this.update(cx, |this, cx| {
+                this.loupe_loading.remove(&asset_id);
+                if let Some(path) = result {
+                    this.loupe_paths.insert(asset_id, path);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+}

@@ -19,3 +19,5 @@ dirs = "5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
+rawler = "0.8.0"
+kamadak-exif = "0.6.1"

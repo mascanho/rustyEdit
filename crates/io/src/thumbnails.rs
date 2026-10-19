@@ -12,6 +12,9 @@ use rustyedit_core::Asset;
 /// fast: decoding + resizing is the dominant cost, not disk IO.
 pub const THUMBNAIL_LONG_EDGE: u32 = 512;
 
+/// Longest edge of the loupe preview generated for RAW files.
+pub const LOUPE_LONG_EDGE: u32 = 2560;
+
 #[derive(Debug, Clone)]
 pub struct ThumbnailCache {
     dir: PathBuf,
@@ -48,6 +51,43 @@ impl ThumbnailCache {
         Some(self.dir.join(key))
     }
 
+    fn loupe_path_for(&self, source: &Path) -> Option<PathBuf> {
+        let thumb = self.cache_path_for(source)?;
+        let stem = thumb.file_stem()?.to_string_lossy().into_owned();
+        Some(self.dir.join(format!("{stem}-loupe.jpg")))
+    }
+
+    /// Whether the original needs a generated, larger preview to be shown
+    /// in the loupe (formats GPUI can't render directly, i.e. camera RAW).
+    pub fn needs_loupe_preview(source: &Path) -> bool {
+        crate::decode::is_raw(source)
+    }
+
+    /// A previously generated loupe-size preview, if one exists on disk.
+    pub fn cached_loupe(&self, source: &Path) -> Option<PathBuf> {
+        let path = self.loupe_path_for(source)?;
+        path.exists().then_some(path)
+    }
+
+    /// Decodes `source` and writes a loupe-size JPEG (unless cached).
+    /// Does real decode work; run off the UI thread.
+    pub fn ensure_loupe(&self, source: &Path) -> anyhow::Result<PathBuf> {
+        let path = self
+            .loupe_path_for(source)
+            .ok_or_else(|| anyhow::anyhow!("could not stat {}", source.display()))?;
+        if path.exists() {
+            return Ok(path);
+        }
+        let image = crate::decode::open_image(source)?;
+        let image = if image.width().max(image.height()) > LOUPE_LONG_EDGE {
+            image.resize(LOUPE_LONG_EDGE, LOUPE_LONG_EDGE, FilterType::Triangle)
+        } else {
+            image
+        };
+        image.to_rgb8().save(&path)?;
+        Ok(path)
+    }
+
     /// Returns a cached thumbnail path if one already exists on disk.
     pub fn cached(&self, source: &Path) -> Option<PathBuf> {
         let cache_path = self.cache_path_for(source)?;
@@ -64,12 +104,12 @@ impl ThumbnailCache {
             .ok_or_else(|| anyhow::anyhow!("could not stat {}", source.display()))?;
 
         if cache_path.exists() {
-            if let Ok((w, h)) = image::image_dimensions(source) {
+            if let Ok((w, h)) = crate::decode::image_dimensions(source) {
                 return Ok((cache_path, w, h));
             }
         }
 
-        let image = image::open(source)?;
+        let image = crate::decode::open_image(source)?;
         let (width, height) = (image.width(), image.height());
 
         let thumbnail = image.resize(
@@ -91,16 +131,20 @@ impl ThumbnailCache {
 pub fn generate_thumbnails(
     cache: &ThumbnailCache,
     assets: &[Asset],
+    progress: &std::sync::atomic::AtomicUsize,
 ) -> Vec<(u64, PathBuf, u32, u32)> {
     use rayon::prelude::*;
+    use std::sync::atomic::Ordering;
 
     assets
         .par_iter()
         .filter_map(|asset| {
-            cache
+            let result = cache
                 .ensure(&asset.path)
                 .ok()
-                .map(|(thumb_path, width, height)| (asset.id, thumb_path, width, height))
+                .map(|(thumb_path, width, height)| (asset.id, thumb_path, width, height));
+            progress.fetch_add(1, Ordering::Relaxed);
+            result
         })
         .collect()
 }

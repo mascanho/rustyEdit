@@ -25,6 +25,8 @@ actions!(
         LabelBlue,
         GoLibrary,
         GoDevelop,
+        GoExport,
+        ToggleInfo,
         CycleFilter,
         ToggleZoom,
         ImportFolder,

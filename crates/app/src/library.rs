@@ -1,12 +1,13 @@
 use gpui::{
-    div, img, prelude::*, px, uniform_list, AnyElement, App, ClickEvent, Context, ObjectFit,
-    SharedString, Window,
+    div, img, prelude::*, px, relative, uniform_list, Animation, AnimationExt, AnyElement, App,
+    ClickEvent, Context, ObjectFit, SharedString, Window,
 };
 use rustyedit_core::{
-    settings::{DockSide, PanelKind},
+    settings::{DockSide, PanelKind, GRID_CARD_MAX, GRID_CARD_MIN, GRID_CARD_STEP},
     ColorLabel, FilterMode, Flag,
 };
 use rustyedit_ui::{PanelSide, Theme};
+use std::{sync::atomic::Ordering, time::Duration};
 
 use crate::{
     actions::{FlagPick, FlagReject},
@@ -15,31 +16,46 @@ use crate::{
 
 /// Total height of one grid row, including the thumbnail area and the
 /// flag/rating footer strip below it.
-const ROW_HEIGHT: f32 = 182.0;
-const THUMB_HEIGHT: f32 = 152.0;
+const FOOTER_HEIGHT: f32 = 26.0;
+/// Card borders (2px each side) that sit outside the thumbnail + footer.
+const CARD_BORDER: f32 = 4.0;
+/// Thumbnail area height as a fraction of the card's width.
+const THUMB_ASPECT: f32 = 0.75;
+/// Horizontal padding of a grid row (`px_3`) on each side.
+const ROW_PAD_X: f32 = 12.0;
 const ROW_GAP: f32 = 10.0;
 const TOOLBAR_HEIGHT: f32 = 32.0;
 
 impl Workspace {
     pub(crate) fn render_library(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         self.prepare_file_tree();
-        let center = div().flex().flex_col().flex_1().min_w(px(0.0));
-        let center = if self.catalog.assets.is_empty() {
+        // `overflow_hidden` + `min_w(0)` keep the center column from ever growing
+        // past the space between the docks and painting underneath them.
+        let center = div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w(px(0.0))
+            .overflow_hidden();
+        let arrangement = self.settings.layout.preset.arrangement();
+        let center = if self.is_importing {
+            center.child(self.render_import_loader())
+        } else if self.catalog.assets.is_empty() {
             center.child(self.render_empty_library(cx))
         } else {
             center
                 .child(self.render_library_toolbar(cx))
                 .child(match self.library_view {
                     LibraryView::Loupe => self.render_loupe(cx),
-                    LibraryView::Grid => self.render_grid(cx),
+                    LibraryView::Grid => self.render_grid(window, cx),
                 })
+                .child(self.render_cull_bar(cx))
         };
 
-        let arrangement = self.settings.layout.preset.arrangement();
         let left = self.render_dock(DockSide::Left, arrangement.left, cx);
         let right = self.render_dock(DockSide::Right, arrangement.right, cx);
 
@@ -48,11 +64,101 @@ impl Workspace {
             .flex_row()
             .flex_1()
             .min_h(px(0.0))
-            .children(left)
+            .children(self.dock_with_rail(DockSide::Left, left, cx))
             .child(center)
-            .children(right);
+            .children(self.dock_with_rail(DockSide::Right, right, cx));
 
         self.with_filmstrip(main.into_any_element(), cx)
+    }
+
+    /// Full-area loader shown while a folder is being scanned and its
+    /// thumbnails generated: pulsing dots, the current phase, and (once
+    /// thumbnails start) a progress bar with a running count.
+    fn render_import_loader(&self) -> AnyElement {
+        const DOTS: usize = 5;
+        let theme = self.theme;
+        let progress = self
+            .import_progress
+            .as_ref()
+            .map(|(done, total)| (done.load(Ordering::Relaxed).min(*total), *total));
+
+        let dots = (0..DOTS).fold(div().flex().gap_2().items_center(), |row, i| {
+            row.child(
+                div()
+                    .id(("import-dot", i))
+                    .size(px(10.0))
+                    .rounded_full()
+                    .bg(theme.accent)
+                    .with_animation(
+                        ("import-dot-pulse", i),
+                        Animation::new(Duration::from_millis(1200)).repeat(),
+                        move |el, delta| {
+                            // Staggered wave: each dot peaks a fifth of a
+                            // cycle after the previous one.
+                            let phase = (delta - i as f32 / DOTS as f32).rem_euclid(1.0);
+                            let wave = (phase * std::f32::consts::TAU).sin() * 0.5 + 0.5;
+                            el.opacity(0.2 + 0.8 * wave)
+                        },
+                    ),
+            )
+        });
+
+        let (title, detail) = match progress {
+            Some((done, total)) => (
+                "Generating thumbnails".to_string(),
+                format!("{done} of {total} photos"),
+            ),
+            None => (
+                "Scanning folder".to_string(),
+                "Looking for photos…".to_string(),
+            ),
+        };
+
+        let bar = progress.map(|(done, total)| {
+            let fraction = if total == 0 {
+                0.0
+            } else {
+                done as f32 / total as f32
+            };
+            div()
+                .w(px(260.0))
+                .h(px(4.0))
+                .rounded_full()
+                .bg(theme.border)
+                .child(
+                    div()
+                        .h_full()
+                        .w(relative(fraction))
+                        .rounded_full()
+                        .bg(theme.accent),
+                )
+        });
+
+        div()
+            .id("import-loader")
+            .flex_1()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap_4()
+                    .child(dots)
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap_1()
+                            .child(div().text_color(theme.text).child(title))
+                            .child(div().text_sm().text_color(theme.text_muted).child(detail)),
+                    )
+                    .children(bar),
+            )
+            .into_any_element()
     }
 
     /// One side dock, holding the panels the current layout preset assigns
@@ -411,6 +517,30 @@ impl Workspace {
             .into_any_element()
     }
 
+    /// "−  180 px  +" control for the grid's card size.
+    pub(crate) fn render_grid_size_control(&self, cx: &mut Context<Self>) -> AnyElement {
+        let entity = cx.entity();
+        div()
+            .child(rustyedit_ui::stepper(
+                "grid-card-size",
+                self.settings.library.grid_card_size as i64,
+                GRID_CARD_MIN as i64,
+                GRID_CARD_MAX as i64,
+                GRID_CARD_STEP as i64,
+                " px",
+                &self.theme,
+                move |value, _window, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.update_settings(
+                            |s| s.library.grid_card_size = value as u32,
+                            cx,
+                        );
+                    });
+                },
+            ))
+            .into_any_element()
+    }
+
     /// Shows the selected photo as large as the center area allows. Uses
     /// the original file rather than the (small) grid thumbnail so the
     /// showcase stays sharp.
@@ -418,9 +548,11 @@ impl Workspace {
         let theme = self.theme;
 
         let content: AnyElement = match self.catalog.selected_asset() {
-            Some(asset) => img(asset.path.clone())
+            Some(asset) => img(self.loupe_source(asset))
                 .object_fit(ObjectFit::Contain)
                 .size_full()
+                .min_w(px(0.0))
+                .min_h(px(0.0))
                 .into_any_element(),
             None => div()
                 .text_color(theme.text_muted)
@@ -430,14 +562,18 @@ impl Workspace {
 
         div()
             .id("library-loupe")
+            .relative()
             .flex_1()
             .min_h(px(0.0))
+            .min_w(px(0.0))
+            .overflow_hidden()
             .flex()
             .items_center()
             .justify_center()
             .p_4()
             .bg(theme.background)
             .child(content)
+            .children(self.render_info_overlay(cx))
             .on_click(cx.listener(|this, event: &ClickEvent, _window, cx| {
                 if event.click_count() >= 2 {
                     this.enter_develop(cx);
@@ -446,8 +582,62 @@ impl Workspace {
             .into_any_element()
     }
 
-    fn render_grid(&self, cx: &mut Context<Self>) -> AnyElement {
-        let columns = self.grid_columns();
+    /// Width a dock currently occupies (0 when the layout has none).
+    fn dock_width(&self, side: DockSide, panels: &[PanelKind]) -> f32 {
+        if panels.is_empty() {
+            return 0.0;
+        }
+        let collapsed = match side {
+            DockSide::Left => self.left_panel_collapsed,
+            DockSide::Right => self.right_panel_collapsed,
+        };
+        // The rail collapses along with its dock.
+        let rail = if collapsed {
+            0.0
+        } else {
+            rustyedit_ui::RAIL_WIDTH
+        };
+        rail + self.dock_panel_width(side, panels)
+    }
+
+    fn dock_panel_width(&self, side: DockSide, panels: &[PanelKind]) -> f32 {
+        let collapsed = match side {
+            DockSide::Left => self.left_panel_collapsed,
+            DockSide::Right => self.right_panel_collapsed,
+        };
+        if collapsed {
+            return rustyedit_ui::COLLAPSED_PANEL_WIDTH;
+        }
+        let layout = &self.settings.layout;
+        panels
+            .iter()
+            .map(|panel| match panel {
+                PanelKind::Navigator => layout.navigator_width,
+                PanelKind::Inspector => layout.inspector_width,
+            })
+            .max()
+            .unwrap_or(260) as f32
+    }
+
+    fn render_grid(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        // The chosen card size is a target: the column count is however many
+        // of that size fit between the docks.
+        let arrangement = self.settings.layout.preset.arrangement();
+        let center_width = f32::from(window.viewport_size().width)
+            - self.dock_width(DockSide::Left, arrangement.left)
+            - self.dock_width(DockSide::Right, arrangement.right);
+        let target = (self.settings.library.grid_card_size as f32).max(48.0);
+        let usable = center_width - 2.0 * ROW_PAD_X;
+        let columns = (((usable + ROW_GAP) / (target + ROW_GAP)).floor() as usize).max(1);
+        // Spread the leftover pixels across the columns so the grid fills
+        // the width evenly. The width depends on the column count, never on
+        // how many photos the last row holds, so a lone card keeps its size.
+        let card_width = ((usable - ROW_GAP * (columns as f32 - 1.0)) / columns as f32)
+            .floor()
+            .max(48.0);
+        self.grid_columns_cache.set(columns);
+        let thumb_height = (card_width * THUMB_ASPECT).floor();
+        let row_height = thumb_height + FOOTER_HEIGHT + CARD_BORDER;
         let visible_count = self.catalog.visible_indices().len();
         let row_count = visible_count.div_ceil(columns);
 
@@ -455,6 +645,8 @@ impl Workspace {
             .id("library-body")
             .flex_1()
             .min_h(px(0.0))
+            .min_w(px(0.0))
+            .overflow_hidden()
             .child(
                 uniform_list(
                     "library-grid",
@@ -496,8 +688,9 @@ impl Workspace {
 
                                         div()
                                             .id(("grid-cell", asset_ix))
-                                            .flex_1()
-                                            .h(px(ROW_HEIGHT))
+                                            .w(px(card_width))
+                                            .flex_shrink_0()
+                                            .h(px(row_height))
                                             .flex()
                                             .flex_col()
                                             .rounded_md()
@@ -512,7 +705,7 @@ impl Workspace {
                                             .cursor_pointer()
                                             .child(
                                                 div()
-                                                    .h(px(THUMB_HEIGHT))
+                                                    .h(px(thumb_height))
                                                     .w_full()
                                                     .flex()
                                                     .items_center()
@@ -528,6 +721,8 @@ impl Workspace {
                                                     .justify_between()
                                                     .px_2()
                                                     .flex_1()
+                                                    .min_w(px(0.0))
+                                                    .overflow_hidden()
                                                     .child(rustyedit_ui::flag_badge(
                                                         asset.flag, &theme,
                                                     ))
@@ -554,6 +749,7 @@ impl Workspace {
                                 div()
                                     .flex()
                                     .flex_row()
+                                    .w_full()
                                     .gap(px(ROW_GAP))
                                     .px_3()
                                     .pb(px(ROW_GAP))
@@ -565,7 +761,7 @@ impl Workspace {
                 )
                 .track_scroll(self.grid_scroll.clone())
                 .pt_3()
-                .h_full(),
+                .size_full(),
             )
             .into_any_element()
     }

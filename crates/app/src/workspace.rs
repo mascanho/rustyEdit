@@ -13,15 +13,16 @@ use gpui::{
 };
 use image::DynamicImage;
 use rustyedit_core::{
-    settings::StartupView, Catalog, ColorLabel, Flag, Histogram, Rating, Settings,
+    settings::StartupView, Catalog, ColorLabel, ExportOptions, Flag, Histogram, RailTool, Rating,
+    Settings,
 };
 use rustyedit_io::ThumbnailCache;
 use rustyedit_ui::Theme;
 
 use crate::actions::{
-    CycleFilter, CycleLayout, FlagPick, FlagReject, FlagUnflag, GoDevelop, GoLibrary, ImportFolder,
-    LabelBlue, LabelGreen, LabelRed, LabelYellow, NextImage, OpenSettings, PrevImage, Rating0,
-    Rating1, Rating2, Rating3, Rating4, Rating5, ToggleZoom,
+    CycleFilter, CycleLayout, FlagPick, FlagReject, FlagUnflag, GoDevelop, GoExport, GoLibrary,
+    ImportFolder, LabelBlue, LabelGreen, LabelRed, LabelYellow, NextImage, OpenSettings, PrevImage,
+    Rating0, Rating1, Rating2, Rating3, Rating4, Rating5, ToggleZoom,
 };
 use crate::file_tree::FileTree;
 
@@ -34,6 +35,7 @@ const CATALOG_SAVE_DEBOUNCE: Duration = Duration::from_millis(750);
 pub enum Mode {
     Library,
     Develop,
+    Export,
 }
 
 /// What the Library module's center area shows: the selected photo large
@@ -57,6 +59,21 @@ pub struct Workspace {
     pub(crate) thumbnail_cache: Option<Arc<ThumbnailCache>>,
     pub(crate) status_message: Option<SharedString>,
     pub(crate) is_importing: bool,
+    // Loupe info overlay (see `info_overlay.rs`).
+    pub(crate) info_visible: bool,
+    /// Titles of the info groups the user has collapsed.
+    pub(crate) info_collapsed: HashSet<&'static str>,
+    pub(crate) metadata_cache: HashMap<u64, Arc<rustyedit_io::Metadata>>,
+    pub(crate) metadata_loading: HashSet<u64>,
+    // Export module state (see `export.rs`).
+    pub(crate) export_options: ExportOptions,
+    pub(crate) export_progress: Option<(Arc<std::sync::atomic::AtomicUsize>, usize)>,
+    pub(crate) export_message: Option<SharedString>,
+    /// Active tool on each side's icon rail (see `rail.rs`).
+    pub(crate) left_rail_tool: Option<RailTool>,
+    pub(crate) right_rail_tool: Option<RailTool>,
+    /// Thumbnail progress of the running import: (done counter, total).
+    pub(crate) import_progress: Option<(Arc<std::sync::atomic::AtomicUsize>, usize)>,
     pub(crate) grid_scroll: UniformListScrollHandle,
     // Scroll positions of the side panels and Settings content, which
     // also drive their scrollbars.
@@ -67,6 +84,7 @@ pub struct Workspace {
     /// Filmstrip scroll position in content pixels (see `filmstrip.rs`).
     pub(crate) filmstrip_scroll_x: f64,
     pub(crate) filmstrip_viewport: Rc<Cell<f32>>,
+    pub(crate) grid_columns_cache: Rc<Cell<usize>>,
     pub(crate) zoom_fit: bool,
     pub(crate) library_view: LibraryView,
     pub(crate) left_panel_collapsed: bool,
@@ -93,6 +111,10 @@ pub struct Workspace {
     // original keyed by asset id, plus the live one for the edited preview.
     pub(crate) histogram_cache: HashMap<u64, Arc<Histogram>>,
     pub(crate) histogram_loading: Option<u64>,
+
+    // Loupe-size previews generated for RAW files, keyed by asset id.
+    pub(crate) loupe_paths: HashMap<u64, PathBuf>,
+    pub(crate) loupe_loading: HashSet<u64>,
     pub(crate) develop_histogram: Option<(u64, Arc<Histogram>)>,
 
     // Develop-mode live preview pipeline state.
@@ -118,6 +140,11 @@ impl Workspace {
             }
             async {}
         });
+        // Bring the GPU device up in the background so the first Develop
+        // slider drag doesn't pay for adapter discovery and shader compile.
+        cx.background_executor()
+            .spawn(async { rustyedit_processing::gpu_adapter_name() })
+            .detach();
         Self {
             focus_handle: cx.focus_handle(),
             theme: Theme::dark(),
@@ -126,6 +153,16 @@ impl Workspace {
             thumbnail_cache: None,
             status_message: Some("Import a folder to get started.".into()),
             is_importing: false,
+            info_visible: false,
+            info_collapsed: HashSet::new(),
+            metadata_cache: HashMap::new(),
+            metadata_loading: HashSet::new(),
+            export_options: ExportOptions::default(),
+            export_progress: None,
+            export_message: None,
+            left_rail_tool: None,
+            right_rail_tool: None,
+            import_progress: None,
             grid_scroll: UniformListScrollHandle::new(),
             left_dock_scroll: ScrollHandle::new(),
             right_dock_scroll: ScrollHandle::new(),
@@ -133,6 +170,7 @@ impl Workspace {
             settings_scroll: ScrollHandle::new(),
             filmstrip_scroll_x: 0.0,
             filmstrip_viewport: Rc::new(Cell::new(0.0)),
+            grid_columns_cache: Rc::new(Cell::new(1)),
             zoom_fit: true,
             library_view: match settings.library.startup_view {
                 StartupView::Loupe => LibraryView::Loupe,
@@ -152,6 +190,8 @@ impl Workspace {
             settings_page: 0,
             settings_focus: cx.focus_handle(),
             histogram_cache: HashMap::new(),
+            loupe_paths: HashMap::new(),
+            loupe_loading: HashSet::new(),
             histogram_loading: None,
             develop_histogram: None,
             source_image: None,
@@ -190,8 +230,10 @@ impl Workspace {
         .into_any_element()
     }
 
+    /// Columns the grid laid out on its last render (it derives them from
+    /// the card size and the space available), for keeping scroll in sync.
     pub(crate) fn grid_columns(&self) -> usize {
-        (self.settings.library.grid_columns as usize).max(1)
+        self.grid_columns_cache.get().max(1)
     }
 
     /// Records that the catalog has unsaved edits and schedules a save.
@@ -299,11 +341,20 @@ impl Workspace {
         }
         self.reveal_in_filmstrip(self.catalog.selected);
         self.request_histogram(cx);
+        self.request_loupe(cx);
+        if self.info_visible {
+            self.request_metadata(cx);
+        }
         cx.notify();
     }
 
     pub fn go_library(&mut self, _: &GoLibrary, _window: &mut Window, cx: &mut Context<Self>) {
         self.mode = Mode::Library;
+        cx.notify();
+    }
+
+    pub fn go_export(&mut self, _: &GoExport, _window: &mut Window, cx: &mut Context<Self>) {
+        self.mode = Mode::Export;
         cx.notify();
     }
 
@@ -442,6 +493,10 @@ impl Workspace {
         self.go_library(&GoLibrary, window, cx);
     }
 
+    fn click_go_export(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.go_export(&GoExport, window, cx);
+    }
+
     fn click_go_develop(&mut self, _: &ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
         self.enter_develop(cx);
     }
@@ -454,7 +509,12 @@ impl Workspace {
         self.open_settings(window, cx);
     }
 
-    fn click_cycle_filter(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn click_cycle_filter(
+        &mut self,
+        _: &ClickEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.cycle_filter(&CycleFilter, window, cx);
     }
 
@@ -487,6 +547,14 @@ impl Workspace {
                 self.mode == Mode::Develop,
                 &theme,
                 cx.listener(Self::click_go_develop),
+            )
+            .into_any_element(),
+            rustyedit_ui::chrome_button(
+                "mode-export",
+                "Export",
+                self.mode == Mode::Export,
+                &theme,
+                cx.listener(Self::click_go_export),
             )
             .into_any_element(),
             rustyedit_ui::chrome_button(
@@ -570,6 +638,8 @@ impl Render for Workspace {
             .id("workspace-root")
             .key_context("Workspace")
             .track_focus(&focus_handle)
+            .on_action(cx.listener(Self::go_export))
+            .on_action(cx.listener(Self::toggle_info))
             .on_action(cx.listener(Self::next_image))
             .on_action(cx.listener(Self::prev_image))
             .on_action(cx.listener(Self::flag_pick))
@@ -602,6 +672,7 @@ impl Render for Workspace {
             .child(match self.mode {
                 Mode::Library => self.render_library(window, cx),
                 Mode::Develop => self.render_develop(window, cx),
+                Mode::Export => self.render_export(cx),
             })
             .child(self.render_status_bar(cx))
             .when(self.settings_open, |el| {

@@ -15,3 +15,4 @@ rustyedit-ui = { path = "../ui" }
 gpui = { version = "0.2.2", features = ["macos-blade"] }
 rfd = "0.17"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+anyhow = "1.0.104"

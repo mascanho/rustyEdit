@@ -71,9 +71,14 @@ impl Workspace {
         );
 
         let main = div().flex().flex_row().flex_1().min_h(px(0.0));
+        let (dock_side, panel) = match side {
+            PanelSide::Left => (DockSide::Left, panel.into_any_element()),
+            PanelSide::Right => (DockSide::Right, panel.into_any_element()),
+        };
+        let docked = self.dock_with_rail(dock_side, Some(panel), cx);
         let main = match side {
-            PanelSide::Left => main.child(panel).child(viewer),
-            PanelSide::Right => main.child(viewer).child(panel),
+            PanelSide::Left => main.children(docked).child(viewer),
+            PanelSide::Right => main.child(viewer).children(docked),
         };
 
         self.with_filmstrip(main.into_any_element(), cx)
@@ -155,7 +160,7 @@ impl Workspace {
         let max_edge = self.settings.develop.preview_quality.max_edge();
 
         let decode = cx.background_executor().spawn(async move {
-            image::open(&path)
+            rustyedit_io::open_image(&path)
                 .ok()
                 .map(|image| rustyedit_processing::downscale_for_preview(&image, max_edge))
         });

@@ -3,12 +3,16 @@
 //! the menu, and the window, then hands off to `Workspace`.
 
 mod actions;
+mod cull_bar;
 mod develop;
+mod export;
 mod file_tree;
 mod filmstrip;
 mod histogram;
+mod info_overlay;
 mod import;
 mod library;
+mod rail;
 mod settings_view;
 mod workspace;
 
@@ -18,9 +22,9 @@ use gpui::{
 };
 
 use actions::{
-    CloseSettings, CycleFilter, CycleLayout, FlagPick, FlagReject, FlagUnflag, GoDevelop,
+    CloseSettings, CycleFilter, CycleLayout, FlagPick, FlagReject, FlagUnflag, GoDevelop, GoExport,
     GoLibrary, ImportFolder, LabelBlue, LabelGreen, LabelRed, LabelYellow, NextImage, OpenSettings,
-    PrevImage, Quit, Rating0, Rating1, Rating2, Rating3, Rating4, Rating5, ToggleZoom,
+    PrevImage, Quit, Rating0, Rating1, Rating2, Rating3, Rating4, Rating5, ToggleInfo, ToggleZoom,
 };
 use workspace::Workspace;
 
@@ -48,9 +52,11 @@ fn main() {
             KeyBinding::new("9", LabelBlue, Some(KEY_CONTEXT)),
             KeyBinding::new("g", GoLibrary, Some(KEY_CONTEXT)),
             KeyBinding::new("d", GoDevelop, Some(KEY_CONTEXT)),
+            KeyBinding::new("e", GoExport, Some(KEY_CONTEXT)),
             KeyBinding::new("escape", GoLibrary, Some(KEY_CONTEXT)),
             KeyBinding::new("f", CycleFilter, Some(KEY_CONTEXT)),
             KeyBinding::new("z", ToggleZoom, Some(KEY_CONTEXT)),
+            KeyBinding::new("i", ToggleInfo, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-,", OpenSettings, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-shift-l", CycleLayout, Some(KEY_CONTEXT)),
             KeyBinding::new("escape", CloseSettings, Some("SettingsModal")),

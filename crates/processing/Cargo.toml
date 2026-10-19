@@ -6,3 +6,6 @@ edition.workspace = true
 [dependencies]
 rustyedit-core = { path = "../core" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+wgpu = "30.0.1"
+pollster = "1.0.1"
+bytemuck = { version = "1.25.2", features = ["derive"] }
