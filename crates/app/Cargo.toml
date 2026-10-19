@@ -1,0 +1,17 @@
+[package]
+name = "rustyedit"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "rustyedit"
+path = "src/main.rs"
+
+[dependencies]
+rustyedit-core = { path = "../core" }
+rustyedit-io = { path = "../io" }
+rustyedit-processing = { path = "../processing" }
+rustyedit-ui = { path = "../ui" }
+gpui = { version = "0.2.2", features = ["macos-blade"] }
+rfd = "0.17"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }

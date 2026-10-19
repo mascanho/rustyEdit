@@ -1,0 +1,8 @@
+[package]
+name = "rustyedit-ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rustyedit-core = { path = "../core" }
+gpui = { version = "0.2.2", features = ["macos-blade"] }

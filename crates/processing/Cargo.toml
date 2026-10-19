@@ -1,0 +1,8 @@
+[package]
+name = "rustyedit-processing"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rustyedit-core = { path = "../core" }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
