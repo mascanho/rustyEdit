@@ -72,12 +72,16 @@ pub fn read_metadata(path: &Path, dimensions: Option<(u32, u32)>) -> Metadata {
     if let Ok(md) = std::fs::metadata(path) {
         file_rows.push(("Size", format_bytes(md.len())));
     }
-    meta.groups.push(MetaGroup { title: "File", rows: file_rows });
+    meta.groups.push(MetaGroup {
+        title: "File",
+        rows: file_rows,
+    });
 
-    let Some(exif) = File::open(path)
-        .ok()
-        .and_then(|f| exif::Reader::new().read_from_container(&mut BufReader::new(f)).ok())
-    else {
+    let Some(exif) = File::open(path).ok().and_then(|f| {
+        exif::Reader::new()
+            .read_from_container(&mut BufReader::new(f))
+            .ok()
+    }) else {
         return meta;
     };
 
@@ -107,7 +111,10 @@ pub fn read_metadata(path: &Path, dimensions: Option<(u32, u32)>) -> Metadata {
     }
 
     if let Some(gps) = gps_text(&exif) {
-        meta.groups.push(MetaGroup { title: "Location", rows: vec![("GPS", gps)] });
+        meta.groups.push(MetaGroup {
+            title: "Location",
+            rows: vec![("GPS", gps)],
+        });
     }
     meta
 }
@@ -157,8 +164,12 @@ fn format_bytes(bytes: u64) -> String {
 fn gps_text(exif: &Exif) -> Option<String> {
     let coordinate = |value_tag: Tag, ref_tag: Tag| -> Option<String> {
         let field = exif.get_field(value_tag, In::PRIMARY)?;
-        let Value::Rational(parts) = &field.value else { return None };
-        let [d, m, s] = parts.get(..3)? else { return None };
+        let Value::Rational(parts) = &field.value else {
+            return None;
+        };
+        let [d, m, s] = parts.get(..3)? else {
+            return None;
+        };
         let degrees = d.to_f64() + m.to_f64() / 60.0 + s.to_f64() / 3600.0;
         let hemisphere = display(exif, ref_tag).unwrap_or_default();
         Some(format!("{degrees:.5}\u{00B0} {hemisphere}"))

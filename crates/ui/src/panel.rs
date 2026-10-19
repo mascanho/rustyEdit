@@ -153,6 +153,11 @@ pub fn collapsible_panel(
     let toggle = glyph_button(
         ElementId::NamedChild(Box::new(id.clone()), "toggle".into()),
         glyph,
+        if collapsed {
+            "Expand panel"
+        } else {
+            "Collapse panel"
+        },
         theme.text_muted,
         true,
         &theme,

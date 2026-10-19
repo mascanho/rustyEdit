@@ -12,6 +12,18 @@ pub fn chrome_button(
     theme: &Theme,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
+    chrome_icon_button(id, label, None, selected, theme, on_click)
+}
+
+/// A chrome button for a glyph with no text label, so it carries a tooltip.
+pub fn chrome_icon_button(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    tooltip: Option<SharedString>,
+    selected: bool,
+    theme: &Theme,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
     let theme = *theme;
     div()
         .id(id)
@@ -31,6 +43,9 @@ pub fn chrome_button(
                 .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
         })
         .child(label.into())
+        .when_some(tooltip, |el, text| {
+            el.tooltip(crate::tooltip::tip(text, &theme))
+        })
         .on_click(on_click)
 }
 
@@ -39,6 +54,7 @@ pub fn chrome_button(
 pub fn glyph_button(
     id: impl Into<ElementId>,
     glyph: impl Into<SharedString>,
+    tooltip: impl Into<SharedString>,
     color: gpui::Hsla,
     active: bool,
     theme: &Theme,
@@ -56,5 +72,6 @@ pub fn glyph_button(
         .text_color(if active { color } else { theme.text_faint })
         .hover(|el| el.bg(theme.surface_elevated))
         .child(glyph.into())
+        .tooltip(crate::tooltip::tip(tooltip, &theme))
         .on_click(on_click)
 }

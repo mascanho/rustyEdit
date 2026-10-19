@@ -12,8 +12,8 @@ use crate::workspace::Workspace;
 
 // Dimensions of one frame of "film". Frames butt up against each other with
 // no gap so the sprocket holes run continuously along the whole strip.
-const FRAME_WIDTH: f32 = 132.0;
-const PICTURE_HEIGHT: f32 = 80.0;
+// The picture height is user-resizable; the frame keeps this aspect to it.
+const FRAME_ASPECT: f32 = 132.0 / 80.0;
 const SPROCKET_ROW_HEIGHT: f32 = 14.0;
 const EDGE_PRINT_HEIGHT: f32 = 12.0;
 const META_ROW_HEIGHT: f32 = 16.0;
@@ -37,10 +37,26 @@ const WHEEL_LINE_PX: f32 = 40.0;
 
 const EDGE_PRINT_FONT: &str = "Menlo";
 
-pub(crate) const FILMSTRIP_HEIGHT: f32 =
-    SPROCKET_ROW_HEIGHT * 2.0 + EDGE_PRINT_HEIGHT + PICTURE_HEIGHT + META_ROW_HEIGHT + 12.0;
+/// Everything in a frame that doesn't scale with the picture.
+pub(crate) const FILM_FIXED_HEIGHT: f32 =
+    SPROCKET_ROW_HEIGHT * 2.0 + EDGE_PRINT_HEIGHT + META_ROW_HEIGHT + 12.0;
+pub(crate) const FILM_PICTURE_MIN: f32 = 48.0;
+pub(crate) const FILM_PICTURE_MAX: f32 = 260.0;
 
 impl Workspace {
+    fn film_picture_height(&self) -> f32 {
+        (self.settings.layout.filmstrip_height as f32).clamp(FILM_PICTURE_MIN, FILM_PICTURE_MAX)
+    }
+
+    fn film_frame_width(&self) -> f32 {
+        (self.film_picture_height() * FRAME_ASPECT).round()
+    }
+
+    /// Height of the roll (excluding the header).
+    pub(crate) fn film_roll_height(&self) -> f32 {
+        FILM_FIXED_HEIGHT + self.film_picture_height()
+    }
+
     /// A horizontally scrolling strip of every photo in the catalog, drawn
     /// in the user's chosen [`FilmLook`] (colour negative by default:
     /// sprocket holes, amber edge-print frame numbers), with each frame's
@@ -49,7 +65,7 @@ impl Workspace {
     pub(crate) fn render_filmstrip(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let at_top = self.settings.layout.filmstrip_position == FilmstripPosition::Top;
         let header = self.render_filmstrip_header(at_top, cx);
-        let container = div().flex().flex_col().flex_shrink_0().w_full();
+        let container = div().relative().flex().flex_col().flex_shrink_0().w_full();
 
         if self.filmstrip_collapsed {
             return container.child(header).into_any_element();
@@ -57,10 +73,19 @@ impl Workspace {
         // The header always sits on the edge facing the photo, so it reads
         // as the strip's "handle" whichever side the strip is docked to.
         let roll = self.render_film_roll(cx);
+        let grip = self.resize_grip(crate::resize::ResizeTarget::Filmstrip, cx);
         if at_top {
-            container.child(roll).child(header).into_any_element()
+            container
+                .child(roll)
+                .child(header)
+                .child(grip)
+                .into_any_element()
         } else {
-            container.child(header).child(roll).into_any_element()
+            container
+                .child(header)
+                .child(roll)
+                .child(grip)
+                .into_any_element()
         }
     }
 
@@ -153,7 +178,8 @@ impl Workspace {
         let prefs = &self.settings.filmstrip;
         let scroll_x = self.filmstrip_scroll_x;
         let viewport = self.filmstrip_viewport_width() as f64;
-        let frame_width = FRAME_WIDTH as f64;
+        let frame_px = self.film_frame_width();
+        let frame_width = frame_px as f64;
         let count = self.catalog.assets.len();
 
         let first = ((scroll_x / frame_width).floor() as usize)
@@ -173,6 +199,7 @@ impl Workspace {
                     &theme,
                     &look,
                     prefs,
+                    frame_px,
                 )
                 .absolute()
                 .top_0()
@@ -220,15 +247,29 @@ impl Workspace {
             .flex_row()
             .flex_shrink_0()
             .w_full()
-            .h(px(FILMSTRIP_HEIGHT))
+            .h(px(self.film_roll_height()))
             .bg(linear_gradient(
                 180.0,
                 linear_color_stop(look.base_top, 0.0),
                 linear_color_stop(look.base_bottom, 1.0),
             ))
-            .child(self.filmstrip_arrow("filmstrip-prev", "\u{25C0}", -1.0, can_scroll_left, cx))
+            .child(self.filmstrip_arrow(
+                "filmstrip-prev",
+                "\u{25C0}",
+                "Scroll left",
+                -1.0,
+                can_scroll_left,
+                cx,
+            ))
             .child(roll)
-            .child(self.filmstrip_arrow("filmstrip-next", "\u{25B6}", 1.0, can_scroll_right, cx))
+            .child(self.filmstrip_arrow(
+                "filmstrip-next",
+                "\u{25B6}",
+                "Scroll right",
+                1.0,
+                can_scroll_right,
+                cx,
+            ))
             .into_any_element()
     }
 
@@ -240,7 +281,7 @@ impl Workspace {
     }
 
     fn filmstrip_max_scroll(&self) -> f64 {
-        let content = self.catalog.assets.len() as f64 * FRAME_WIDTH as f64;
+        let content = self.catalog.assets.len() as f64 * self.film_frame_width() as f64;
         (content - self.filmstrip_viewport_width() as f64).max(0.0)
     }
 
@@ -252,7 +293,7 @@ impl Workspace {
 
     /// Scrolls the minimum amount needed to bring frame `ix` fully into view.
     pub(crate) fn reveal_in_filmstrip(&mut self, ix: usize) {
-        let frame_width = FRAME_WIDTH as f64;
+        let frame_width = self.film_frame_width() as f64;
         let viewport = self.filmstrip_viewport_width() as f64;
         let left = ix as f64 * frame_width;
         let right = left + frame_width;
@@ -269,6 +310,7 @@ impl Workspace {
         &self,
         id: &'static str,
         glyph: &'static str,
+        tooltip: &'static str,
         direction: f32,
         enabled: bool,
         cx: &mut Context<Self>,
@@ -295,6 +337,7 @@ impl Workspace {
             })
             .when(!enabled, |el| el.text_color(look.chrome_text.opacity(0.25)))
             .child(glyph)
+            .tooltip(rustyedit_ui::tip(tooltip, &self.theme))
             .on_click(cx.listener(move |this, _, _window, cx| {
                 this.scroll_filmstrip_page(direction, cx);
             }))
@@ -322,6 +365,7 @@ fn film_frame(
     theme: &Theme,
     look: &FilmLook,
     prefs: &FilmstripSettings,
+    frame_width: f32,
 ) -> gpui::Stateful<gpui::Div> {
     let theme = *theme;
     let look = *look;
@@ -455,7 +499,7 @@ fn film_frame(
         .flex()
         .flex_col()
         .flex_shrink_0()
-        .w(px(FRAME_WIDTH))
+        .w(px(frame_width))
         .h_full()
         .cursor_pointer()
         .when(asset.flag == Flag::Rejected, |el| el.opacity(0.4))

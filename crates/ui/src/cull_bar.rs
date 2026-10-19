@@ -1,4 +1,6 @@
-use gpui::{div, prelude::*, px, AnyElement, App, ClickEvent, ElementId, Hsla, SharedString, Window};
+use gpui::{
+    div, prelude::*, px, AnyElement, App, ClickEvent, ElementId, Hsla, SharedString, Window,
+};
 
 use crate::theme::Theme;
 
@@ -78,6 +80,7 @@ pub fn cull_button(
     id: impl Into<ElementId>,
     glyph: impl Into<SharedString>,
     label: impl Into<SharedString>,
+    tooltip: impl Into<SharedString>,
     color: Hsla,
     active: bool,
     theme: &Theme,
@@ -109,6 +112,7 @@ pub fn cull_button(
         })
         .child(div().text_size(px(14.0)).child(glyph.into()))
         .child(label.into())
+        .tooltip(crate::tooltip::tip(tooltip, &theme))
         .on_click(on_click)
 }
 
@@ -116,6 +120,7 @@ pub fn cull_button(
 pub fn label_swatch(
     id: impl Into<ElementId>,
     color: Hsla,
+    tooltip: impl Into<SharedString>,
     active: bool,
     theme: &Theme,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -130,9 +135,14 @@ pub fn label_swatch(
         .rounded_full()
         .cursor_pointer()
         .border_2()
-        .border_color(if active { theme.text } else { gpui::transparent_black() })
+        .border_color(if active {
+            theme.text
+        } else {
+            gpui::transparent_black()
+        })
         .hover(|el| el.bg(theme.surface_elevated))
         .child(div().size(px(12.0)).rounded_full().bg(color))
+        .tooltip(crate::tooltip::tip(tooltip, &theme))
         .on_click(on_click)
 }
 
@@ -140,6 +150,7 @@ pub fn label_swatch(
 pub fn cull_nav_button(
     id: impl Into<ElementId>,
     glyph: impl Into<SharedString>,
+    tooltip: impl Into<SharedString>,
     enabled: bool,
     theme: &Theme,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -153,6 +164,7 @@ pub fn cull_nav_button(
         .size(px(28.0))
         .rounded_lg()
         .text_size(px(16.0))
+        .tooltip(crate::tooltip::tip(tooltip, &theme))
         .when(enabled, |el| {
             el.cursor_pointer()
                 .text_color(theme.text_muted)

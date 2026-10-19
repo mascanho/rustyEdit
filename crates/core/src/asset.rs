@@ -2,7 +2,14 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{color_label::ColorLabel, develop::DevelopSettings, flag::Flag, rating::Rating};
+use crate::{
+    color_label::ColorLabel, develop::DevelopSettings, flag::Flag, history, history::HistoryEntry,
+    rating::Rating,
+};
+
+fn upright() -> u8 {
+    1
+}
 
 /// A single photo known to the catalog.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,12 +19,19 @@ pub struct Asset {
     pub thumbnail_path: Option<PathBuf>,
     pub width: u32,
     pub height: u32,
+    /// EXIF orientation (1 = upright). Defaulted for old catalogs.
+    #[serde(default = "upright")]
+    pub orientation: u8,
     pub flag: Flag,
     pub rating: Rating,
     /// Defaulted so catalogs saved before colour labels existed still load.
     #[serde(default)]
     pub color_label: ColorLabel,
     pub develop: DevelopSettings,
+    /// Every change made to this photo, oldest first. Defaulted so catalogs
+    /// saved before history existed still load.
+    #[serde(default)]
+    pub history: Vec<HistoryEntry>,
 }
 
 impl Asset {
@@ -28,11 +42,18 @@ impl Asset {
             thumbnail_path: None,
             width: 0,
             height: 0,
+            orientation: 1,
             flag: Flag::default(),
             rating: Rating::default(),
             color_label: ColorLabel::default(),
             develop: DevelopSettings::default(),
+            history: Vec::new(),
         }
+    }
+
+    /// Logs a change to this photo (see [`HistoryEntry`]).
+    pub fn record_change(&mut self, label: &str, from: impl Into<String>, to: impl Into<String>) {
+        history::record(&mut self.history, label, from.into(), to.into());
     }
 
     pub fn file_name(&self) -> String {

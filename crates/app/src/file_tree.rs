@@ -310,13 +310,12 @@ impl Workspace {
             cx.processor(move |this, range: std::ops::Range<usize>, _window, cx| {
                 let entity = cx.entity();
                 let theme = this.theme;
-                let catalog_folder = this.catalog.folder.clone();
                 let selected_photo = this.catalog.selected_asset().map(|a| a.path.clone());
 
                 range
                     .map(|ix| {
                         let row = rows[ix].clone();
-                        let is_catalog = catalog_folder.as_ref() == Some(&row.path)
+                        let is_catalog = this.catalog.has_folder(&row.path)
                             && matches!(row.kind, RowKind::Folder { .. });
                         let is_selected = selected_photo.as_ref() == Some(&row.path)
                             && row.kind == RowKind::Photo;
@@ -347,6 +346,7 @@ impl Workspace {
             .child(rustyedit_ui::glyph_button(
                 "folder-tree-refresh",
                 "\u{21BB}",
+                "Refresh folders",
                 theme.text_muted,
                 true,
                 &theme,
@@ -371,6 +371,7 @@ impl Workspace {
                         self.file_tree.scroll.0.borrow().base_handle.clone(),
                         &theme,
                     ))
+                    .child(self.resize_grip(crate::resize::ResizeTarget::FolderTree, cx))
                     .into_any_element(),
             ],
             cx,
@@ -440,6 +441,8 @@ fn tree_row(
         .flex_row()
         .items_center()
         .gap_1()
+        // Full width, so highlights run edge to edge however short the name.
+        .w_full()
         .h(px(ROW_HEIGHT))
         .pl(indent)
         .pr_2()
@@ -450,6 +453,9 @@ fn tree_row(
             matches!(row.kind, RowKind::Folder { is_root: true, .. }) || is_catalog,
             |el| el.font_weight(gpui::FontWeight::SEMIBOLD),
         )
+        .when(is_catalog && !is_selected, |el| {
+            el.bg(theme.accent_muted.opacity(0.35))
+        })
         .when(is_selected, |el| {
             el.bg(theme.accent_muted).text_color(theme.text)
         })

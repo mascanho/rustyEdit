@@ -191,7 +191,20 @@ impl Workspace {
         // heading so it's clear where one ends and the next begins.
         let stacked = panels.len() > 1;
         let mut children = Vec::new();
-        for panel in panels {
+        // An active rail tool with its own content replaces the panels.
+        let takeover = self.active_rail_tool(side).and_then(|tool| {
+            self.rail_tool_content(tool, cx)
+                .map(|content| (tool, content))
+        });
+        let title = match &takeover {
+            Some((tool, _)) => tool.label().to_string(),
+            None => title,
+        };
+        let taken_over = takeover.is_some();
+        if let Some((_, content)) = takeover {
+            children = content;
+        }
+        for panel in panels.iter().filter(|_| !taken_over) {
             if stacked {
                 children.push(panel_group_heading(&self.theme, panel.label()));
             }
@@ -282,19 +295,16 @@ impl Workspace {
         let theme = self.theme;
         let counts = self.catalog.counts();
 
-        let folder = self
-            .catalog
-            .folder
-            .as_ref()
-            .and_then(|f| f.file_name())
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-
         let catalog = rustyedit_ui::section(
             &theme,
             "Catalog",
             vec![
-                info_row(&theme, "Folder", folder),
+                info_row(&theme, "Catalog", self.catalog_def.name.clone()),
+                info_row(
+                    &theme,
+                    "Folders",
+                    self.catalog_def.folders.len().to_string(),
+                ),
                 info_row(&theme, "Photos", counts.total.to_string()),
             ],
         )
@@ -377,6 +387,7 @@ impl Workspace {
                 .child(rustyedit_ui::glyph_button(
                     "library-flag-pick",
                     "\u{2691}",
+                    "Pick (P)",
                     theme.pick,
                     asset.flag == Flag::Picked,
                     &theme,
@@ -387,6 +398,7 @@ impl Workspace {
                 .child(rustyedit_ui::glyph_button(
                     "library-flag-reject",
                     "\u{2715}",
+                    "Reject (X)",
                     theme.reject,
                     asset.flag == Flag::Rejected,
                     &theme,
@@ -412,6 +424,10 @@ impl Workspace {
                             .border_color(if is_active { theme.text } else { color })
                             .cursor_pointer()
                             .hover(|el| el.border_color(theme.text_muted))
+                            .tooltip(rustyedit_ui::tip(
+                                format!("{} label", label.label()),
+                                &theme,
+                            ))
                             .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
                                 this.set_color_label_value(label, cx);
                             })),
@@ -531,10 +547,7 @@ impl Workspace {
                 &self.theme,
                 move |value, _window, cx| {
                     entity.update(cx, |this, cx| {
-                        this.update_settings(
-                            |s| s.library.grid_card_size = value as u32,
-                            cx,
-                        );
+                        this.update_settings(|s| s.library.grid_card_size = value as u32, cx);
                     });
                 },
             ))

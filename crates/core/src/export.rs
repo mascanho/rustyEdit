@@ -14,7 +14,8 @@ pub enum ExportScope {
 }
 
 impl ExportScope {
-    pub const ALL: [ExportScope; 3] = [ExportScope::Picked, ExportScope::All, ExportScope::Selected];
+    pub const ALL: [ExportScope; 3] =
+        [ExportScope::Picked, ExportScope::All, ExportScope::Selected];
 
     pub fn label(&self) -> &'static str {
         match self {

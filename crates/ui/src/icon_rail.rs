@@ -11,6 +11,7 @@ const BUTTON_SIZE: f32 = 28.0;
 pub struct RailButton {
     pub id: SharedString,
     pub glyph: SharedString,
+    pub tooltip: SharedString,
     pub active: bool,
     pub on_click: Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
 }
@@ -58,6 +59,7 @@ pub fn icon_rail(
                         .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                 })
                 .child(button.glyph)
+                .tooltip(crate::tooltip::tip(button.tooltip, &theme))
                 .on_click(button.on_click)
         }))
 }

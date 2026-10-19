@@ -212,10 +212,22 @@ impl Gpu {
                 label: None,
                 layout: &self.layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: params.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 1, resource: src.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 2, resource: dst.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 3, resource: scratch.as_entire_binding() },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: params.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: src.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: dst.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: scratch.as_entire_binding(),
+                    },
                 ],
             })
         };

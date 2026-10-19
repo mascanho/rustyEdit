@@ -135,7 +135,14 @@ impl Workspace {
     ) {
         let ix = self.catalog.selected;
         if let Some(asset) = self.catalog.assets.get_mut(ix) {
+            let before = adjustment.get(&asset.develop);
             adjustment.set(&mut asset.develop, value);
+            let after = adjustment.get(&asset.develop);
+            asset.record_change(
+                adjustment.label(),
+                format!("{before:+.0}"),
+                format!("{after:+.0}"),
+            );
         }
         self.mark_catalog_dirty(cx);
         self.request_preview_update(cx);

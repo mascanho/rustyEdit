@@ -14,7 +14,12 @@ use crate::{
 const OVERLAY_WIDTH: f32 = 264.0;
 
 impl Workspace {
-    pub fn toggle_info(&mut self, _: &ToggleInfo, _window: &mut gpui::Window, cx: &mut Context<Self>) {
+    pub fn toggle_info(
+        &mut self,
+        _: &ToggleInfo,
+        _window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) {
         // The overlay belongs to the loupe; ignore the key elsewhere.
         if self.mode != Mode::Library || self.library_view != LibraryView::Loupe {
             return;
@@ -129,12 +134,11 @@ impl Workspace {
                             .cursor_pointer()
                             .text_color(theme.text_faint)
                             .hover(|el| el.text_color(theme.text_muted))
-                            .child(
-                                div()
-                                    .w(px(10.0))
-                                    .text_size(px(10.0))
-                                    .child(if collapsed { "\u{25B8}" } else { "\u{25BE}" }),
-                            )
+                            .child(div().w(px(10.0)).text_size(px(10.0)).child(if collapsed {
+                                "\u{25B8}"
+                            } else {
+                                "\u{25BE}"
+                            }))
                             .child(
                                 div()
                                     .text_size(px(9.5))
@@ -147,13 +151,8 @@ impl Workspace {
                     );
                     if !collapsed {
                         section = section.child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .gap_0p5()
-                                .pl_3()
-                                .pb_1()
-                                .children(group.rows.iter().map(|(label, value)| {
+                            div().flex().flex_col().gap_0p5().pl_3().pb_1().children(
+                                group.rows.iter().map(|(label, value)| {
                                     div()
                                         .flex()
                                         .flex_row()
@@ -174,7 +173,8 @@ impl Workspace {
                                                 .text_color(theme.text_muted)
                                                 .child(value.clone()),
                                         )
-                                })),
+                                }),
+                            ),
                         );
                     }
                     body.push(section.into_any_element());

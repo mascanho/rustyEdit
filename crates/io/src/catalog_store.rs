@@ -18,7 +18,38 @@ pub fn load(folder: &Path) -> Option<Catalog> {
     serde_json::from_str(&data).ok()
 }
 
+/// Writes the catalog's per-photo state back to the sidecar of whichever
+/// folder owns each photo, so a folder keeps its culling and edits no matter
+/// which catalogs include it.
 pub fn save(catalog: &Catalog) -> anyhow::Result<()> {
+    let mut folders = catalog.folders.clone();
+    if folders.is_empty() {
+        folders.extend(catalog.folder.clone());
+    }
+    if folders.is_empty() {
+        return Err(anyhow::anyhow!("catalog has no folder to save alongside"));
+    }
+    // Deepest folder first, so a photo goes to its most specific owner.
+    folders.sort_by_key(|f| std::cmp::Reverse(f.components().count()));
+
+    let mut owned: Vec<Vec<Asset>> = vec![Vec::new(); folders.len()];
+    for asset in &catalog.assets {
+        if let Some(ix) = folders.iter().position(|f| asset.path.starts_with(f)) {
+            owned[ix].push(asset.clone());
+        }
+    }
+
+    let mut first_error = None;
+    for (folder, assets) in folders.into_iter().zip(owned) {
+        let part = Catalog::new(folder, assets);
+        if let Err(err) = save_folder(&part) {
+            first_error.get_or_insert(err);
+        }
+    }
+    first_error.map_or(Ok(()), Err)
+}
+
+fn save_folder(catalog: &Catalog) -> anyhow::Result<()> {
     let folder = catalog
         .folder
         .as_ref()
@@ -54,6 +85,11 @@ pub fn merge_saved_state(fresh: &mut [Asset], saved: &Catalog) {
             asset.rating = previous.rating;
             asset.color_label = previous.color_label;
             asset.develop = previous.develop;
+            asset.history = previous.history.clone();
+            // Remembered so reopening never has to re-read every file.
+            asset.width = previous.width;
+            asset.height = previous.height;
+            asset.orientation = previous.orientation;
         }
     }
 }

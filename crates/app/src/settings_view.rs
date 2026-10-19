@@ -165,6 +165,7 @@ impl Workspace {
             .child(rustyedit_ui::glyph_button(
                 "settings-close",
                 "\u{2715}",
+                "Close settings",
                 theme.text_muted,
                 true,
                 &theme,

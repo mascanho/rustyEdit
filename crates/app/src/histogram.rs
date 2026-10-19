@@ -110,7 +110,7 @@ impl Workspace {
     /// render it directly, otherwise the generated large preview, falling
     /// back to the small thumbnail while that is still being produced.
     pub(crate) fn loupe_source(&self, asset: &rustyedit_core::Asset) -> std::path::PathBuf {
-        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(&asset.path) {
+        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(&asset.path, asset.orientation) {
             return asset.path.clone();
         }
         self.loupe_paths
@@ -128,7 +128,7 @@ impl Workspace {
         let Some(cache) = self.thumbnail_cache.clone() else {
             return;
         };
-        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(&asset.path)
+        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(&asset.path, asset.orientation)
             || self.loupe_paths.contains_key(&asset.id)
             || !self.loupe_loading.insert(asset.id)
         {

@@ -100,7 +100,13 @@ mod tests {
             .zip(cpu.as_raw())
             .map(|(a, b)| a.abs_diff(*b) as u64)
             .sum();
-        let max = gpu.as_raw().iter().zip(cpu.as_raw()).map(|(a, b)| a.abs_diff(*b)).max().unwrap();
+        let max = gpu
+            .as_raw()
+            .iter()
+            .zip(cpu.as_raw())
+            .map(|(a, b)| a.abs_diff(*b))
+            .max()
+            .unwrap();
         let mean = total as f64 / gpu.as_raw().len() as f64;
         eprintln!("mean abs diff {mean:.4}, max {max}");
         assert!(mean < 1.0, "mean diff {mean}");

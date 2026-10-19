@@ -3,16 +3,20 @@
 //! the menu, and the window, then hands off to `Workspace`.
 
 mod actions;
+mod albums;
+mod catalogs;
 mod cull_bar;
 mod develop;
 mod export;
 mod file_tree;
 mod filmstrip;
 mod histogram;
-mod info_overlay;
+mod history_panel;
 mod import;
+mod info_overlay;
 mod library;
 mod rail;
+mod resize;
 mod settings_view;
 mod workspace;
 

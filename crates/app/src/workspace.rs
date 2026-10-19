@@ -38,6 +38,13 @@ pub enum Mode {
     Export,
 }
 
+/// Which text field a typed draft belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextTarget {
+    Album,
+    NewCatalog,
+}
+
 /// What the Library module's center area shows: the selected photo large
 /// (Lightroom's "Loupe") or the full thumbnail grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +66,18 @@ pub struct Workspace {
     pub(crate) thumbnail_cache: Option<Arc<ThumbnailCache>>,
     pub(crate) status_message: Option<SharedString>,
     pub(crate) is_importing: bool,
+    // Albums (see `albums.rs`).
+    pub(crate) active_album: Option<u64>,
+    // The active catalog and the others available (see `catalogs.rs`).
+    pub(crate) catalog_def: rustyedit_core::CatalogDef,
+    pub(crate) catalog_list: Vec<rustyedit_core::CatalogDef>,
+    pub(crate) catalog_menu_open: bool,
+    /// The text field currently being typed into, if any.
+    pub(crate) text_draft: Option<(TextTarget, String)>,
+    /// The dock or filmstrip edge currently being dragged (see `resize.rs`).
+    pub(crate) resizing: Option<crate::resize::ResizeTarget>,
+    /// Pointer y and starting size when a relative drag began.
+    pub(crate) resize_anchor: (f32, f32),
     // Loupe info overlay (see `info_overlay.rs`).
     pub(crate) info_visible: bool,
     /// Titles of the info groups the user has collapsed.
@@ -130,6 +149,7 @@ pub struct Workspace {
 impl Workspace {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let settings = rustyedit_io::load_settings();
+        let (catalog_def, catalog_list) = Self::init_catalogs();
         // Flush any not-yet-written edits synchronously on quit, since the
         // debounced background save may not have fired yet (or may be cut
         // off mid-write when the process exits).
@@ -145,7 +165,7 @@ impl Workspace {
         cx.background_executor()
             .spawn(async { rustyedit_processing::gpu_adapter_name() })
             .detach();
-        Self {
+        let mut this = Self {
             focus_handle: cx.focus_handle(),
             theme: Theme::dark(),
             mode: Mode::Library,
@@ -153,6 +173,13 @@ impl Workspace {
             thumbnail_cache: None,
             status_message: Some("Import a folder to get started.".into()),
             is_importing: false,
+            active_album: None,
+            catalog_def,
+            catalog_list,
+            catalog_menu_open: false,
+            text_draft: None,
+            resizing: None,
+            resize_anchor: (0.0, 0.0),
             info_visible: false,
             info_collapsed: HashSet::new(),
             metadata_cache: HashMap::new(),
@@ -201,7 +228,12 @@ impl Workspace {
             preview_busy: false,
             preview_pending: false,
             preview_epoch: 0,
+        };
+        // Pick up where the last session left off.
+        if !this.catalog_def.folders.is_empty() {
+            this.open_catalog(None, cx);
         }
+        this
     }
 
     /// A side-panel section that expands/collapses on click. `key` must be
@@ -523,14 +555,27 @@ impl Workspace {
     pub(crate) fn render_title_bar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = self.theme;
 
-        let left = vec![rustyedit_ui::chrome_button(
-            "import",
-            "Import…",
-            false,
-            &theme,
-            cx.listener(Self::click_import),
-        )
-        .into_any_element()];
+        let left = vec![
+            rustyedit_ui::chrome_button(
+                "catalog-switcher",
+                format!("{} \u{25BE}", self.catalog_def.name),
+                self.catalog_menu_open,
+                &theme,
+                cx.listener(|this, _: &ClickEvent, _w, cx| {
+                    this.catalog_menu_open = !this.catalog_menu_open;
+                    cx.notify();
+                }),
+            )
+            .into_any_element(),
+            rustyedit_ui::chrome_button(
+                "import",
+                "Import…",
+                false,
+                &theme,
+                cx.listener(Self::click_import),
+            )
+            .into_any_element(),
+        ];
 
         let right = vec![
             rustyedit_ui::chrome_button(
@@ -557,9 +602,10 @@ impl Workspace {
                 cx.listener(Self::click_go_export),
             )
             .into_any_element(),
-            rustyedit_ui::chrome_button(
+            rustyedit_ui::chrome_icon_button(
                 "settings",
                 "\u{2699}",
+                Some("Settings (\u{2318},)".into()),
                 self.settings_open,
                 &theme,
                 cx.listener(Self::click_settings),
@@ -577,8 +623,21 @@ impl Workspace {
         let mut left: Vec<gpui::AnyElement> = Vec::new();
         if let Some(message) = &self.status_message {
             left.push(div().child(message.clone()).into_any_element());
-        } else if let Some(folder) = &self.catalog.folder {
-            left.push(div().child(folder.display().to_string()).into_any_element());
+        } else {
+            left.push(
+                div()
+                    .child(format!(
+                        "{} \u{00B7} {} folder{}",
+                        self.catalog_def.name,
+                        self.catalog_def.folders.len(),
+                        if self.catalog_def.folders.len() == 1 {
+                            ""
+                        } else {
+                            "s"
+                        }
+                    ))
+                    .into_any_element(),
+            );
         }
         left.push(rustyedit_ui::status_divider(&theme).into_any_element());
         left.push(
@@ -636,7 +695,12 @@ impl Render for Workspace {
 
         div()
             .id("workspace-root")
-            .key_context("Workspace")
+            .key_context(if self.text_draft.is_some() {
+                "TextEntry"
+            } else {
+                "Workspace"
+            })
+            .on_key_down(cx.listener(Self::on_text_key))
             .track_focus(&focus_handle)
             .on_action(cx.listener(Self::go_export))
             .on_action(cx.listener(Self::toggle_info))
@@ -662,6 +726,8 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::import_folder_action))
             .on_action(cx.listener(Self::open_settings_action))
             .on_action(cx.listener(Self::cycle_layout))
+            .on_mouse_move(cx.listener(Self::on_resize_move))
+            .on_mouse_up(gpui::MouseButton::Left, cx.listener(Self::on_resize_up))
             .relative()
             .flex()
             .flex_col()
@@ -675,6 +741,9 @@ impl Render for Workspace {
                 Mode::Export => self.render_export(cx),
             })
             .child(self.render_status_bar(cx))
+            .when(self.catalog_menu_open, |el| {
+                el.child(self.render_catalog_menu(cx))
+            })
             .when(self.settings_open, |el| {
                 el.child(self.render_settings_modal(cx))
             })

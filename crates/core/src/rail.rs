@@ -14,11 +14,11 @@ pub enum RailTool {
     Search,
     Collections,
     Filters,
+    History,
     // Right rail: working on the selected photo.
     Info,
     Adjust,
     Keywords,
-    History,
 }
 
 impl RailTool {
@@ -30,13 +30,9 @@ impl RailTool {
                 RailTool::Search,
                 RailTool::Collections,
                 RailTool::Filters,
-            ],
-            DockSide::Right => &[
-                RailTool::Info,
-                RailTool::Adjust,
-                RailTool::Keywords,
                 RailTool::History,
             ],
+            DockSide::Right => &[RailTool::Info, RailTool::Adjust, RailTool::Keywords],
         }
     }
 

@@ -65,6 +65,8 @@ pub struct LayoutSettings {
     pub filmstrip_position: FilmstripPosition,
     pub navigator_width: u32,
     pub inspector_width: u32,
+    /// Height of the filmstrip's picture area; the frames scale with it.
+    pub filmstrip_height: u32,
 }
 
 impl Default for LayoutSettings {
@@ -74,6 +76,7 @@ impl Default for LayoutSettings {
             filmstrip_position: FilmstripPosition::Bottom,
             navigator_width: 260,
             inspector_width: 260,
+            filmstrip_height: 80,
         }
     }
 }

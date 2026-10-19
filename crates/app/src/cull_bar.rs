@@ -23,6 +23,7 @@ impl Workspace {
             rustyedit_ui::cull_nav_button(
                 "cull-prev",
                 "\u{2039}",
+                "Previous photo (\u{2190})",
                 position.is_some_and(|p| p > 0),
                 &theme,
                 cx.listener(|this, _: &ClickEvent, _w, cx| this.step_selection(-1, cx)),
@@ -38,6 +39,7 @@ impl Workspace {
             rustyedit_ui::cull_nav_button(
                 "cull-next",
                 "\u{203A}",
+                "Next photo (\u{2192})",
                 position.is_some_and(|p| p + 1 < visible),
                 &theme,
                 cx.listener(|this, _: &ClickEvent, _w, cx| this.step_selection(1, cx)),
@@ -46,28 +48,33 @@ impl Workspace {
         ];
 
         // --- centre: the decisions --------------------------------------------
-        let flag_button =
-            |id: &'static str, target: Flag, label: &'static str, glyph: &'static str, color| {
-                // Clicking the active flag clears it, like toggling in Lightroom.
-                let next = if flag == target {
-                    Flag::Unflagged
-                } else {
-                    target
-                };
-                let entity = cx.entity();
-                rustyedit_ui::cull_button(
-                    id,
-                    glyph,
-                    label,
-                    color,
-                    flag == target,
-                    &theme,
-                    move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
-                        entity.update(cx, |this, cx| this.set_flag_value(next, cx));
-                    },
-                )
-                .into_any_element()
+        let flag_button = |id: &'static str,
+                           target: Flag,
+                           label: &'static str,
+                           glyph: &'static str,
+                           key: &'static str,
+                           color| {
+            // Clicking the active flag clears it, like toggling in Lightroom.
+            let next = if flag == target {
+                Flag::Unflagged
+            } else {
+                target
             };
+            let entity = cx.entity();
+            rustyedit_ui::cull_button(
+                id,
+                glyph,
+                label,
+                format!("{label} ({key})"),
+                color,
+                flag == target,
+                &theme,
+                move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
+                    entity.update(cx, |this, cx| this.set_flag_value(next, cx));
+                },
+            )
+            .into_any_element()
+        };
         let flags = rustyedit_ui::cull_group(
             &theme,
             vec![
@@ -76,9 +83,17 @@ impl Workspace {
                     Flag::Rejected,
                     "Reject",
                     "\u{2715}",
+                    "X",
                     theme.reject,
                 ),
-                flag_button("cull-pick", Flag::Picked, "Pick", "\u{2691}", theme.pick),
+                flag_button(
+                    "cull-pick",
+                    Flag::Picked,
+                    "Pick",
+                    "\u{2691}",
+                    "P",
+                    theme.pick,
+                ),
             ],
         )
         .into_any_element();
@@ -127,6 +142,7 @@ impl Workspace {
                         rustyedit_ui::label_swatch(
                             SharedString::from(format!("cull-label-{}", candidate.label())),
                             color,
+                            format!("{} label", candidate.label()),
                             label == candidate,
                             &theme,
                             move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {

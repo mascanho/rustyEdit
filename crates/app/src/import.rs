@@ -41,12 +41,10 @@ impl Workspace {
         .detach();
     }
 
-    /// Scans `folder` and generates thumbnails entirely off the main
-    /// thread, only touching `self` to report progress and to install the
-    /// finished catalog. This is the "Import" flow: the one-time cost that
-    /// makes everything after it (culling) fast, since thumbnails are
-    /// already decoded and cached on disk. If `select` names a photo in the
-    /// folder, it's selected once the import completes.
+    /// Adds `folder` to the active catalog and (re)loads it. This is the
+    /// "Import" flow: the one-time cost that makes everything after it
+    /// (culling) fast, since thumbnails are decoded and cached on disk. If
+    /// `select` names a photo, it's selected once loading completes.
     pub(crate) fn import_folder(
         &mut self,
         folder: PathBuf,
@@ -56,25 +54,57 @@ impl Workspace {
         if self.is_importing {
             return;
         }
+        if self.catalog_def.add_folder(&folder) {
+            self.save_catalog_def();
+        }
+        self.open_catalog(select, cx);
+    }
+
+    /// Scans every folder of the active catalog and generates thumbnails
+    /// entirely off the main thread, only touching `self` to report progress
+    /// and to install the finished catalog.
+    pub(crate) fn open_catalog(&mut self, select: Option<PathBuf>, cx: &mut Context<Self>) {
+        if self.is_importing {
+            return;
+        }
+        let folders = self.catalog_def.folders.clone();
+        if folders.is_empty() {
+            self.install_catalog(Catalog::default(), self.thumbnail_cache.clone(), None, cx);
+            self.status_message = Some("This catalog is empty \u{2014} import a folder.".into());
+            return;
+        }
         self.is_importing = true;
-        self.status_message = Some(format!("Scanning {}…", folder.display()).into());
-        self.reveal_folder_in_tree(&folder, cx);
+        self.status_message = Some(format!("Scanning {}…", self.catalog_def.name).into());
+        if let Some(folder) = folders.last() {
+            self.reveal_folder_in_tree(folder, cx);
+        }
         cx.notify();
 
         cx.spawn(async move |this, cx| {
-            let scan_folder = folder.clone();
+            let scan_folders = folders.clone();
             let (mut assets, cache) = cx
                 .background_executor()
                 .spawn(async move {
-                    let assets = rustyedit_io::scan_folder(&scan_folder);
-                    let cache = ThumbnailCache::for_folder(&scan_folder);
-                    (assets, cache)
+                    let mut all = Vec::new();
+                    for folder in &scan_folders {
+                        let mut assets = rustyedit_io::scan_folder(folder);
+                        if let Some(saved) = rustyedit_io::load_catalog(folder) {
+                            rustyedit_io::merge_saved_state(&mut assets, &saved);
+                        }
+                        all.extend(assets);
+                    }
+                    // Ids are positions in the combined list.
+                    for (ix, asset) in all.iter_mut().enumerate() {
+                        asset.id = ix as u64;
+                    }
+                    // One shared thumbnail namespace, so a folder that's in
+                    // several catalogs is only thumbnailed once.
+                    (
+                        all,
+                        ThumbnailCache::for_folder(std::path::Path::new("library")),
+                    )
                 })
                 .await;
-
-            if let Some(saved) = rustyedit_io::load_catalog(&folder) {
-                rustyedit_io::merge_saved_state(&mut assets, &saved);
-            }
 
             this.update(cx, |this, cx| {
                 this.status_message =
@@ -108,13 +138,14 @@ impl Workspace {
             let thumbnails = job.await;
             drop(ticker);
 
-            // `scan_folder` assigns ids as list positions, so look each one up
-            // directly instead of searching (which is O(n²) on big imports).
-            for (id, path, width, height) in thumbnails {
+            // Ids are list positions, so look each one up directly instead
+            // of searching (which is O(n²) on big imports).
+            for (id, path, width, height, orientation) in thumbnails {
                 if let Some(asset) = assets.get_mut(id as usize).filter(|a| a.id == id) {
                     asset.thumbnail_path = Some(path);
                     asset.width = width;
                     asset.height = height;
+                    asset.orientation = orientation;
                 }
             }
 
@@ -130,32 +161,45 @@ impl Workspace {
             }
 
             this.update(cx, |this, cx| {
-                this.save_outgoing_catalog();
-                this.catalog = Catalog::new(folder, assets);
-                this.thumbnail_cache = Some(Arc::new(cache));
+                let catalog = Catalog::new_multi(folders, assets);
+                this.install_catalog(catalog, Some(Arc::new(cache)), select, cx);
                 this.is_importing = false;
                 this.import_progress = None;
                 this.status_message = None;
-                this.mark_catalog_dirty(cx);
-                // Asset ids restart at 0 per folder, so cached histograms
-                // from the previous folder would match the wrong photos.
-                this.histogram_cache.clear();
-                this.histogram_loading = None;
-                this.develop_histogram = None;
-                this.metadata_cache.clear();
-                this.metadata_loading.clear();
-                this.loupe_paths.clear();
-                this.loupe_loading.clear();
-
-                let selected =
-                    select.and_then(|path| this.catalog.assets.iter().position(|a| a.path == path));
-                match selected {
-                    Some(ix) => this.select_asset(ix, cx),
-                    None => this.on_selection_changed(cx),
-                }
+                cx.notify();
             })
             .ok();
         })
         .detach();
+    }
+
+    /// Swaps in a freshly loaded catalog, resetting everything keyed by the
+    /// old one's asset ids.
+    fn install_catalog(
+        &mut self,
+        catalog: Catalog,
+        cache: Option<Arc<ThumbnailCache>>,
+        select: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) {
+        self.save_outgoing_catalog();
+        self.catalog = catalog;
+        self.thumbnail_cache = cache;
+        self.mark_catalog_dirty(cx);
+        self.histogram_cache.clear();
+        self.histogram_loading = None;
+        self.develop_histogram = None;
+        self.active_album = None;
+        self.metadata_cache.clear();
+        self.metadata_loading.clear();
+        self.loupe_paths.clear();
+        self.loupe_loading.clear();
+
+        let selected =
+            select.and_then(|path| self.catalog.assets.iter().position(|a| a.path == path));
+        match selected {
+            Some(ix) => self.select_asset(ix, cx),
+            None => self.on_selection_changed(cx),
+        }
     }
 }

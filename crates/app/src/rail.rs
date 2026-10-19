@@ -9,7 +9,7 @@ use rustyedit_ui::{PanelSide, RailButton};
 use crate::workspace::Workspace;
 
 impl Workspace {
-    fn active_rail_tool(&self, side: DockSide) -> Option<RailTool> {
+    pub(crate) fn active_rail_tool(&self, side: DockSide) -> Option<RailTool> {
         match side {
             DockSide::Left => self.left_rail_tool,
             DockSide::Right => self.right_rail_tool,
@@ -28,6 +28,7 @@ impl Workspace {
             .map(|&tool| RailButton {
                 id: format!("{id}-{}", tool.label()).into(),
                 glyph: tool.glyph().into(),
+                tooltip: tool.label().into(),
                 active: active == Some(tool),
                 on_click: Box::new(cx.listener(move |this, _, _window, cx| {
                     this.toggle_rail_tool(side, tool, cx);
@@ -59,9 +60,10 @@ impl Workspace {
             return vec![dock];
         }
         let rail = self.render_rail(side, cx);
+        let grip = self.resize_grip(crate::resize::ResizeTarget::Dock(side), cx);
         match side {
-            DockSide::Left => vec![dock, rail],
-            DockSide::Right => vec![rail, dock],
+            DockSide::Left => vec![dock, grip, rail],
+            DockSide::Right => vec![rail, grip, dock],
         }
     }
 
@@ -81,8 +83,26 @@ impl Workspace {
         cx.notify();
     }
 
+    /// A tool that takes over its dock shows its own content instead of the
+    /// layout's panels; tools without one return `None` and leave the dock
+    /// as it was. Add new dock-hosted tools here.
+    pub(crate) fn rail_tool_content(
+        &self,
+        tool: RailTool,
+        cx: &mut Context<Self>,
+    ) -> Option<Vec<AnyElement>> {
+        match tool {
+            RailTool::History => Some(self.history_sections()),
+            RailTool::Collections => Some(self.albums_sections(cx)),
+            _ => None,
+        }
+    }
+
     /// The extension point: give each tool its behaviour here as it's built.
     fn activate_rail_tool(&mut self, tool: RailTool, _cx: &mut Context<Self>) {
+        if matches!(tool, RailTool::History | RailTool::Collections) {
+            return; // Shown in the dock itself; nothing to announce.
+        }
         self.status_message = Some(format!("{} \u{2014} coming soon", tool.label()).into());
     }
 }

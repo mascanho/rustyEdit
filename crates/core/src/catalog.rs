@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -55,11 +55,18 @@ impl FilterMode {
 /// [`Catalog::set_flag`] and [`Catalog::set_filter`].
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Catalog {
+    /// The first folder; kept for single-folder sidecars and as a label.
     pub folder: Option<PathBuf>,
+    /// Every folder whose photos are in `assets` (empty for old sidecars).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub folders: Vec<PathBuf>,
     pub assets: Vec<Asset>,
     #[serde(skip)]
     pub selected: usize,
     filter: FilterMode,
+    /// When set, only photos at these paths are visible (an album view).
+    #[serde(skip)]
+    scope: Option<HashSet<PathBuf>>,
     /// Indices into `assets` that pass `filter`, ascending.
     #[serde(skip)]
     visible: Vec<usize>,
@@ -70,15 +77,42 @@ pub struct Catalog {
 impl Catalog {
     pub fn new(folder: PathBuf, assets: Vec<Asset>) -> Self {
         let mut catalog = Self {
-            folder: Some(folder),
+            folder: Some(folder.clone()),
+            folders: vec![folder],
             assets,
             selected: 0,
             filter: FilterMode::All,
+            scope: None,
             visible: Vec::new(),
             counts: CatalogCounts::default(),
         };
         catalog.rebuild_index();
         catalog
+    }
+
+    fn in_scope(scope: &Option<HashSet<PathBuf>>, asset: &Asset) -> bool {
+        scope
+            .as_ref()
+            .map_or(true, |paths| paths.contains(&asset.path))
+    }
+
+    fn passes(&self, asset: &Asset) -> bool {
+        self.filter.matches(asset.flag) && Self::in_scope(&self.scope, asset)
+    }
+
+    /// A catalog gathering photos from several folders. Asset ids must be
+    /// their positions in `assets`.
+    pub fn new_multi(folders: Vec<PathBuf>, assets: Vec<Asset>) -> Self {
+        let mut catalog = Self::new(folders.first().cloned().unwrap_or_default(), assets);
+        catalog.folder = folders.first().cloned();
+        catalog.folders = folders;
+        catalog
+    }
+
+    /// Whether `path` is one of the folders this catalog was built from.
+    pub fn has_folder(&self, path: &std::path::Path) -> bool {
+        self.folders.iter().any(|f| f == path)
+            || (self.folders.is_empty() && self.folder.as_deref() == Some(path))
     }
 
     /// Recomputes the cached filtered index and counts from scratch.
@@ -92,7 +126,7 @@ impl Catalog {
             .assets
             .iter()
             .enumerate()
-            .filter(|(_, asset)| self.filter.matches(asset.flag))
+            .filter(|(_, asset)| self.passes(asset))
             .map(|(ix, _)| ix)
             .collect();
     }
@@ -138,13 +172,18 @@ impl Catalog {
         let Some(asset) = self.assets.get_mut(index) else {
             return;
         };
+        let scoped = Self::in_scope(&self.scope, asset);
         let old = asset.flag;
         let new = if old == flag { Flag::Unflagged } else { flag };
         asset.flag = new;
+        asset.record_change("Flag", old.label(), new.label());
 
         self.counts.remove(old);
         self.counts.add(new);
-        match (self.filter.matches(old), self.filter.matches(new)) {
+        match (
+            scoped && self.filter.matches(old),
+            scoped && self.filter.matches(new),
+        ) {
             (true, false) => {
                 if let Ok(pos) = self.visible.binary_search(&index) {
                     self.visible.remove(pos);
@@ -161,22 +200,26 @@ impl Catalog {
 
     pub fn set_rating(&mut self, index: usize, rating: Rating) {
         if let Some(asset) = self.assets.get_mut(index) {
-            asset.rating = if asset.rating == rating {
+            let old = asset.rating;
+            asset.rating = if old == rating {
                 Rating::default()
             } else {
                 rating
             };
+            asset.record_change("Rating", stars(old), stars(asset.rating));
         }
     }
 
     /// Applies `label`, or clears it if the asset already has that label.
     pub fn set_color_label(&mut self, index: usize, label: ColorLabel) {
         if let Some(asset) = self.assets.get_mut(index) {
-            asset.color_label = if asset.color_label == label {
+            let old = asset.color_label;
+            asset.color_label = if old == label {
                 ColorLabel::None
             } else {
                 label
             };
+            asset.record_change("Colour label", old.label(), asset.color_label.label());
         }
     }
 
@@ -194,6 +237,23 @@ impl Catalog {
                 self.selected = first;
             }
         }
+    }
+
+    /// Restricts the visible photos to those at `paths` (an album), or
+    /// lifts the restriction with `None`. Moves the selection onto a visible
+    /// photo if the current one fell out of view.
+    pub fn set_scope(&mut self, scope: Option<HashSet<PathBuf>>) {
+        self.scope = scope;
+        self.rebuild_index();
+        if self.visible_position(self.selected).is_none() {
+            if let Some(&first) = self.visible.first() {
+                self.selected = first;
+            }
+        }
+    }
+
+    pub fn is_scoped(&self) -> bool {
+        self.scope.is_some()
     }
 
     pub fn counts(&self) -> CatalogCounts {
@@ -282,5 +342,12 @@ mod tests {
         assert_eq!(c.select_relative(1), Some(3));
         assert_eq!(c.select_relative(1), Some(1));
         assert_eq!(c.select_relative(-1), Some(3));
+    }
+}
+
+fn stars(rating: Rating) -> String {
+    match rating.value() {
+        0 => "None".to_string(),
+        n => "\u{2605}".repeat(n as usize),
     }
 }

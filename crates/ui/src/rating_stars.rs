@@ -35,6 +35,14 @@ pub fn rating_stars(
             if let Some(on_set) = on_set {
                 el = el
                     .cursor_pointer()
+                    .tooltip(crate::tooltip::tip(
+                        if star == 1 {
+                            "1 star".to_string()
+                        } else {
+                            format!("{star} stars")
+                        },
+                        &theme,
+                    ))
                     .on_click(move |_, window, cx| on_set(star, window, cx));
             }
             el

@@ -43,6 +43,8 @@ impl ThumbnailCache {
             .unwrap_or(0);
 
         let mut hasher = DefaultHasher::new();
+        // Bump when the cached pixels change meaning (v2: EXIF-oriented).
+        2u8.hash(&mut hasher);
         path.hash(&mut hasher);
         modified_secs.hash(&mut hasher);
         metadata.len().hash(&mut hasher);
@@ -59,8 +61,8 @@ impl ThumbnailCache {
 
     /// Whether the original needs a generated, larger preview to be shown
     /// in the loupe (formats GPUI can't render directly, i.e. camera RAW).
-    pub fn needs_loupe_preview(source: &Path) -> bool {
-        crate::decode::is_raw(source)
+    pub fn needs_loupe_preview(source: &Path, orientation: u8) -> bool {
+        crate::decode::is_raw(source) || orientation > 1
     }
 
     /// A previously generated loupe-size preview, if one exists on disk.
@@ -132,17 +134,28 @@ pub fn generate_thumbnails(
     cache: &ThumbnailCache,
     assets: &[Asset],
     progress: &std::sync::atomic::AtomicUsize,
-) -> Vec<(u64, PathBuf, u32, u32)> {
+) -> Vec<(u64, PathBuf, u32, u32, u8)> {
     use rayon::prelude::*;
     use std::sync::atomic::Ordering;
 
     assets
         .par_iter()
         .filter_map(|asset| {
+            // Already thumbnailed on a previous run and its size is known:
+            // no need to touch the (possibly RAW) original again.
+            if asset.width > 0 && asset.height > 0 {
+                if let Some(thumb) = cache.cached(&asset.path) {
+                    progress.fetch_add(1, Ordering::Relaxed);
+                    return Some((asset.id, thumb, asset.width, asset.height, asset.orientation));
+                }
+            }
             let result = cache
                 .ensure(&asset.path)
                 .ok()
-                .map(|(thumb_path, width, height)| (asset.id, thumb_path, width, height));
+                .map(|(thumb_path, width, height)| {
+                    let orientation = crate::decode::exif_orientation(&asset.path);
+                    (asset.id, thumb_path, width, height, orientation)
+                });
             progress.fetch_add(1, Ordering::Relaxed);
             result
         })
