@@ -178,3 +178,73 @@ fn gps_text(exif: &Exif) -> Option<String> {
     let lon = coordinate(Tag::GPSLongitude, Tag::GPSLongitudeRef)?;
     Some(format!("{lat}, {lon}"))
 }
+
+/// The EXIF facts the library sorts and filters on, read once at import and
+/// kept in the catalog. Falls back to the file's modified time for the date.
+pub fn read_photo_meta(path: &Path) -> rustyedit_core::PhotoMeta {
+    let mut meta = rustyedit_core::PhotoMeta::default();
+
+    if let Some(exif) = File::open(path).ok().and_then(|f| {
+        exif::Reader::new()
+            .read_from_container(&mut BufReader::new(f))
+            .ok()
+    }) {
+        let make = display(&exif, Tag::Make).unwrap_or_default();
+        let model = display(&exif, Tag::Model).unwrap_or_default();
+        meta.camera = if model.to_lowercase().starts_with(&make.to_lowercase()) {
+            model
+        } else {
+            format!("{make} {model}").trim().to_string()
+        };
+        meta.lens = display(&exif, Tag::LensModel).unwrap_or_default();
+        meta.iso = uint(&exif, Tag::PhotographicSensitivity).unwrap_or(0);
+        meta.focal_mm = rational(&exif, Tag::FocalLength).unwrap_or(0.0) as f32;
+        if let Some(text) = display(&exif, Tag::DateTimeOriginal) {
+            meta.captured = parse_exif_time(&text).unwrap_or(0);
+        }
+    }
+    if meta.captured == 0 {
+        meta.captured = std::fs::metadata(path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+    }
+    meta
+}
+
+/// Parses "2017-04-05 02:44:20" (or with colons in the date) as UTC seconds.
+fn parse_exif_time(text: &str) -> Option<i64> {
+    let digits: Vec<i64> = text
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .filter_map(|part| part.parse().ok())
+        .collect();
+    let [y, mo, d, h, mi, s] = digits.get(..6)? else {
+        return None;
+    };
+    if !(1..=12).contains(mo) || !(1..=31).contains(d) {
+        return None;
+    }
+    // Days from civil (Howard Hinnant's algorithm).
+    let y = if *mo <= 2 { y - 1 } else { *y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let doy = (153 * (if *mo > 2 { mo - 3 } else { mo + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400 + h * 3600 + mi * 60 + s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_exif_time() {
+        assert_eq!(parse_exif_time("1970-01-02 00:00:01"), Some(86_401));
+        assert_eq!(parse_exif_time("2017:04:05 03:24:20"), Some(1_491_362_660));
+        assert_eq!(parse_exif_time("garbage"), None);
+    }
+}

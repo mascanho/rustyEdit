@@ -36,6 +36,12 @@ pub struct LibrarySettings {
     pub grid_card_size: u32,
     pub show_left_panel: bool,
     pub show_right_panel: bool,
+    /// After flagging or rating a single photo, move on to the next one.
+    pub auto_advance: bool,
+    /// What the loupe shows the photo against.
+    pub loupe_background: LoupeBackground,
+    /// How photos are ordered.
+    pub sort: crate::catalog::SortOrder,
 }
 
 impl Default for LibrarySettings {
@@ -45,7 +51,70 @@ impl Default for LibrarySettings {
             grid_card_size: GRID_CARD_DEFAULT,
             show_left_panel: true,
             show_right_panel: true,
+            auto_advance: false,
+            loupe_background: LoupeBackground::Theme,
+            sort: crate::catalog::SortOrder::default(),
         }
+    }
+}
+
+/// What the loupe's backdrop looks like. Photographers judge tone, colour
+/// and edges differently against black, 18% grey and white.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum LoupeBackground {
+    /// The app's own dark theme.
+    #[default]
+    Theme,
+    Black,
+    DarkGrey,
+    /// 18% reflectance grey, the photographic mid-tone.
+    MidGrey,
+    LightGrey,
+    White,
+    /// Warm off-white, close to unbleached print paper.
+    Paper,
+}
+
+impl LoupeBackground {
+    pub const ALL: [LoupeBackground; 7] = [
+        LoupeBackground::Theme,
+        LoupeBackground::Black,
+        LoupeBackground::DarkGrey,
+        LoupeBackground::MidGrey,
+        LoupeBackground::LightGrey,
+        LoupeBackground::White,
+        LoupeBackground::Paper,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            LoupeBackground::Theme => "App theme",
+            LoupeBackground::Black => "Black",
+            LoupeBackground::DarkGrey => "Dark grey",
+            LoupeBackground::MidGrey => "18% grey",
+            LoupeBackground::LightGrey => "Light grey",
+            LoupeBackground::White => "White",
+            LoupeBackground::Paper => "Paper",
+        }
+    }
+
+    /// `(hue 0-1, saturation, lightness)`, or `None` to use the theme.
+    pub fn hsl(&self) -> Option<(f32, f32, f32)> {
+        match self {
+            LoupeBackground::Theme => None,
+            LoupeBackground::Black => Some((0.0, 0.0, 0.0)),
+            LoupeBackground::DarkGrey => Some((0.0, 0.0, 0.16)),
+            LoupeBackground::MidGrey => Some((0.0, 0.0, 0.46)),
+            LoupeBackground::LightGrey => Some((0.0, 0.0, 0.78)),
+            LoupeBackground::White => Some((0.0, 0.0, 1.0)),
+            LoupeBackground::Paper => Some((40.0 / 360.0, 0.30, 0.93)),
+        }
+    }
+
+    pub fn next(&self) -> Self {
+        let all = Self::ALL;
+        let at = all.iter().position(|b| b == self).unwrap_or(0);
+        all[(at + 1) % all.len()]
     }
 }
 
@@ -446,6 +515,14 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                                 StartupView::Grid
                             }
                         },
+                    },
+                },
+                SettingItem {
+                    label: "Auto-advance",
+                    description: "After flagging or rating a photo, jump to the next one.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.library.auto_advance,
+                        set: |s, v| s.library.auto_advance = v,
                     },
                 },
                 SettingItem {

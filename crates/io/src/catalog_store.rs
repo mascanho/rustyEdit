@@ -90,6 +90,7 @@ pub fn merge_saved_state(fresh: &mut [Asset], saved: &Catalog) {
             asset.width = previous.width;
             asset.height = previous.height;
             asset.orientation = previous.orientation;
+            asset.meta = previous.meta.clone();
         }
     }
 }

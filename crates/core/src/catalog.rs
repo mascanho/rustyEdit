@@ -2,7 +2,13 @@ use std::{collections::HashSet, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{asset::Asset, color_label::ColorLabel, flag::Flag, rating::Rating};
+use crate::{
+    asset::{Asset, AssetState},
+    color_label::ColorLabel,
+    filters::FilterSet,
+    flag::Flag,
+    rating::Rating,
+};
 
 /// Which subset of the catalog's assets should currently be visible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -43,6 +49,74 @@ impl FilterMode {
     }
 }
 
+/// What the visible photos are ordered by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum SortKey {
+    /// The order photos were scanned in: folder by folder, then by path.
+    #[default]
+    Folder,
+    FileName,
+    CaptureDate,
+    Rating,
+    Flag,
+}
+
+impl SortKey {
+    pub const ALL: [SortKey; 5] = [
+        SortKey::Folder,
+        SortKey::FileName,
+        SortKey::CaptureDate,
+        SortKey::Rating,
+        SortKey::Flag,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            SortKey::Folder => "Folder order",
+            SortKey::FileName => "File name",
+            SortKey::CaptureDate => "Capture date",
+            SortKey::Rating => "Rating",
+            SortKey::Flag => "Flag",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SortOrder {
+    pub key: SortKey,
+    pub descending: bool,
+}
+
+/// Narrows the catalog by star rating, on top of the flag filter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RatingFilter {
+    #[default]
+    Any,
+    /// No stars.
+    Unrated,
+    /// This many stars or more.
+    AtLeast(u8),
+}
+
+impl RatingFilter {
+    pub fn matches(&self, rating: Rating) -> bool {
+        match self {
+            RatingFilter::Any => true,
+            RatingFilter::Unrated => rating.value() == 0,
+            RatingFilter::AtLeast(n) => rating.value() >= *n,
+        }
+    }
+
+    pub fn label(&self) -> String {
+        match self {
+            RatingFilter::Any => "Any rating".into(),
+            RatingFilter::Unrated => "Unrated".into(),
+            RatingFilter::AtLeast(5) => "\u{2605}\u{2605}\u{2605}\u{2605}\u{2605}".into(),
+            RatingFilter::AtLeast(n) => format!("{}+", "\u{2605}".repeat(*n as usize)),
+        }
+    }
+}
+
 /// In-memory model of "all the photos in one imported folder", plus the
 /// culling/triage state layered on top of them. This is intentionally a
 /// plain data structure with no GPUI dependency so it can be tested and
@@ -64,6 +138,17 @@ pub struct Catalog {
     #[serde(skip)]
     pub selected: usize,
     filter: FilterMode,
+    #[serde(skip)]
+    rating_filter: RatingFilter,
+    #[serde(skip)]
+    filters: FilterSet,
+    #[serde(skip)]
+    sort: SortOrder,
+    /// `rank[i]` is where asset `i` falls in the sort order; empty means
+    /// plain index order. Fixed until the sort changes, so photos don't jump
+    /// around while you cull.
+    #[serde(skip)]
+    rank: Vec<u32>,
     /// When set, only photos at these paths are visible (an album view).
     #[serde(skip)]
     scope: Option<HashSet<PathBuf>>,
@@ -82,6 +167,10 @@ impl Catalog {
             assets,
             selected: 0,
             filter: FilterMode::All,
+            rating_filter: RatingFilter::Any,
+            filters: FilterSet::default(),
+            sort: SortOrder::default(),
+            rank: Vec::new(),
             scope: None,
             visible: Vec::new(),
             counts: CatalogCounts::default(),
@@ -97,7 +186,10 @@ impl Catalog {
     }
 
     fn passes(&self, asset: &Asset) -> bool {
-        self.filter.matches(asset.flag) && Self::in_scope(&self.scope, asset)
+        self.filter.matches(asset.flag)
+            && self.rating_filter.matches(asset.rating)
+            && self.filters.matches(asset)
+            && Self::in_scope(&self.scope, asset)
     }
 
     /// A catalog gathering photos from several folders. Asset ids must be
@@ -129,6 +221,101 @@ impl Catalog {
             .filter(|(_, asset)| self.passes(asset))
             .map(|(ix, _)| ix)
             .collect();
+        if !self.rank.is_empty() {
+            let rank = &self.rank;
+            self.visible.sort_unstable_by_key(|&ix| rank[ix]);
+        }
+    }
+
+    /// Where asset `ix` sorts; the key `visible` is ordered by.
+    fn rank_of(&self, ix: usize) -> u32 {
+        self.rank.get(ix).copied().unwrap_or(ix as u32)
+    }
+
+    pub fn sort(&self) -> SortOrder {
+        self.sort
+    }
+
+    /// Re-orders the visible photos. Cheap for the default order.
+    pub fn set_sort(&mut self, order: SortOrder) {
+        self.sort = order;
+        let n = self.assets.len();
+        let mut indices: Vec<usize> = (0..n).collect();
+        match order.key {
+            SortKey::Folder => {}
+            SortKey::FileName => {
+                let names: Vec<String> = self
+                    .assets
+                    .iter()
+                    .map(|a| a.file_name().to_lowercase())
+                    .collect();
+                indices.sort_by(|&a, &b| names[a].cmp(&names[b]).then(a.cmp(&b)));
+            }
+            SortKey::CaptureDate => indices.sort_by_key(|&i| (self.assets[i].meta.captured, i)),
+            SortKey::Rating => indices.sort_by_key(|&i| (self.assets[i].rating.value(), i)),
+            SortKey::Flag => indices.sort_by_key(|&i| {
+                let rank = match self.assets[i].flag {
+                    Flag::Picked => 0,
+                    Flag::Unflagged => 1,
+                    Flag::Rejected => 2,
+                };
+                (rank, i)
+            }),
+        }
+        if order.descending {
+            indices.reverse();
+        }
+        let identity = order.key == SortKey::Folder && !order.descending;
+        self.rank = if identity {
+            Vec::new()
+        } else {
+            let mut rank = vec![0u32; n];
+            for (pos, ix) in indices.into_iter().enumerate() {
+                rank[ix] = pos as u32;
+            }
+            rank
+        };
+        self.rebuild_index();
+    }
+
+    pub fn filters(&self) -> &FilterSet {
+        &self.filters
+    }
+
+    /// Replaces the facet filters and text search, moving the selection
+    /// onto a visible photo if the current one dropped out.
+    pub fn set_filters(&mut self, filters: FilterSet) {
+        self.filters = filters;
+        self.rebuild_index();
+        if self.visible_position(self.selected).is_none() {
+            if let Some(&first) = self.visible.first() {
+                self.selected = first;
+            }
+        }
+    }
+
+    pub fn rating_filter(&self) -> RatingFilter {
+        self.rating_filter
+    }
+
+    /// Adds or removes `index` from the visible list to match whether it
+    /// currently passes every filter.
+    fn sync_visibility(&mut self, index: usize) {
+        let Some(asset) = self.assets.get(index) else {
+            return;
+        };
+        let passes = self.passes(asset);
+        let key = self.rank_of(index);
+        let found = self
+            .visible
+            .binary_search_by_key(&key, |&ix| self.rank_of(ix));
+        match (passes, found) {
+            (true, Err(pos)) => self.visible.insert(pos, index),
+            (false, Ok(pos)) => {
+                self.visible.remove(pos);
+            }
+            _ => {}
+        }
     }
 
     pub fn filter(&self) -> FilterMode {
@@ -142,7 +329,9 @@ impl Catalog {
 
     /// Position of `index` within [`Self::visible_indices`], if it's visible.
     pub fn visible_position(&self, index: usize) -> Option<usize> {
-        self.visible.binary_search(&index).ok()
+        self.visible
+            .binary_search_by_key(&self.rank_of(index), |&ix| self.rank_of(ix))
+            .ok()
     }
 
     pub fn selected_asset(&self) -> Option<&Asset> {
@@ -168,58 +357,86 @@ impl Catalog {
         }
     }
 
+    /// Applies `flag`, or clears it if the asset already has that flag.
     pub fn set_flag(&mut self, index: usize, flag: Flag) {
+        let Some(asset) = self.assets.get(index) else {
+            return;
+        };
+        let new = if asset.flag == flag {
+            Flag::Unflagged
+        } else {
+            flag
+        };
+        self.assign_flag(index, new);
+    }
+
+    /// Sets the flag exactly, keeping counts and the visible index in sync.
+    pub fn assign_flag(&mut self, index: usize, new: Flag) {
         let Some(asset) = self.assets.get_mut(index) else {
             return;
         };
-        let scoped = Self::in_scope(&self.scope, asset);
         let old = asset.flag;
-        let new = if old == flag { Flag::Unflagged } else { flag };
+        if old == new {
+            return;
+        }
         asset.flag = new;
         asset.record_change("Flag", old.label(), new.label());
 
         self.counts.remove(old);
         self.counts.add(new);
-        match (
-            scoped && self.filter.matches(old),
-            scoped && self.filter.matches(new),
-        ) {
-            (true, false) => {
-                if let Ok(pos) = self.visible.binary_search(&index) {
-                    self.visible.remove(pos);
-                }
-            }
-            (false, true) => {
-                if let Err(pos) = self.visible.binary_search(&index) {
-                    self.visible.insert(pos, index);
-                }
-            }
-            _ => {}
-        }
+        self.sync_visibility(index);
     }
 
     pub fn set_rating(&mut self, index: usize, rating: Rating) {
+        let Some(asset) = self.assets.get(index) else {
+            return;
+        };
+        let new = if asset.rating == rating {
+            Rating::default()
+        } else {
+            rating
+        };
+        self.assign_rating(index, new);
+    }
+
+    pub fn assign_rating(&mut self, index: usize, new: Rating) {
         if let Some(asset) = self.assets.get_mut(index) {
             let old = asset.rating;
-            asset.rating = if old == rating {
-                Rating::default()
-            } else {
-                rating
-            };
-            asset.record_change("Rating", stars(old), stars(asset.rating));
+            asset.rating = new;
+            asset.record_change("Rating", stars(old), stars(new));
         }
+        self.sync_visibility(index);
     }
 
     /// Applies `label`, or clears it if the asset already has that label.
     pub fn set_color_label(&mut self, index: usize, label: ColorLabel) {
+        let Some(asset) = self.assets.get(index) else {
+            return;
+        };
+        let new = if asset.color_label == label {
+            ColorLabel::None
+        } else {
+            label
+        };
+        self.assign_color_label(index, new);
+    }
+
+    pub fn assign_color_label(&mut self, index: usize, new: ColorLabel) {
         if let Some(asset) = self.assets.get_mut(index) {
             let old = asset.color_label;
-            asset.color_label = if old == label {
-                ColorLabel::None
-            } else {
-                label
-            };
-            asset.record_change("Colour label", old.label(), asset.color_label.label());
+            asset.color_label = new;
+            asset.record_change("Colour label", old.label(), new.label());
+        }
+    }
+
+    /// Puts an asset's editable state back exactly as captured (for undo and
+    /// redo), keeping the derived indexes consistent.
+    pub fn restore_state(&mut self, index: usize, state: &AssetState) {
+        self.assign_flag(index, state.flag);
+        self.assign_rating(index, state.rating);
+        self.assign_color_label(index, state.color_label);
+        if let Some(asset) = self.assets.get_mut(index) {
+            asset.develop = state.develop;
         }
     }
 
@@ -231,6 +448,18 @@ impl Catalog {
     /// visible asset if the current one no longer matches.
     pub fn set_filter(&mut self, filter: FilterMode) {
         self.filter = filter;
+        self.rebuild_index();
+        if self.visible_position(self.selected).is_none() {
+            if let Some(&first) = self.visible.first() {
+                self.selected = first;
+            }
+        }
+    }
+
+    /// Filters by star rating, moving the selection onto a visible photo if
+    /// the current one no longer matches.
+    pub fn set_rating_filter(&mut self, filter: RatingFilter) {
+        self.rating_filter = filter;
         self.rebuild_index();
         if self.visible_position(self.selected).is_none() {
             if let Some(&first) = self.visible.first() {
@@ -306,6 +535,110 @@ mod tests {
         fresh.rebuild_index();
         assert_eq!(catalog.visible, fresh.visible);
         assert_eq!(catalog.counts, fresh.counts);
+    }
+
+    #[test]
+    fn sorting_reorders_visible_and_survives_edits() {
+        let mut c = catalog(4);
+        c.assign_rating(0, Rating::new(1));
+        c.assign_rating(1, Rating::new(5));
+        c.assign_rating(2, Rating::new(3));
+        c.set_sort(SortOrder {
+            key: SortKey::Rating,
+            descending: true,
+        });
+        assert_eq!(c.visible_indices(), &[1, 2, 0, 3]);
+        assert_eq!(c.visible_position(2), Some(1));
+        assert_index_consistent(&c);
+
+        // Editing keeps the order stable (no jumping), and filtering keeps
+        // the visible list sorted.
+        c.assign_rating(3, Rating::new(4));
+        assert_eq!(c.visible_indices(), &[1, 2, 0, 3]);
+        c.set_rating_filter(RatingFilter::AtLeast(3));
+        assert_eq!(c.visible_indices(), &[1, 2, 3]);
+        c.assign_rating(0, Rating::new(5));
+        assert_eq!(c.visible_indices(), &[1, 2, 0, 3]);
+
+        c.set_sort(SortOrder::default());
+        assert_eq!(c.visible_indices(), &[0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn facet_and_search_filters_combine() {
+        let mut c = catalog(3);
+        c.assets[0].meta.camera = "SONY ILCE-7M2".into();
+        c.assets[1].meta.camera = "SONY ILCE-7M2".into();
+        c.assets[2].meta.camera = "Canon EOS R".into();
+        c.assets[1].color_label = ColorLabel::Red;
+
+        let mut f = FilterSet::default();
+        f.camera = Some("SONY ILCE-7M2".into());
+        c.set_filters(f.clone());
+        assert_eq!(c.visible_indices(), &[0, 1]);
+
+        f.label = Some(ColorLabel::Red);
+        c.set_filters(f.clone());
+        assert_eq!(c.visible_indices(), &[1]);
+
+        f = FilterSet {
+            search: "canon 2.jpg".into(),
+            ..Default::default()
+        };
+        c.set_filters(f);
+        assert_eq!(c.visible_indices(), &[2]);
+    }
+
+    #[test]
+    fn year_from_timestamp() {
+        let meta = crate::asset::PhotoMeta {
+            captured: 1_491_360_260,
+            ..Default::default()
+        }; // 2017-04-05
+        assert_eq!(meta.year(), Some(2017));
+        assert_eq!(crate::asset::PhotoMeta::default().year(), None);
+    }
+
+    #[test]
+    fn rating_filter_tracks_rating_changes() {
+        let mut c = catalog(4);
+        c.assign_rating(1, Rating::new(4));
+        c.assign_rating(2, Rating::new(2));
+        c.set_rating_filter(RatingFilter::AtLeast(3));
+        assert_eq!(c.visible_indices(), &[1]);
+        assert_index_consistent(&c);
+
+        // Rating a hidden photo up brings it into view; down removes it.
+        c.assign_rating(2, Rating::new(5));
+        assert_eq!(c.visible_indices(), &[1, 2]);
+        c.assign_rating(1, Rating::new(1));
+        assert_eq!(c.visible_indices(), &[2]);
+        assert_index_consistent(&c);
+
+        c.set_rating_filter(RatingFilter::Unrated);
+        assert_eq!(c.visible_indices(), &[0, 3]);
+        assert_index_consistent(&c);
+    }
+
+    #[test]
+    fn restore_state_round_trips_and_keeps_index_in_sync() {
+        let mut c = catalog(5);
+        c.set_filter(FilterMode::Picked);
+        let before = c.assets[2].state();
+        c.assign_flag(2, Flag::Picked);
+        c.assign_rating(2, Rating::new(4));
+        let after = c.assets[2].state();
+        assert!(c.visible_indices().contains(&2));
+        assert_index_consistent(&c);
+
+        c.restore_state(2, &before);
+        assert_eq!(c.assets[2].state(), before);
+        assert!(!c.visible_indices().contains(&2));
+        assert_index_consistent(&c);
+
+        c.restore_state(2, &after);
+        assert_eq!(c.assets[2].state(), after);
+        assert_index_consistent(&c);
     }
 
     #[test]

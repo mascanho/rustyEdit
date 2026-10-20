@@ -6,7 +6,10 @@
 use gpui::{div, prelude::*, AnyElement, App, ClickEvent, Context, SharedString, Window};
 use rustyedit_core::{ColorLabel, Flag};
 
-use crate::workspace::{LibraryView, Workspace};
+use crate::{
+    selection::CullOp,
+    workspace::{LibraryView, Workspace},
+};
 
 impl Workspace {
     pub(crate) fn render_cull_bar(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -17,35 +20,45 @@ impl Workspace {
         let (flag, rating, label) = (asset.flag, asset.rating, asset.color_label);
         let visible = self.catalog.visible_indices().len();
         let position = self.catalog.visible_position(self.catalog.selected);
+        let selected_count = self.target_indices().len();
 
         // --- left: where am I -------------------------------------------------
-        let left = vec![
-            rustyedit_ui::cull_nav_button(
-                "cull-prev",
-                "\u{2039}",
-                "Previous photo (\u{2190})",
-                position.is_some_and(|p| p > 0),
-                &theme,
-                cx.listener(|this, _: &ClickEvent, _w, cx| this.step_selection(-1, cx)),
-            )
-            .into_any_element(),
-            div()
-                .text_color(theme.text)
-                .child(match position {
-                    Some(p) => format!("{} / {}", p + 1, visible),
-                    None => format!("\u{2013} / {visible}"),
-                })
+        // The loupe is about the photo itself, so it drops the pager; arrow
+        // keys still move through the set.
+        let left = if self.library_view == LibraryView::Loupe {
+            Vec::new()
+        } else {
+            vec![
+                rustyedit_ui::cull_nav_button(
+                    "cull-prev",
+                    "\u{2039}",
+                    "Previous photo (\u{2190})",
+                    position.is_some_and(|p| p > 0),
+                    &theme,
+                    cx.listener(|this, _: &ClickEvent, _w, cx| this.step_selection(-1, cx)),
+                )
                 .into_any_element(),
-            rustyedit_ui::cull_nav_button(
-                "cull-next",
-                "\u{203A}",
-                "Next photo (\u{2192})",
-                position.is_some_and(|p| p + 1 < visible),
-                &theme,
-                cx.listener(|this, _: &ClickEvent, _w, cx| this.step_selection(1, cx)),
-            )
-            .into_any_element(),
-        ];
+                div()
+                    .text_color(theme.text)
+                    .child(match (position, selected_count) {
+                        (Some(p), n) if n > 1 => {
+                            format!("{n} selected \u{00B7} {} / {visible}", p + 1)
+                        }
+                        (Some(p), _) => format!("{} / {}", p + 1, visible),
+                        (None, _) => format!("\u{2013} / {visible}"),
+                    })
+                    .into_any_element(),
+                rustyedit_ui::cull_nav_button(
+                    "cull-next",
+                    "\u{203A}",
+                    "Next photo (\u{2192})",
+                    position.is_some_and(|p| p + 1 < visible),
+                    &theme,
+                    cx.listener(|this, _: &ClickEvent, _w, cx| this.step_selection(1, cx)),
+                )
+                .into_any_element(),
+            ]
+        };
 
         // --- centre: the decisions --------------------------------------------
         let flag_button = |id: &'static str,
@@ -55,11 +68,6 @@ impl Workspace {
                            key: &'static str,
                            color| {
             // Clicking the active flag clears it, like toggling in Lightroom.
-            let next = if flag == target {
-                Flag::Unflagged
-            } else {
-                target
-            };
             let entity = cx.entity();
             rustyedit_ui::cull_button(
                 id,
@@ -70,7 +78,7 @@ impl Workspace {
                 flag == target,
                 &theme,
                 move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
-                    entity.update(cx, |this, cx| this.set_flag_value(next, cx));
+                    entity.update(cx, |this, cx| this.set_flag_value(target, cx));
                 },
             )
             .into_any_element()
@@ -133,11 +141,6 @@ impl Workspace {
                 .filter_map(|&candidate| {
                     let color = theme.color_label(candidate)?;
                     let entity = cx.entity();
-                    let next = if label == candidate {
-                        ColorLabel::None
-                    } else {
-                        candidate
-                    };
                     Some(
                         rustyedit_ui::label_swatch(
                             SharedString::from(format!("cull-label-{}", candidate.label())),
@@ -146,7 +149,9 @@ impl Workspace {
                             label == candidate,
                             &theme,
                             move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
-                                entity.update(cx, |this, cx| this.set_color_label_value(next, cx));
+                                entity.update(cx, |this, cx| {
+                                    this.set_color_label_value(candidate, cx)
+                                });
                             },
                         )
                         .into_any_element(),
@@ -158,20 +163,30 @@ impl Workspace {
 
         // --- right: what am I looking at --------------------------------------
         let mut right = Vec::new();
-        // Card size only means something in the grid.
-        if self.library_view == LibraryView::Grid {
-            right.push(self.render_grid_size_control(cx));
+        // Backdrop colour only matters when looking at a single photo.
+        if self.library_view == LibraryView::Loupe {
+            right.push(self.render_background_button(cx));
+        }
+        // Zoom (loupe) and card size (grid) share one dropdown.
+        if matches!(self.library_view, LibraryView::Loupe | LibraryView::Grid) {
+            right.push(self.render_size_button(cx));
         }
         right.push(
-            rustyedit_ui::chrome_button(
-                "cull-filter",
-                format!("Filter: {}", self.catalog.filter().label()),
-                false,
+            rustyedit_ui::chrome_icon_button(
+                "cull-auto-advance",
+                "\u{23ED}",
+                Some("Auto-advance after flag or rating".into()),
+                self.settings.library.auto_advance,
                 &theme,
-                cx.listener(Self::click_cycle_filter),
+                cx.listener(|this, _: &ClickEvent, _w, cx| {
+                    let on = !this.settings.library.auto_advance;
+                    this.update_settings(|s| s.library.auto_advance = on, cx);
+                }),
             )
             .into_any_element(),
         );
+        right.push(self.render_sort_button(cx));
+        right.push(self.render_filter_button(cx));
 
         rustyedit_ui::cull_bar(&theme, left, vec![flags, stars, swatches], right).into_any_element()
     }
@@ -183,9 +198,6 @@ impl Workspace {
     }
 
     fn set_flag_value(&mut self, flag: Flag, cx: &mut Context<Self>) {
-        let ix = self.catalog.selected;
-        self.catalog.set_flag(ix, flag);
-        self.mark_catalog_dirty(cx);
-        cx.notify();
+        self.apply_cull(CullOp::Flag(flag), cx);
     }
 }

@@ -65,6 +65,25 @@ impl ThumbnailCache {
         crate::decode::is_raw(source) || orientation > 1
     }
 
+    fn full_path_for(&self, source: &Path) -> Option<PathBuf> {
+        let thumb = self.cache_path_for(source)?;
+        let stem = thumb.file_stem()?.to_string_lossy().into_owned();
+        Some(self.dir.join(format!("{stem}-full.jpg")))
+    }
+
+    /// Writes an upright, full-resolution JPEG for viewing at 100% and
+    /// beyond, for originals the UI can't show directly. Heavy; run off the
+    /// UI thread.
+    pub fn ensure_full(&self, source: &Path) -> anyhow::Result<PathBuf> {
+        let path = self
+            .full_path_for(source)
+            .ok_or_else(|| anyhow::anyhow!("could not stat {}", source.display()))?;
+        if !path.exists() {
+            crate::decode::open_image(source)?.to_rgb8().save(&path)?;
+        }
+        Ok(path)
+    }
+
     /// A previously generated loupe-size preview, if one exists on disk.
     pub fn cached_loupe(&self, source: &Path) -> Option<PathBuf> {
         let path = self.loupe_path_for(source)?;
@@ -134,7 +153,7 @@ pub fn generate_thumbnails(
     cache: &ThumbnailCache,
     assets: &[Asset],
     progress: &std::sync::atomic::AtomicUsize,
-) -> Vec<(u64, PathBuf, u32, u32, u8)> {
+) -> Vec<ThumbInfo> {
     use rayon::prelude::*;
     use std::sync::atomic::Ordering;
 
@@ -142,22 +161,49 @@ pub fn generate_thumbnails(
         .par_iter()
         .filter_map(|asset| {
             // Already thumbnailed on a previous run and its size is known:
-            // no need to touch the (possibly RAW) original again.
+            // no need to decode the (possibly RAW) original again; only
+            // fill in EXIF facts an older catalog didn't record.
             if asset.width > 0 && asset.height > 0 {
                 if let Some(thumb) = cache.cached(&asset.path) {
+                    let meta = if asset.meta.captured != 0 {
+                        asset.meta.clone()
+                    } else {
+                        crate::metadata::read_photo_meta(&asset.path)
+                    };
                     progress.fetch_add(1, Ordering::Relaxed);
-                    return Some((asset.id, thumb, asset.width, asset.height, asset.orientation));
+                    return Some(ThumbInfo {
+                        id: asset.id,
+                        thumbnail: thumb,
+                        width: asset.width,
+                        height: asset.height,
+                        orientation: asset.orientation,
+                        meta,
+                    });
                 }
             }
             let result = cache
                 .ensure(&asset.path)
                 .ok()
-                .map(|(thumb_path, width, height)| {
-                    let orientation = crate::decode::exif_orientation(&asset.path);
-                    (asset.id, thumb_path, width, height, orientation)
+                .map(|(thumbnail, width, height)| ThumbInfo {
+                    id: asset.id,
+                    thumbnail,
+                    width,
+                    height,
+                    orientation: crate::decode::exif_orientation(&asset.path),
+                    meta: crate::metadata::read_photo_meta(&asset.path),
                 });
             progress.fetch_add(1, Ordering::Relaxed);
             result
         })
         .collect()
+}
+
+/// What importing one photo produced.
+pub struct ThumbInfo {
+    pub id: u64,
+    pub thumbnail: PathBuf,
+    pub width: u32,
+    pub height: u32,
+    pub orientation: u8,
+    pub meta: rustyedit_core::PhotoMeta,
 }

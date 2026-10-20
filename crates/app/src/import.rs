@@ -140,12 +140,14 @@ impl Workspace {
 
             // Ids are list positions, so look each one up directly instead
             // of searching (which is O(n²) on big imports).
-            for (id, path, width, height, orientation) in thumbnails {
+            for info in thumbnails {
+                let id = info.id;
                 if let Some(asset) = assets.get_mut(id as usize).filter(|a| a.id == id) {
-                    asset.thumbnail_path = Some(path);
-                    asset.width = width;
-                    asset.height = height;
-                    asset.orientation = orientation;
+                    asset.thumbnail_path = Some(info.thumbnail);
+                    asset.width = info.width;
+                    asset.height = info.height;
+                    asset.orientation = info.orientation;
+                    asset.meta = info.meta;
                 }
             }
 
@@ -184,6 +186,9 @@ impl Workspace {
     ) {
         self.save_outgoing_catalog();
         self.catalog = catalog;
+        // Fresh catalog: re-apply the saved sort and rebuild the facet lists.
+        self.catalog.set_sort(self.settings.library.sort);
+        self.facets = crate::filters_panel::Facets::build(&self.catalog);
         self.thumbnail_cache = cache;
         self.mark_catalog_dirty(cx);
         self.histogram_cache.clear();
@@ -194,6 +199,13 @@ impl Workspace {
         self.metadata_loading.clear();
         self.loupe_paths.clear();
         self.loupe_loading.clear();
+        self.loupe_full_paths.clear();
+        self.loupe_full_loading.clear();
+        self.selection.clear();
+        self.selection_anchor = None;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.loupe_zoom = None;
 
         let selected =
             select.and_then(|path| self.catalog.assets.iter().position(|a| a.path == path));

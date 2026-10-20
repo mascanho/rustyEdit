@@ -13,8 +13,7 @@ use gpui::{
 };
 use image::DynamicImage;
 use rustyedit_core::{
-    settings::StartupView, Catalog, ColorLabel, ExportOptions, Flag, Histogram, RailTool, Rating,
-    Settings,
+    settings::StartupView, Catalog, ColorLabel, ExportOptions, Flag, Histogram, RailTool, Settings,
 };
 use rustyedit_io::ThumbnailCache;
 use rustyedit_ui::Theme;
@@ -25,6 +24,7 @@ use crate::actions::{
     Rating0, Rating1, Rating2, Rating3, Rating4, Rating5, ToggleZoom,
 };
 use crate::file_tree::FileTree;
+use crate::selection::CullOp;
 
 /// How long after the last edit the catalog is written to disk.
 const CATALOG_SAVE_DEBOUNCE: Duration = Duration::from_millis(750);
@@ -43,6 +43,8 @@ pub enum Mode {
 pub enum TextTarget {
     Album,
     NewCatalog,
+    /// Live: every keystroke updates the library's text search.
+    Search,
 }
 
 /// What the Library module's center area shows: the selected photo large
@@ -51,6 +53,10 @@ pub enum TextTarget {
 pub enum LibraryView {
     Loupe,
     Grid,
+    /// Two photos side by side.
+    Compare,
+    /// Several photos at once.
+    Survey,
 }
 
 /// Root view of the application: owns the catalog, the current mode, and
@@ -66,6 +72,24 @@ pub struct Workspace {
     pub(crate) thumbnail_cache: Option<Arc<ThumbnailCache>>,
     pub(crate) status_message: Option<SharedString>,
     pub(crate) is_importing: bool,
+    // Multi-selection, undo, compare and loupe zoom (see their modules).
+    pub(crate) bottom_menu: Option<crate::size_menu::BottomMenu>,
+    /// Distinct cameras, lenses, years… for the Filters panel.
+    pub(crate) facets: crate::filters_panel::Facets,
+    /// Unspent Ctrl+wheel travel (see `wheel_zoom.rs`).
+    pub(crate) wheel_accum: f32,
+    pub(crate) selection: HashSet<usize>,
+    pub(crate) selection_anchor: Option<usize>,
+    pub(crate) undo_stack: Vec<crate::undo::UndoEntry>,
+    pub(crate) redo_stack: Vec<crate::undo::UndoEntry>,
+    pub(crate) compare_pair: (usize, usize),
+    pub(crate) compare_active_left: bool,
+    pub(crate) loupe_zoom: Option<f32>,
+    pub(crate) loupe_scroll: ScrollHandle,
+    pub(crate) loupe_center_pending: Cell<bool>,
+    pub(crate) loupe_drag: Option<(gpui::Point<gpui::Pixels>, gpui::Point<gpui::Pixels>)>,
+    pub(crate) loupe_full_paths: HashMap<u64, PathBuf>,
+    pub(crate) loupe_full_loading: HashSet<u64>,
     // Albums (see `albums.rs`).
     pub(crate) active_album: Option<u64>,
     // The active catalog and the others available (see `catalogs.rs`).
@@ -173,6 +197,21 @@ impl Workspace {
             thumbnail_cache: None,
             status_message: Some("Import a folder to get started.".into()),
             is_importing: false,
+            bottom_menu: None,
+            facets: Default::default(),
+            wheel_accum: 0.0,
+            selection: HashSet::new(),
+            selection_anchor: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            compare_pair: (0, 0),
+            compare_active_left: true,
+            loupe_zoom: None,
+            loupe_scroll: ScrollHandle::new(),
+            loupe_center_pending: Cell::new(false),
+            loupe_drag: None,
+            loupe_full_paths: HashMap::new(),
+            loupe_full_loading: HashSet::new(),
             active_album: None,
             catalog_def,
             catalog_list,
@@ -333,23 +372,31 @@ impl Workspace {
     // --- Selection & mode ---------------------------------------------------
 
     pub fn next_image(&mut self, _: &NextImage, _window: &mut Window, cx: &mut Context<Self>) {
+        self.clear_selection();
         if self.catalog.select_relative(1).is_some() {
             self.on_selection_changed(cx);
         }
     }
 
     pub fn prev_image(&mut self, _: &PrevImage, _window: &mut Window, cx: &mut Context<Self>) {
+        self.clear_selection();
         if self.catalog.select_relative(-1).is_some() {
             self.on_selection_changed(cx);
         }
     }
 
     pub fn select_asset(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.clear_selection();
         self.catalog.select(index);
         self.on_selection_changed(cx);
     }
 
     pub(crate) fn on_selection_changed(&mut self, cx: &mut Context<Self>) {
+        self.sync_compare_with_selection();
+        // A new photo starts at fit-to-window.
+        if self.loupe_zoom.is_some() {
+            self.loupe_zoom = None;
+        }
         self.preview_epoch += 1;
         self.source_image = None;
         self.source_image_for = None;
@@ -406,6 +453,10 @@ impl Workspace {
     }
 
     pub fn toggle_zoom(&mut self, _: &ToggleZoom, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.mode == Mode::Library && self.library_view == LibraryView::Loupe {
+            self.toggle_loupe_zoom(cx);
+            return;
+        }
         self.zoom_fit = !self.zoom_fit;
         cx.notify();
     }
@@ -413,31 +464,19 @@ impl Workspace {
     // --- Flags & ratings -----------------------------------------------------
 
     pub fn flag_pick(&mut self, _: &FlagPick, _window: &mut Window, cx: &mut Context<Self>) {
-        let ix = self.catalog.selected;
-        self.catalog.set_flag(ix, Flag::Picked);
-        self.mark_catalog_dirty(cx);
-        cx.notify();
+        self.apply_cull(CullOp::Flag(Flag::Picked), cx);
     }
 
     pub fn flag_reject(&mut self, _: &FlagReject, _window: &mut Window, cx: &mut Context<Self>) {
-        let ix = self.catalog.selected;
-        self.catalog.set_flag(ix, Flag::Rejected);
-        self.mark_catalog_dirty(cx);
-        cx.notify();
+        self.apply_cull(CullOp::Flag(Flag::Rejected), cx);
     }
 
     pub fn flag_unflag(&mut self, _: &FlagUnflag, _window: &mut Window, cx: &mut Context<Self>) {
-        let ix = self.catalog.selected;
-        self.catalog.set_flag(ix, Flag::Unflagged);
-        self.mark_catalog_dirty(cx);
-        cx.notify();
+        self.apply_cull(CullOp::Flag(Flag::Unflagged), cx);
     }
 
     pub fn set_rating_value(&mut self, value: u8, cx: &mut Context<Self>) {
-        let ix = self.catalog.selected;
-        self.catalog.set_rating(ix, Rating::new(value));
-        self.mark_catalog_dirty(cx);
-        cx.notify();
+        self.apply_cull(CullOp::Rating(value), cx);
     }
 
     pub fn rating_0(&mut self, _: &Rating0, _w: &mut Window, cx: &mut Context<Self>) {
@@ -460,10 +499,7 @@ impl Workspace {
     }
 
     pub fn set_color_label_value(&mut self, label: ColorLabel, cx: &mut Context<Self>) {
-        let ix = self.catalog.selected;
-        self.catalog.set_color_label(ix, label);
-        self.mark_catalog_dirty(cx);
-        cx.notify();
+        self.apply_cull(CullOp::Label(label), cx);
     }
 
     pub fn label_red(&mut self, _: &LabelRed, _w: &mut Window, cx: &mut Context<Self>) {
@@ -650,16 +686,19 @@ impl Workspace {
         );
 
         let mut right: Vec<gpui::AnyElement> = Vec::new();
-        right.push(
-            rustyedit_ui::chrome_button(
-                "filter",
-                format!("Filter: {}", self.catalog.filter().label()),
-                false,
-                &theme,
-                cx.listener(Self::click_cycle_filter),
-            )
-            .into_any_element(),
-        );
+        // The Library has the filter dropdown in its bottom bar.
+        if self.mode != Mode::Library {
+            right.push(
+                rustyedit_ui::chrome_button(
+                    "filter",
+                    format!("Filter: {}", self.catalog.filter().label()),
+                    false,
+                    &theme,
+                    cx.listener(Self::click_cycle_filter),
+                )
+                .into_any_element(),
+            );
+        }
 
         if let Some(asset) = self.catalog.selected_asset() {
             let entity = cx.entity();
@@ -704,6 +743,13 @@ impl Render for Workspace {
             .track_focus(&focus_handle)
             .on_action(cx.listener(Self::go_export))
             .on_action(cx.listener(Self::toggle_info))
+            .on_action(cx.listener(Self::cycle_background))
+            .on_action(cx.listener(Self::focus_search))
+            .on_action(cx.listener(Self::undo))
+            .on_action(cx.listener(Self::redo))
+            .on_action(cx.listener(Self::select_all))
+            .on_action(cx.listener(Self::view_compare))
+            .on_action(cx.listener(Self::view_survey))
             .on_action(cx.listener(Self::next_image))
             .on_action(cx.listener(Self::prev_image))
             .on_action(cx.listener(Self::flag_pick))
@@ -741,6 +787,11 @@ impl Render for Workspace {
                 Mode::Export => self.render_export(cx),
             })
             .child(self.render_status_bar(cx))
+            .child(self.wheel_zoom_hook(cx))
+            .when(
+                self.bottom_menu.is_some() && self.mode == Mode::Library,
+                |el| el.child(self.render_bottom_menu(cx)),
+            )
             .when(self.catalog_menu_open, |el| {
                 el.child(self.render_catalog_menu(cx))
             })

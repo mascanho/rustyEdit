@@ -297,6 +297,12 @@ impl Workspace {
                 }
             }
         }
+        if target == TextTarget::Search {
+            if let Some((_, text)) = &self.text_draft {
+                let query = text.clone();
+                self.set_search_query(query, cx);
+            }
+        }
         cx.stop_propagation();
         cx.notify();
     }
@@ -310,6 +316,8 @@ impl Workspace {
                 }
             }
             TextTarget::NewCatalog => self.create_catalog(&text, cx),
+            // Search applies live as you type; Enter just ends editing.
+            TextTarget::Search => {}
         }
     }
 }

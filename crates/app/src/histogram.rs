@@ -120,9 +120,13 @@ impl Workspace {
     }
 
     /// Generates a loupe-size preview in the background for formats the UI
-    /// can't render natively (RAW). No-op for everything else.
+    /// can't render natively (RAW, or rotated by EXIF). No-op for the rest.
     pub(crate) fn request_loupe(&mut self, cx: &mut Context<Self>) {
-        let Some(asset) = self.catalog.selected_asset() else {
+        self.request_loupe_for(self.catalog.selected, cx);
+    }
+
+    pub(crate) fn request_loupe_for(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(asset) = self.catalog.assets.get(index) else {
             return;
         };
         let Some(cache) = self.thumbnail_cache.clone() else {
@@ -144,6 +148,39 @@ impl Workspace {
                 this.loupe_loading.remove(&asset_id);
                 if let Some(path) = result {
                     this.loupe_paths.insert(asset_id, path);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Full-resolution copy for zooming past the loupe preview. Only needed
+    /// when the original can't be displayed directly.
+    pub(crate) fn request_full_preview(&mut self, cx: &mut Context<Self>) {
+        let Some(asset) = self.catalog.selected_asset() else {
+            return;
+        };
+        let Some(cache) = self.thumbnail_cache.clone() else {
+            return;
+        };
+        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(&asset.path, asset.orientation)
+            || self.loupe_full_paths.contains_key(&asset.id)
+            || !self.loupe_full_loading.insert(asset.id)
+        {
+            return;
+        }
+        let (asset_id, path) = (asset.id, asset.path.clone());
+        let job = cx
+            .background_executor()
+            .spawn(async move { cache.ensure_full(&path).ok() });
+        cx.spawn(async move |this, cx| {
+            let result = job.await;
+            this.update(cx, |this, cx| {
+                this.loupe_full_loading.remove(&asset_id);
+                if let Some(path) = result {
+                    this.loupe_full_paths.insert(asset_id, path);
                 }
                 cx.notify();
             })

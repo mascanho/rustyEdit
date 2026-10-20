@@ -21,8 +21,10 @@ pub mod registry {
 }
 pub use catalog_store::{load as load_catalog, merge_saved_state, save as save_catalog};
 pub use decode::{exif_orientation, image_dimensions, open_image};
-pub use metadata::{read_metadata, MetaGroup, Metadata};
+pub use metadata::{read_metadata, read_photo_meta, MetaGroup, Metadata};
 pub use preview::{cleanup_live_preview, next_live_preview_path};
 pub use scan::scan_folder;
 pub use settings_store::{load as load_settings, save as save_settings, settings_path};
-pub use thumbnails::{generate_thumbnails, ThumbnailCache, LOUPE_LONG_EDGE, THUMBNAIL_LONG_EDGE};
+pub use thumbnails::{
+    generate_thumbnails, ThumbInfo, ThumbnailCache, LOUPE_LONG_EDGE, THUMBNAIL_LONG_EDGE,
+};

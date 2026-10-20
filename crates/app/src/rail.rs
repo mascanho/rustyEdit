@@ -94,13 +94,18 @@ impl Workspace {
         match tool {
             RailTool::History => Some(self.history_sections()),
             RailTool::Collections => Some(self.albums_sections(cx)),
+            RailTool::Search => Some(self.search_sections(cx)),
+            RailTool::Filters => Some(self.filters_sections(cx)),
             _ => None,
         }
     }
 
     /// The extension point: give each tool its behaviour here as it's built.
     fn activate_rail_tool(&mut self, tool: RailTool, _cx: &mut Context<Self>) {
-        if matches!(tool, RailTool::History | RailTool::Collections) {
+        if matches!(
+            tool,
+            RailTool::History | RailTool::Collections | RailTool::Search | RailTool::Filters
+        ) {
             return; // Shown in the dock itself; nothing to announce.
         }
         self.status_message = Some(format!("{} \u{2014} coming soon", tool.label()).into());

@@ -5,11 +5,13 @@
 mod actions;
 mod albums;
 mod catalogs;
+mod compare;
 mod cull_bar;
 mod develop;
 mod export;
 mod file_tree;
 mod filmstrip;
+mod filters_panel;
 mod histogram;
 mod history_panel;
 mod import;
@@ -17,7 +19,11 @@ mod info_overlay;
 mod library;
 mod rail;
 mod resize;
+mod selection;
 mod settings_view;
+mod size_menu;
+mod undo;
+mod wheel_zoom;
 mod workspace;
 
 use gpui::{
@@ -26,9 +32,10 @@ use gpui::{
 };
 
 use actions::{
-    CloseSettings, CycleFilter, CycleLayout, FlagPick, FlagReject, FlagUnflag, GoDevelop, GoExport,
-    GoLibrary, ImportFolder, LabelBlue, LabelGreen, LabelRed, LabelYellow, NextImage, OpenSettings,
-    PrevImage, Quit, Rating0, Rating1, Rating2, Rating3, Rating4, Rating5, ToggleInfo, ToggleZoom,
+    CloseSettings, CycleBackground, CycleFilter, CycleLayout, FlagPick, FlagReject, FlagUnflag,
+    FocusSearch, GoDevelop, GoExport, GoLibrary, ImportFolder, LabelBlue, LabelGreen, LabelRed,
+    LabelYellow, NextImage, OpenSettings, PrevImage, Quit, Rating0, Rating1, Rating2, Rating3,
+    Rating4, Rating5, Redo, SelectAll, ToggleInfo, ToggleZoom, Undo, ViewCompare, ViewSurvey,
 };
 use workspace::Workspace;
 
@@ -61,6 +68,13 @@ fn main() {
             KeyBinding::new("f", CycleFilter, Some(KEY_CONTEXT)),
             KeyBinding::new("z", ToggleZoom, Some(KEY_CONTEXT)),
             KeyBinding::new("i", ToggleInfo, Some(KEY_CONTEXT)),
+            KeyBinding::new("b", CycleBackground, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-f", FocusSearch, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-z", Undo, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-shift-z", Redo, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-a", SelectAll, Some(KEY_CONTEXT)),
+            KeyBinding::new("c", ViewCompare, Some(KEY_CONTEXT)),
+            KeyBinding::new("n", ViewSurvey, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-,", OpenSettings, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-shift-l", CycleLayout, Some(KEY_CONTEXT)),
             KeyBinding::new("escape", CloseSettings, Some("SettingsModal")),

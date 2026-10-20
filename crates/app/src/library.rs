@@ -3,7 +3,7 @@ use gpui::{
     ClickEvent, Context, ObjectFit, SharedString, Window,
 };
 use rustyedit_core::{
-    settings::{DockSide, PanelKind, GRID_CARD_MAX, GRID_CARD_MIN, GRID_CARD_STEP},
+    settings::{DockSide, PanelKind},
     ColorLabel, FilterMode, Flag,
 };
 use rustyedit_ui::{PanelSide, Theme};
@@ -49,10 +49,22 @@ impl Workspace {
         } else {
             center
                 .child(self.render_library_toolbar(cx))
-                .child(match self.library_view {
-                    LibraryView::Loupe => self.render_loupe(cx),
-                    LibraryView::Grid => self.render_grid(window, cx),
-                })
+                .child(
+                    // The view and anything floating over it (the search chip).
+                    div()
+                        .relative()
+                        .flex()
+                        .flex_1()
+                        .min_h(px(0.0))
+                        .min_w(px(0.0))
+                        .child(match self.library_view {
+                            LibraryView::Loupe => self.render_loupe(window, cx),
+                            LibraryView::Grid => self.render_grid(window, cx),
+                            LibraryView::Compare => self.render_compare(cx),
+                            LibraryView::Survey => self.render_survey(cx),
+                        })
+                        .children(self.render_search_chip(cx)),
+                )
                 .child(self.render_cull_bar(cx))
         };
 
@@ -509,8 +521,7 @@ impl Workspace {
                         self.library_view == LibraryView::Loupe,
                         &theme,
                         cx.listener(|this, _: &ClickEvent, _window, cx| {
-                            this.library_view = LibraryView::Loupe;
-                            cx.notify();
+                            this.set_library_view(LibraryView::Loupe, cx);
                         }),
                     ))
                     .child(rustyedit_ui::chrome_button(
@@ -519,8 +530,25 @@ impl Workspace {
                         self.library_view == LibraryView::Grid,
                         &theme,
                         cx.listener(|this, _: &ClickEvent, _window, cx| {
-                            this.library_view = LibraryView::Grid;
-                            this.on_selection_changed(cx);
+                            this.set_library_view(LibraryView::Grid, cx);
+                        }),
+                    ))
+                    .child(rustyedit_ui::chrome_button(
+                        "library-view-compare",
+                        "Compare",
+                        self.library_view == LibraryView::Compare,
+                        &theme,
+                        cx.listener(|this, _: &ClickEvent, _window, cx| {
+                            this.set_library_view(LibraryView::Compare, cx);
+                        }),
+                    ))
+                    .child(rustyedit_ui::chrome_button(
+                        "library-view-survey",
+                        "Survey",
+                        self.library_view == LibraryView::Survey,
+                        &theme,
+                        cx.listener(|this, _: &ClickEvent, _window, cx| {
+                            this.set_library_view(LibraryView::Survey, cx);
                         }),
                     )),
             )
@@ -533,34 +561,18 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// "−  180 px  +" control for the grid's card size.
-    pub(crate) fn render_grid_size_control(&self, cx: &mut Context<Self>) -> AnyElement {
-        let entity = cx.entity();
-        div()
-            .child(rustyedit_ui::stepper(
-                "grid-card-size",
-                self.settings.library.grid_card_size as i64,
-                GRID_CARD_MIN as i64,
-                GRID_CARD_MAX as i64,
-                GRID_CARD_STEP as i64,
-                " px",
-                &self.theme,
-                move |value, _window, cx| {
-                    entity.update(cx, |this, cx| {
-                        this.update_settings(|s| s.library.grid_card_size = value as u32, cx);
-                    });
-                },
-            ))
-            .into_any_element()
-    }
-
     /// Shows the selected photo as large as the center area allows. Uses
     /// the original file rather than the (small) grid thumbnail so the
     /// showcase stays sharp.
-    fn render_loupe(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_loupe(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
+        let zoomed = self
+            .loupe_zoom
+            .and_then(|scale| self.render_zoomed_loupe(scale, window, cx));
+        let zoomed_in = zoomed.is_some();
 
         let content: AnyElement = match self.catalog.selected_asset() {
+            _ if zoomed.is_some() => zoomed.unwrap(),
             Some(asset) => img(self.loupe_source(asset))
                 .object_fit(ObjectFit::Contain)
                 .size_full()
@@ -583,8 +595,8 @@ impl Workspace {
             .flex()
             .items_center()
             .justify_center()
-            .p_4()
-            .bg(theme.background)
+            .when(!zoomed_in, |el| el.p_4())
+            .bg(self.loupe_bg())
             .child(content)
             .children(self.render_info_overlay(cx))
             .on_click(cx.listener(|this, event: &ClickEvent, _window, cx| {
@@ -596,7 +608,7 @@ impl Workspace {
     }
 
     /// Width a dock currently occupies (0 when the layout has none).
-    fn dock_width(&self, side: DockSide, panels: &[PanelKind]) -> f32 {
+    pub(crate) fn dock_width(&self, side: DockSide, panels: &[PanelKind]) -> f32 {
         if panels.is_empty() {
             return 0.0;
         }
@@ -680,6 +692,7 @@ impl Workspace {
                                         let asset_ix = visible[i];
                                         let asset = &this.catalog.assets[asset_ix];
                                         let is_selected = asset_ix == selected;
+                                        let in_multi = this.in_selection(asset_ix);
                                         let entity = entity.clone();
 
                                         let thumb: AnyElement = match asset.thumbnail_path.as_ref()
@@ -712,8 +725,13 @@ impl Workspace {
                                             .border_2()
                                             .border_color(if is_selected {
                                                 theme.accent
+                                            } else if in_multi {
+                                                theme.accent.opacity(0.55)
                                             } else {
                                                 theme.surface
+                                            })
+                                            .when(in_multi && !is_selected, |el| {
+                                                el.bg(theme.accent_muted.opacity(0.5))
                                             })
                                             .cursor_pointer()
                                             .child(
@@ -749,7 +767,11 @@ impl Workspace {
                                             )
                                             .on_click(move |event: &ClickEvent, _window, cx| {
                                                 entity.update(cx, |this, cx| {
-                                                    this.select_asset(asset_ix, cx);
+                                                    this.click_select(
+                                                        asset_ix,
+                                                        event.modifiers(),
+                                                        cx,
+                                                    );
                                                     if event.click_count() >= 2 {
                                                         this.enter_develop(cx);
                                                     }

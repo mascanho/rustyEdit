@@ -113,6 +113,18 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some((start, start_offset)) = self.loupe_drag {
+            if event.dragging() {
+                let max = self.loupe_scroll.max_offset();
+                let x = (start_offset.x + (event.position.x - start.x)).clamp(-max.width, px(0.0));
+                let y = (start_offset.y + (event.position.y - start.y)).clamp(-max.height, px(0.0));
+                self.loupe_scroll.set_offset(gpui::point(x, y));
+                cx.notify();
+            } else {
+                self.loupe_drag = None;
+            }
+            return;
+        }
         let Some(target) = self.resizing else {
             return;
         };
@@ -181,6 +193,7 @@ impl Workspace {
         _w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.loupe_drag = None;
         self.finish_resize(cx);
     }
 

@@ -74,5 +74,9 @@ pub fn image_dimensions(path: &Path) -> anyhow::Result<(u32, u32)> {
         (raw.width as u32, raw.height as u32)
     };
     // Sideways orientations (5-8) swap the displayed width and height.
-    Ok(if exif_orientation(path) >= 5 { (h, w) } else { (w, h) })
+    Ok(if exif_orientation(path) >= 5 {
+        (h, w)
+    } else {
+        (w, h)
+    })
 }

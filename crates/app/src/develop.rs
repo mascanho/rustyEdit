@@ -135,9 +135,17 @@ impl Workspace {
     ) {
         let ix = self.catalog.selected;
         if let Some(asset) = self.catalog.assets.get_mut(ix) {
+            let state_before = asset.state();
             let before = adjustment.get(&asset.develop);
             adjustment.set(&mut asset.develop, value);
             let after = adjustment.get(&asset.develop);
+            let state_after = asset.state();
+            self.push_undo(
+                adjustment.label(),
+                vec![(ix, state_before, state_after)],
+                true,
+            );
+            let asset = &mut self.catalog.assets[ix];
             asset.record_change(
                 adjustment.label(),
                 format!("{before:+.0}"),
