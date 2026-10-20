@@ -96,15 +96,33 @@ impl Workspace {
             RailTool::Collections => Some(self.albums_sections(cx)),
             RailTool::Search => Some(self.search_sections(cx)),
             RailTool::Filters => Some(self.filters_sections(cx)),
+            RailTool::Keywords => Some(self.keywords_sections(cx)),
+            RailTool::Duplicates => Some(self.duplicates_sections(cx)),
             _ => None,
         }
     }
 
+    /// Opens the right dock on `tool` (Keywords, Duplicates, …).
+    pub(crate) fn open_right_tool(&mut self, tool: RailTool, cx: &mut Context<Self>) {
+        self.right_panel_collapsed = false;
+        self.right_rail_tool = Some(tool);
+        self.activate_rail_tool(tool, cx);
+        cx.notify();
+    }
+
     /// The extension point: give each tool its behaviour here as it's built.
-    fn activate_rail_tool(&mut self, tool: RailTool, _cx: &mut Context<Self>) {
+    fn activate_rail_tool(&mut self, tool: RailTool, cx: &mut Context<Self>) {
+        if tool == RailTool::Duplicates {
+            self.ensure_duplicates(cx);
+            return;
+        }
         if matches!(
             tool,
-            RailTool::History | RailTool::Collections | RailTool::Search | RailTool::Filters
+            RailTool::History
+                | RailTool::Collections
+                | RailTool::Search
+                | RailTool::Filters
+                | RailTool::Keywords
         ) {
             return; // Shown in the dock itself; nothing to announce.
         }

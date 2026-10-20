@@ -278,8 +278,9 @@ impl Workspace {
                 .text_size(px(10.5))
                 .text_color(theme.text_faint)
                 .child(
-                    "Every word must appear in the file name, camera, lens or file type. \
-                     Combine with the Filters panel to narrow further.",
+                    "Every word must appear in the file name, camera, lens, file type, \
+                     title, caption, creator, copyright or keywords. Combine with the \
+                     Filters panel to narrow further.",
                 )
                 .into_any_element(),
         ];
@@ -307,6 +308,7 @@ impl Workspace {
         // counted fresh; the loop is integer-only and cheap.
         let mut by_label = [0usize; 6];
         let (mut edited, mut untouched) = (0usize, 0usize);
+        let mut keywords: HashMap<String, (String, usize)> = HashMap::new();
         for asset in &self.catalog.assets {
             by_label[ColorLabel::ALL
                 .iter()
@@ -317,7 +319,14 @@ impl Workspace {
             } else {
                 untouched += 1;
             }
+            for keyword in &asset.keywords {
+                let key = keyword.to_lowercase();
+                let entry = keywords.entry(key).or_insert_with(|| (keyword.clone(), 0));
+                entry.1 += 1;
+            }
         }
+        let mut keyword_list: Vec<(String, usize)> = keywords.into_values().collect();
+        keyword_list.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
         let mut out: Vec<AnyElement> = Vec::new();
 
@@ -359,6 +368,20 @@ impl Workspace {
                             },
                             cx,
                         );
+                    }),
+                ))
+                .into_any_element(),
+        );
+        out.push(
+            div()
+                .pb_1()
+                .child(rustyedit_ui::chrome_button(
+                    "filters-save-smart",
+                    "Save as smart collection…",
+                    false,
+                    &theme,
+                    cx.listener(|this, _: &ClickEvent, window, cx| {
+                        this.begin_smart_draft(window, cx)
                     }),
                 ))
                 .into_any_element(),
@@ -519,6 +542,28 @@ impl Workspace {
                     .collect(),
             ),
         );
+        if !keyword_list.is_empty() {
+            out.push(
+                self.facet_group(
+                    "KEYWORDS",
+                    keyword_list
+                        .into_iter()
+                        .map(|(keyword, n)| {
+                            let value = keyword.clone();
+                            self.facet_row(
+                                format!("filter-keyword-{keyword}"),
+                                keyword,
+                                n,
+                                filters.keyword.as_deref() == Some(value.as_str()),
+                                None,
+                                cx,
+                                move |f| toggle(&mut f.keyword, value.clone()),
+                            )
+                        })
+                        .collect(),
+                ),
+            );
+        }
         out.push(self.facet_group(
             "EDITS",
             vec![

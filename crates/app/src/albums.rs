@@ -80,7 +80,7 @@ impl Workspace {
             "album-all".into(),
             "All photos".to_string(),
             None,
-            self.active_album.is_none(),
+            self.active_album.is_none() && self.active_smart.is_none(),
             None,
             cx,
         ));
@@ -108,7 +108,144 @@ impl Workspace {
                     .into_any_element(),
             );
         }
+
+        // --- Smart collections ------------------------------------------------
+        sections.push(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .pt_4()
+                .pb_1()
+                .child(
+                    div()
+                        .text_size(px(10.0))
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(theme.accent)
+                        .child("SMART COLLECTIONS"),
+                )
+                .child(rustyedit_ui::glyph_button(
+                    "smart-new",
+                    "+",
+                    "Save the current filters as a smart collection",
+                    theme.text_muted,
+                    true,
+                    &theme,
+                    cx.listener(|this, _: &ClickEvent, window, cx| {
+                        this.begin_smart_draft(window, cx)
+                    }),
+                ))
+                .into_any_element(),
+        );
+
+        if let Some(draft) = self.draft_for(TextTarget::SmartCollection) {
+            sections.push(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .pb_2()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .h(px(26.0))
+                            .px_2()
+                            .rounded_md()
+                            .bg(theme.background)
+                            .border_1()
+                            .border_color(theme.accent)
+                            .text_sm()
+                            .text_color(theme.text)
+                            .child(draft.to_string())
+                            .child(div().w(px(1.0)).h(px(14.0)).ml(px(1.0)).bg(theme.accent)),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.text_faint)
+                            .child("Name it · it saves the current filters and rating · Enter to create · Esc to cancel"),
+                    )
+                    .into_any_element(),
+            );
+        }
+
+        for collection in &self.catalog_def.smart_collections.items {
+            let id = collection.id;
+            let name = collection.name.clone();
+            let count = self.smart_match_count(collection);
+            sections.push(self.smart_row(id, name, count, self.active_smart == Some(id), cx));
+        }
+
+        if self.catalog_def.smart_collections.items.is_empty()
+            && self.draft_for(TextTarget::SmartCollection).is_none()
+        {
+            sections.push(
+                div()
+                    .pb_2()
+                    .text_xs()
+                    .text_color(theme.text_faint)
+                    .child("Set filters, then press + to save them as a live collection.")
+                    .into_any_element(),
+            );
+        }
         sections
+    }
+
+    fn smart_row(
+        &self,
+        id: u64,
+        name: String,
+        count: usize,
+        active: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = self.theme;
+        div()
+            .id(SharedString::from(format!("smart-{id}")))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_2()
+            .h(px(28.0))
+            .px_2()
+            .rounded_md()
+            .cursor_pointer()
+            .text_sm()
+            .when(active, |el| {
+                el.bg(theme.accent_muted).text_color(theme.text)
+            })
+            .when(!active, |el| {
+                el.text_color(theme.text_muted)
+                    .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+            })
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .text_size(px(11.0))
+                    .text_color(theme.accent)
+                    .child("\u{2699}"),
+            )
+            .child(div().flex_1().min_w(px(0.0)).overflow_hidden().child(name))
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .text_color(theme.text_faint)
+                    .child(count.to_string()),
+            )
+            .child(rustyedit_ui::glyph_button(
+                SharedString::from(format!("smart-delete-{id}")),
+                "\u{2715}",
+                "Delete smart collection",
+                theme.text_muted,
+                true,
+                &theme,
+                cx.listener(move |this, _: &ClickEvent, _w, cx| this.delete_smart(id, cx)),
+            ))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| this.view_smart(id, cx)))
+            .into_any_element()
     }
 
     /// One row: click to view the album; the buttons add / remove the
@@ -193,8 +330,67 @@ impl Workspace {
     /// Makes `album` (or the whole folder, for `None`) the visible set.
     pub(crate) fn view_album(&mut self, album: Option<u64>, cx: &mut Context<Self>) {
         self.active_album = album;
+        self.active_smart = None;
         self.apply_album_scope();
         self.on_selection_changed(cx);
+    }
+
+    // --- Smart collections -------------------------------------------------
+
+    pub(crate) fn begin_smart_draft(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // The name field lives in the Collections panel, so reveal it even if
+        // the request came from the Filters panel.
+        self.open_left_tool(rustyedit_core::RailTool::Collections, cx);
+        self.begin_text_draft(TextTarget::SmartCollection, window, cx);
+    }
+
+    /// How many photos the saved recipe would show right now.
+    fn smart_match_count(&self, collection: &rustyedit_core::SmartCollection) -> usize {
+        self.catalog
+            .assets
+            .iter()
+            .filter(|asset| {
+                collection.filter_mode.matches(asset.flag)
+                    && collection.rating.matches(asset.rating)
+                    && collection.filters.matches(asset)
+            })
+            .count()
+    }
+
+    fn create_smart_collection(&mut self, name: &str, cx: &mut Context<Self>) {
+        let filters = self.catalog.filters().clone();
+        let mode = self.catalog.filter();
+        let rating = self.catalog.rating_filter();
+        if let Some(id) = self
+            .catalog_def
+            .smart_collections
+            .create(name, filters, mode, rating)
+        {
+            self.save_catalog_def();
+            self.view_smart(id, cx);
+        }
+    }
+
+    fn view_smart(&mut self, id: u64, cx: &mut Context<Self>) {
+        let Some(collection) = self.catalog_def.smart_collections.get(id).cloned() else {
+            return;
+        };
+        self.active_album = None;
+        self.active_smart = Some(id);
+        self.catalog.set_scope(None);
+        self.catalog.set_filters(collection.filters);
+        self.catalog.set_rating_filter(collection.rating);
+        self.catalog.set_filter(collection.filter_mode);
+        self.on_selection_changed(cx);
+    }
+
+    fn delete_smart(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.catalog_def.smart_collections.delete(id);
+        self.save_catalog_def();
+        if self.active_smart == Some(id) {
+            self.active_smart = None;
+        }
+        cx.notify();
     }
 
     /// Pushes the active album's photos into the catalog as its scope.
@@ -279,7 +475,12 @@ impl Workspace {
                 self.text_draft = None;
                 self.commit_text(target, name, cx);
             }
-            "escape" => self.text_draft = None,
+            "escape" => {
+                if target == TextTarget::Rename {
+                    self.rename_target = None;
+                }
+                self.text_draft = None;
+            }
             "backspace" => {
                 draft.pop();
             }
@@ -315,7 +516,14 @@ impl Workspace {
                     self.view_album(Some(id), cx);
                 }
             }
+            TextTarget::SmartCollection => self.create_smart_collection(&text, cx),
             TextTarget::NewCatalog => self.create_catalog(&text, cx),
+            TextTarget::Keyword => self.apply_keywords(vec![text], cx),
+            TextTarget::Rename => self.commit_rename(text, cx),
+            TextTarget::Title
+            | TextTarget::Caption
+            | TextTarget::Creator
+            | TextTarget::Copyright => self.commit_metadata_text(target, text, cx),
             // Search applies live as you type; Enter just ends editing.
             TextTarget::Search => {}
         }

@@ -1,4 +1,7 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -88,7 +91,7 @@ pub struct SortOrder {
 }
 
 /// Narrows the catalog by star rating, on top of the flag filter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum RatingFilter {
     #[default]
     Any,
@@ -152,6 +155,9 @@ pub struct Catalog {
     /// When set, only photos at these paths are visible (an album view).
     #[serde(skip)]
     scope: Option<HashSet<PathBuf>>,
+    /// Stacks the user has collapsed; only their representative is visible.
+    #[serde(skip)]
+    collapsed_stacks: HashSet<u64>,
     /// Indices into `assets` that pass `filter`, ascending.
     #[serde(skip)]
     visible: Vec<usize>,
@@ -172,6 +178,7 @@ impl Catalog {
             sort: SortOrder::default(),
             rank: Vec::new(),
             scope: None,
+            collapsed_stacks: HashSet::new(),
             visible: Vec::new(),
             counts: CatalogCounts::default(),
         };
@@ -186,7 +193,8 @@ impl Catalog {
     }
 
     fn passes(&self, asset: &Asset) -> bool {
-        self.filter.matches(asset.flag)
+        !asset.missing
+            && self.filter.matches(asset.flag)
             && self.rating_filter.matches(asset.rating)
             && self.filters.matches(asset)
             && Self::in_scope(&self.scope, asset)
@@ -211,19 +219,69 @@ impl Catalog {
     fn rebuild_index(&mut self) {
         let mut counts = CatalogCounts::default();
         for asset in &self.assets {
-            counts.add(asset.flag);
+            counts.total += 1;
+            if asset.missing {
+                counts.missing += 1;
+            } else {
+                *counts.bucket(asset.flag) += 1;
+            }
         }
         self.counts = counts;
-        self.visible = self
-            .assets
-            .iter()
-            .enumerate()
-            .filter(|(_, asset)| self.passes(asset))
-            .map(|(ix, _)| ix)
-            .collect();
-        if !self.rank.is_empty() {
+
+        let mut passing: Vec<usize> = Vec::new();
+        if self.collapsed_stacks.is_empty() {
+            passing.extend(
+                self.assets
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, asset)| self.passes(asset))
+                    .map(|(ix, _)| ix),
+            );
+        } else {
+            // A collapsed stack shows one photo: its cover if that passes the
+            // filters, otherwise its first passing member.
+            let mut chosen: HashMap<u64, (usize, bool)> = HashMap::new();
+            for (ix, asset) in self.assets.iter().enumerate() {
+                if !self.passes(asset) {
+                    continue;
+                }
+                match asset.stack_id {
+                    Some(sid) if self.collapsed_stacks.contains(&sid) => {
+                        match chosen.get_mut(&sid) {
+                            None => {
+                                chosen.insert(sid, (ix, asset.stack_cover));
+                            }
+                            Some((current, current_is_cover)) => {
+                                if !*current_is_cover && asset.stack_cover {
+                                    *current = ix;
+                                    *current_is_cover = true;
+                                }
+                            }
+                        }
+                    }
+                    _ => passing.push(ix),
+                }
+            }
+            passing.extend(chosen.into_values().map(|(ix, _)| ix));
+        }
+
+        if self.rank.is_empty() {
+            passing.sort_unstable();
+        } else {
             let rank = &self.rank;
-            self.visible.sort_unstable_by_key(|&ix| rank[ix]);
+            passing.sort_unstable_by_key(|&ix| rank[ix]);
+        }
+        self.visible = passing;
+    }
+
+    /// Rebuilds the visible index after a bulk edit that can affect filters
+    /// or stack representatives (keywords, metadata, stacking).
+    pub fn refresh(&mut self) {
+        self.rebuild_index();
+        if self.visible_position(self.selected).is_none() {
+            if let Some(&first) = self.visible.first() {
+                self.selected = first;
+            }
         }
     }
 
@@ -301,6 +359,12 @@ impl Catalog {
     /// Adds or removes `index` from the visible list to match whether it
     /// currently passes every filter.
     fn sync_visibility(&mut self, index: usize) {
+        if !self.collapsed_stacks.is_empty() {
+            // Which member represents a collapsed stack can change with the
+            // edit, so rebuild rather than adjusting one entry.
+            self.rebuild_index();
+            return;
+        }
         let Some(asset) = self.assets.get(index) else {
             return;
         };
@@ -335,7 +399,45 @@ impl Catalog {
     }
 
     pub fn selected_asset(&self) -> Option<&Asset> {
-        self.assets.get(self.selected)
+        self.assets
+            .get(self.selected)
+            .filter(|asset| !asset.missing)
+    }
+
+    /// Indices of photos whose file is missing from disk.
+    pub fn missing_indices(&self) -> Vec<usize> {
+        self.assets
+            .iter()
+            .enumerate()
+            .filter(|(_, asset)| asset.missing)
+            .map(|(ix, _)| ix)
+            .collect()
+    }
+
+    /// Drops every photo at `paths` from the catalog, renumbering the
+    /// remaining assets so ids stay equal to their positions. Returns how
+    /// many were removed.
+    pub fn remove_assets(&mut self, paths: &HashSet<PathBuf>) -> usize {
+        if paths.is_empty() {
+            return 0;
+        }
+        let before = self.assets.len();
+        self.assets.retain(|asset| !paths.contains(&asset.path));
+        let removed = before - self.assets.len();
+        if removed == 0 {
+            return 0;
+        }
+        for (ix, asset) in self.assets.iter_mut().enumerate() {
+            asset.id = ix as u64;
+        }
+        let order = self.sort;
+        self.set_sort(order);
+        if self.assets.is_empty() {
+            self.selected = 0;
+        } else if self.visible_position(self.selected).is_none() {
+            self.selected = self.visible.first().copied().unwrap_or(0);
+        }
+        removed
     }
 
     /// Moves the selection to the next/previous visible asset, wrapping
@@ -437,7 +539,15 @@ impl Catalog {
         self.assign_color_label(index, state.color_label);
         if let Some(asset) = self.assets.get_mut(index) {
             asset.develop = state.develop;
+            asset.title = state.title.clone();
+            asset.caption = state.caption.clone();
+            asset.creator = state.creator.clone();
+            asset.copyright = state.copyright.clone();
+            asset.keywords = state.keywords.clone();
+            asset.stack_id = state.stack_id;
+            asset.stack_cover = state.stack_cover;
         }
+        self.refresh();
     }
 
     pub fn cycle_filter(&mut self) {
@@ -488,11 +598,66 @@ impl Catalog {
     pub fn counts(&self) -> CatalogCounts {
         self.counts
     }
+
+    // --- Stacks -------------------------------------------------------------
+
+    /// Every asset that belongs to stack `id`, in catalog order.
+    pub fn stack_members(&self, id: u64) -> Vec<usize> {
+        self.assets
+            .iter()
+            .enumerate()
+            .filter(|(_, asset)| asset.stack_id == Some(id))
+            .map(|(ix, _)| ix)
+            .collect()
+    }
+
+    pub fn stack_count(&self, id: u64) -> usize {
+        self.assets
+            .iter()
+            .filter(|asset| asset.stack_id == Some(id))
+            .count()
+    }
+
+    pub fn is_stack_collapsed(&self, id: u64) -> bool {
+        self.collapsed_stacks.contains(&id)
+    }
+
+    /// Collapses or expands stack `id`, rebuilding the visible list.
+    pub fn toggle_stack_collapsed(&mut self, id: u64) {
+        if !self.collapsed_stacks.remove(&id) {
+            self.collapsed_stacks.insert(id);
+        }
+        self.refresh();
+    }
+
+    /// Collapses an expanded stack and expands a collapsed one. Returns the
+    /// new collapsed state.
+    pub fn set_stack_collapsed(&mut self, id: u64, collapsed: bool) {
+        let changed = if collapsed {
+            self.collapsed_stacks.insert(id)
+        } else {
+            self.collapsed_stacks.remove(&id)
+        };
+        if changed {
+            self.refresh();
+        }
+    }
+
+    /// The highest stack id in use, or 0 when there are no stacks.
+    pub fn max_stack_id(&self) -> u64 {
+        self.assets
+            .iter()
+            .filter_map(|asset| asset.stack_id)
+            .max()
+            .unwrap_or(0)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CatalogCounts {
     pub total: usize,
+    /// Photos whose files could not be found during the last scan.
+    pub missing: usize,
     pub picked: usize,
     pub rejected: usize,
     pub unflagged: usize,
@@ -663,6 +828,79 @@ mod tests {
                 assert_index_consistent(&c);
             }
         }
+    }
+
+    #[test]
+    fn collapsed_stack_shows_its_cover() {
+        let mut c = catalog(4);
+        for ix in 0..3 {
+            c.assets[ix].stack_id = Some(7);
+        }
+        c.assets[1].stack_cover = true;
+        c.refresh();
+        assert_eq!(c.visible_indices(), &[0, 1, 2, 3]);
+        assert_eq!(c.stack_count(7), 3);
+
+        c.toggle_stack_collapsed(7);
+        assert!(c.is_stack_collapsed(7));
+        assert_eq!(c.visible_indices(), &[1, 3]);
+
+        c.selected = 2;
+        c.refresh();
+        // The hidden member hands the selection to a visible photo.
+        assert_eq!(c.selected, 1);
+
+        c.toggle_stack_collapsed(7);
+        assert_eq!(c.visible_indices(), &[0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn keyword_facet_and_search_include_metadata() {
+        let mut c = catalog(2);
+        c.assets[0].keywords = vec!["Travel".into(), "Landscape".into()];
+        c.assets[0].caption = "Sunset over the fjord".into();
+        c.assets[1].keywords = vec!["Portrait".into()];
+
+        let filters = FilterSet {
+            keyword: Some("travel".into()),
+            ..Default::default()
+        };
+        c.set_filters(filters);
+        assert_eq!(c.visible_indices(), &[0]);
+
+        c.set_filters(FilterSet {
+            search: "fjord".into(),
+            ..Default::default()
+        });
+        assert_eq!(c.visible_indices(), &[0]);
+
+        c.set_filters(FilterSet {
+            search: "portrait".into(),
+            ..Default::default()
+        });
+        assert_eq!(c.visible_indices(), &[1]);
+    }
+
+    #[test]
+    fn missing_assets_are_hidden_and_removable() {
+        let mut c = catalog(3);
+        c.assets[1].missing = true;
+        c.refresh();
+        assert_eq!(c.visible_indices(), &[0, 2]);
+        assert_eq!(c.counts().missing, 1);
+        assert_eq!(c.missing_indices(), vec![1]);
+        assert!(c.selected_asset().is_some());
+
+        c.selected = 1;
+        c.refresh();
+        assert_eq!(c.selected, 0);
+
+        let paths: HashSet<PathBuf> = [PathBuf::from("1.jpg")].into_iter().collect();
+        assert_eq!(c.remove_assets(&paths), 1);
+        assert_eq!(c.assets.len(), 2);
+        assert_eq!(c.assets[1].id, 1);
+        assert_eq!(c.counts().missing, 0);
+        assert_eq!(c.visible_indices(), &[0, 1]);
     }
 
     #[test]

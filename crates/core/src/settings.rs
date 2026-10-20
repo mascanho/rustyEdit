@@ -19,6 +19,153 @@ pub struct Settings {
     pub folders: FolderTreeSettings,
     pub filmstrip: FilmstripSettings,
     pub develop: DevelopPreferences,
+    pub grid: GridSettings,
+}
+
+// --- Grid -----------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GridSettings {
+    pub style: GridStyle,
+    pub aspect: GridAspect,
+    /// Fill the thumbnail area (cropping the photo) instead of fitting it.
+    pub crop_to_fill: bool,
+    pub spacing: GridSpacing,
+    /// Pick / reject / rotate buttons over a hovered card.
+    pub hover_controls: bool,
+    /// Date, camera and size under the file name (Detailed style).
+    pub show_details: bool,
+    /// Colour bar along the bottom edge of labelled cards.
+    pub show_label_bar: bool,
+    pub dim_rejected: bool,
+    pub tooltips: bool,
+}
+
+impl Default for GridSettings {
+    fn default() -> Self {
+        Self {
+            style: GridStyle::Detailed,
+            aspect: GridAspect::Landscape,
+            crop_to_fill: false,
+            spacing: GridSpacing::Normal,
+            hover_controls: true,
+            show_details: true,
+            show_label_bar: true,
+            dim_rejected: true,
+            tooltips: true,
+        }
+    }
+}
+
+/// How much each grid card shows around its thumbnail, from everything
+/// down to the bare photo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum GridStyle {
+    /// Rating strip on top, name and details underneath.
+    #[default]
+    Detailed,
+    /// Just the rating strip on top of the thumbnail.
+    Compact,
+    /// The thumbnail with small flag / label badges over it.
+    Minimal,
+    /// Only the photo; the selection outline is the sole chrome.
+    Bare,
+}
+
+impl GridStyle {
+    pub const ALL: [GridStyle; 4] = [
+        GridStyle::Detailed,
+        GridStyle::Compact,
+        GridStyle::Minimal,
+        GridStyle::Bare,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            GridStyle::Detailed => "Detailed",
+            GridStyle::Compact => "Compact",
+            GridStyle::Minimal => "Minimal",
+            GridStyle::Bare => "Bare",
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        Self::ALL.iter().position(|s| s == self).unwrap_or(0)
+    }
+
+    pub fn from_index(ix: usize) -> Self {
+        Self::ALL.get(ix).copied().unwrap_or_default()
+    }
+
+    pub fn next(&self) -> Self {
+        Self::from_index((self.index() + 1) % Self::ALL.len())
+    }
+}
+
+/// Card metadata for each style, in `GridStyle::ALL` order.
+pub static GRID_STYLE_CARDS: [CardOption; 4] = [
+    CardOption {
+        title: "Detailed",
+        description: "Rating, flag and label on top; name and details below.",
+        preview: CardPreview::Grid(GridStyle::Detailed),
+    },
+    CardOption {
+        title: "Compact",
+        description: "A slim rating strip over each thumbnail.",
+        preview: CardPreview::Grid(GridStyle::Compact),
+    },
+    CardOption {
+        title: "Minimal",
+        description: "Thumbnails with small flag and label badges.",
+        preview: CardPreview::Grid(GridStyle::Minimal),
+    },
+    CardOption {
+        title: "Bare",
+        description: "Just the photos. Details live in the tooltip.",
+        preview: CardPreview::Grid(GridStyle::Bare),
+    },
+];
+
+/// Shape of the thumbnail area in grid cards.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum GridAspect {
+    /// 4:3
+    #[default]
+    Landscape,
+    /// 3:2, like most camera sensors.
+    Classic,
+    Square,
+}
+
+impl GridAspect {
+    /// Thumbnail height as a fraction of its width.
+    pub fn height_ratio(&self) -> f32 {
+        match self {
+            GridAspect::Landscape => 0.75,
+            GridAspect::Classic => 2.0 / 3.0,
+            GridAspect::Square => 1.0,
+        }
+    }
+}
+
+/// Gap between grid cards.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum GridSpacing {
+    Tight,
+    #[default]
+    Normal,
+    Roomy,
+}
+
+impl GridSpacing {
+    pub fn gap(&self) -> f32 {
+        match self {
+            GridSpacing::Tight => 3.0,
+            GridSpacing::Normal => 10.0,
+            GridSpacing::Roomy => 18.0,
+        }
+    }
 }
 
 /// Bounds and step for the Grid card size, shared by Settings and the
@@ -494,6 +641,7 @@ pub struct CardOption {
 pub enum CardPreview {
     Layout(LayoutPreset),
     Filmstrip(FilmstripStyle),
+    Grid(GridStyle),
 }
 
 pub static SETTINGS_PAGES: &[SettingsPage] = &[
@@ -525,20 +673,126 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                         set: |s, v| s.library.auto_advance = v,
                     },
                 },
-                SettingItem {
-                    label: "Thumbnail size",
-                    description: "Width of each card in Grid view; the number of columns follows.",
-                    control: SettingControl::Stepper {
-                        min: GRID_CARD_MIN as i64,
-                        max: GRID_CARD_MAX as i64,
-                        step: GRID_CARD_STEP as i64,
-                        unit: " px",
-                        get: |s| s.library.grid_card_size as i64,
-                        set: |s, v| s.library.grid_card_size = v as u32,
-                    },
-                },
             ],
         }],
+    },
+    SettingsPage {
+        title: "Grid",
+        sections: &[
+            SettingsSection {
+                title: "Cards",
+                items: &[SettingItem {
+                    label: "Card style",
+                    description: "How much each card shows around its photo. \
+                                  Cycle through these anytime with J.",
+                    control: SettingControl::Cards {
+                        options: &GRID_STYLE_CARDS,
+                        get: |s| s.grid.style.index(),
+                        set: |s, ix| s.grid.style = GridStyle::from_index(ix),
+                    },
+                }],
+            },
+            SettingsSection {
+                title: "Thumbnails",
+                items: &[
+                    SettingItem {
+                        label: "Thumbnail size",
+                        description: "Width of each card; the number of columns follows.",
+                        control: SettingControl::Stepper {
+                            min: GRID_CARD_MIN as i64,
+                            max: GRID_CARD_MAX as i64,
+                            step: GRID_CARD_STEP as i64,
+                            unit: " px",
+                            get: |s| s.library.grid_card_size as i64,
+                            set: |s, v| s.library.grid_card_size = v as u32,
+                        },
+                    },
+                    SettingItem {
+                        label: "Shape",
+                        description: "Proportions of the thumbnail area.",
+                        control: SettingControl::Choice {
+                            options: &["4:3", "3:2", "Square"],
+                            get: |s| s.grid.aspect as usize,
+                            set: |s, ix| {
+                                s.grid.aspect = match ix {
+                                    1 => GridAspect::Classic,
+                                    2 => GridAspect::Square,
+                                    _ => GridAspect::Landscape,
+                                }
+                            },
+                        },
+                    },
+                    SettingItem {
+                        label: "Crop to fill",
+                        description: "Fill the whole thumbnail area, trimming the photo's edges.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.crop_to_fill,
+                            set: |s, v| s.grid.crop_to_fill = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Spacing",
+                        description: "Gap between cards.",
+                        control: SettingControl::Choice {
+                            options: &["Tight", "Normal", "Roomy"],
+                            get: |s| s.grid.spacing as usize,
+                            set: |s, ix| {
+                                s.grid.spacing = match ix {
+                                    0 => GridSpacing::Tight,
+                                    2 => GridSpacing::Roomy,
+                                    _ => GridSpacing::Normal,
+                                }
+                            },
+                        },
+                    },
+                ],
+            },
+            SettingsSection {
+                title: "Details",
+                items: &[
+                    SettingItem {
+                        label: "Hover controls",
+                        description: "Show pick, reject and rotate buttons over a hovered card.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.hover_controls,
+                            set: |s, v| s.grid.hover_controls = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Capture details",
+                        description: "Show date, camera and size under the name (Detailed style).",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show_details,
+                            set: |s, v| s.grid.show_details = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Colour label bar",
+                        description: "Run a bar in the label's colour along the card's bottom edge.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show_label_bar,
+                            set: |s, v| s.grid.show_label_bar = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Dim rejected photos",
+                        description: "Fade cards that are flagged as rejected.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.dim_rejected,
+                            set: |s, v| s.grid.dim_rejected = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Tooltips",
+                        description: "Show name, date, camera and keywords when hovering a card.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.tooltips,
+                            set: |s, v| s.grid.tooltips = v,
+                        },
+                    },
+                ],
+            },
+        ],
     },
     SettingsPage {
         title: "Layout",
@@ -743,6 +997,16 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grid_cards_match_styles_in_order() {
+        for (ix, style) in GridStyle::ALL.iter().enumerate() {
+            assert_eq!(style.index(), ix);
+            assert_eq!(GridStyle::from_index(ix), *style);
+            assert_eq!(GRID_STYLE_CARDS[ix].preview, CardPreview::Grid(*style));
+        }
+        assert_eq!(GridStyle::Bare.next(), GridStyle::Detailed);
+    }
 
     #[test]
     fn layout_cards_match_presets_in_order() {

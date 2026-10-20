@@ -42,9 +42,17 @@ pub enum Mode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextTarget {
     Album,
+    SmartCollection,
     NewCatalog,
     /// Live: every keystroke updates the library's text search.
     Search,
+    Title,
+    Caption,
+    Creator,
+    Copyright,
+    Keyword,
+    /// Renaming the original file of the selected photo.
+    Rename,
 }
 
 /// What the Library module's center area shows: the selected photo large
@@ -71,6 +79,8 @@ pub struct Workspace {
     pub(crate) catalog: Catalog,
     pub(crate) thumbnail_cache: Option<Arc<ThumbnailCache>>,
     pub(crate) status_message: Option<SharedString>,
+    /// Message to show once the next catalog scan finishes (e.g. "Restored…").
+    pub(crate) post_scan_message: Option<SharedString>,
     pub(crate) is_importing: bool,
     // Multi-selection, undo, compare and loupe zoom (see their modules).
     pub(crate) bottom_menu: Option<crate::size_menu::BottomMenu>,
@@ -90,14 +100,23 @@ pub struct Workspace {
     pub(crate) loupe_drag: Option<(gpui::Point<gpui::Pixels>, gpui::Point<gpui::Pixels>)>,
     pub(crate) loupe_full_paths: HashMap<u64, PathBuf>,
     pub(crate) loupe_full_loading: HashSet<u64>,
-    // Albums (see `albums.rs`).
+    // Albums and smart collections (see `albums.rs`).
     pub(crate) active_album: Option<u64>,
+    pub(crate) active_smart: Option<u64>,
+    /// Duplicate/similar groups, computed on demand (see `duplicates.rs`).
+    pub(crate) duplicate_groups: Option<Vec<rustyedit_core::DuplicateGroup>>,
+    pub(crate) duplicates_loading: bool,
     // The active catalog and the others available (see `catalogs.rs`).
     pub(crate) catalog_def: rustyedit_core::CatalogDef,
     pub(crate) catalog_list: Vec<rustyedit_core::CatalogDef>,
     pub(crate) catalog_menu_open: bool,
     /// The text field currently being typed into, if any.
     pub(crate) text_draft: Option<(TextTarget, String)>,
+    /// Asset index the rename draft applies to (the selection may move while
+    /// the filename is being typed).
+    pub(crate) rename_target: Option<usize>,
+    /// Set while a rescan should report added/removed/missing counts.
+    pub(crate) pending_sync_report: bool,
     /// The dock or filmstrip edge currently being dragged (see `resize.rs`).
     pub(crate) resizing: Option<crate::resize::ResizeTarget>,
     /// Pointer y and starting size when a relative drag began.
@@ -196,6 +215,7 @@ impl Workspace {
             catalog: Catalog::default(),
             thumbnail_cache: None,
             status_message: Some("Import a folder to get started.".into()),
+            post_scan_message: None,
             is_importing: false,
             bottom_menu: None,
             facets: Default::default(),
@@ -213,10 +233,15 @@ impl Workspace {
             loupe_full_paths: HashMap::new(),
             loupe_full_loading: HashSet::new(),
             active_album: None,
+            active_smart: None,
+            duplicate_groups: None,
+            duplicates_loading: false,
             catalog_def,
             catalog_list,
             catalog_menu_open: false,
             text_draft: None,
+            rename_target: None,
+            pending_sync_report: false,
             resizing: None,
             resize_anchor: (0.0, 0.0),
             info_visible: false,
@@ -373,14 +398,16 @@ impl Workspace {
 
     pub fn next_image(&mut self, _: &NextImage, _window: &mut Window, cx: &mut Context<Self>) {
         self.clear_selection();
-        if self.catalog.select_relative(1).is_some() {
+        if let Some(ix) = self.catalog.select_relative(1) {
+            self.selection_anchor = Some(ix);
             self.on_selection_changed(cx);
         }
     }
 
     pub fn prev_image(&mut self, _: &PrevImage, _window: &mut Window, cx: &mut Context<Self>) {
         self.clear_selection();
-        if self.catalog.select_relative(-1).is_some() {
+        if let Some(ix) = self.catalog.select_relative(-1) {
+            self.selection_anchor = Some(ix);
             self.on_selection_changed(cx);
         }
     }
@@ -750,8 +777,38 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::select_all))
             .on_action(cx.listener(Self::view_compare))
             .on_action(cx.listener(Self::view_survey))
+            .on_action(cx.listener(Self::stack_selected))
+            .on_action(cx.listener(Self::auto_stack))
+            .on_action(cx.listener(Self::unstack_selected))
+            .on_action(cx.listener(Self::toggle_stack))
+            .on_action(cx.listener(Self::find_duplicates))
+            .on_action(cx.listener(Self::delete_from_catalog))
+            .on_action(cx.listener(Self::delete_from_disk))
+            .on_action(cx.listener(Self::rename_photo))
+            .on_action(cx.listener(Self::rotate_left))
+            .on_action(cx.listener(Self::rotate_right))
+            .on_action(cx.listener(Self::reveal_in_finder))
+            .on_action(cx.listener(Self::sync_folders_action))
+            .on_action(cx.listener(Self::restore_removed_photos))
+            .on_action(cx.listener(Self::backup_catalog_action))
+            .on_action(cx.listener(Self::restore_catalog_action))
+            .on_action(cx.listener(Self::optimize_catalog_action))
+            .on_action(cx.listener(Self::clear_cache_action))
             .on_action(cx.listener(Self::next_image))
             .on_action(cx.listener(Self::prev_image))
+            .on_action(cx.listener(Self::select_up))
+            .on_action(cx.listener(Self::select_down))
+            .on_action(cx.listener(Self::select_first))
+            .on_action(cx.listener(Self::select_last))
+            .on_action(cx.listener(Self::select_page_up))
+            .on_action(cx.listener(Self::select_page_down))
+            .on_action(cx.listener(Self::extend_left))
+            .on_action(cx.listener(Self::extend_right))
+            .on_action(cx.listener(Self::extend_up))
+            .on_action(cx.listener(Self::extend_down))
+            .on_action(cx.listener(Self::extend_first))
+            .on_action(cx.listener(Self::extend_last))
+            .on_action(cx.listener(Self::cycle_grid_style))
             .on_action(cx.listener(Self::flag_pick))
             .on_action(cx.listener(Self::flag_reject))
             .on_action(cx.listener(Self::flag_unflag))

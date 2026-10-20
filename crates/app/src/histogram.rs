@@ -110,7 +110,11 @@ impl Workspace {
     /// render it directly, otherwise the generated large preview, falling
     /// back to the small thumbnail while that is still being produced.
     pub(crate) fn loupe_source(&self, asset: &rustyedit_core::Asset) -> std::path::PathBuf {
-        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(&asset.path, asset.orientation) {
+        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(
+            &asset.path,
+            asset.orientation,
+            asset.rotation_quarters(),
+        ) {
             return asset.path.clone();
         }
         self.loupe_paths
@@ -132,16 +136,24 @@ impl Workspace {
         let Some(cache) = self.thumbnail_cache.clone() else {
             return;
         };
-        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(&asset.path, asset.orientation)
-            || self.loupe_paths.contains_key(&asset.id)
+        let quarters = asset.rotation_quarters();
+        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(
+            &asset.path,
+            asset.orientation,
+            quarters,
+        ) || self.loupe_paths.contains_key(&asset.id)
             || !self.loupe_loading.insert(asset.id)
         {
             return;
         }
         let (asset_id, path) = (asset.id, asset.path.clone());
-        let job = cx
-            .background_executor()
-            .spawn(async move { cache.ensure_loupe(&path).ok() });
+        let job = cx.background_executor().spawn(async move {
+            if quarters == 0 {
+                cache.ensure_loupe(&path).ok()
+            } else {
+                cache.ensure_loupe_rotated(&path, quarters).ok()
+            }
+        });
         cx.spawn(async move |this, cx| {
             let result = job.await;
             this.update(cx, |this, cx| {
@@ -165,16 +177,24 @@ impl Workspace {
         let Some(cache) = self.thumbnail_cache.clone() else {
             return;
         };
-        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(&asset.path, asset.orientation)
-            || self.loupe_full_paths.contains_key(&asset.id)
+        let quarters = asset.rotation_quarters();
+        if !rustyedit_io::ThumbnailCache::needs_loupe_preview(
+            &asset.path,
+            asset.orientation,
+            quarters,
+        ) || self.loupe_full_paths.contains_key(&asset.id)
             || !self.loupe_full_loading.insert(asset.id)
         {
             return;
         }
         let (asset_id, path) = (asset.id, asset.path.clone());
-        let job = cx
-            .background_executor()
-            .spawn(async move { cache.ensure_full(&path).ok() });
+        let job = cx.background_executor().spawn(async move {
+            if quarters == 0 {
+                cache.ensure_full(&path).ok()
+            } else {
+                cache.ensure_full_rotated(&path, quarters).ok()
+            }
+        });
         cx.spawn(async move |this, cx| {
             let result = job.await;
             this.update(cx, |this, cx| {

@@ -1,6 +1,6 @@
 use gpui::{
-    div, img, prelude::*, px, relative, uniform_list, Animation, AnimationExt, AnyElement, App,
-    ClickEvent, Context, ObjectFit, SharedString, Window,
+    div, img, prelude::*, px, relative, Animation, AnimationExt, AnyElement, App, ClickEvent,
+    Context, ObjectFit, SharedString, Window,
 };
 use rustyedit_core::{
     settings::{DockSide, PanelKind},
@@ -14,16 +14,6 @@ use crate::{
     workspace::{LibraryView, Workspace},
 };
 
-/// Total height of one grid row, including the thumbnail area and the
-/// flag/rating footer strip below it.
-const FOOTER_HEIGHT: f32 = 26.0;
-/// Card borders (2px each side) that sit outside the thumbnail + footer.
-const CARD_BORDER: f32 = 4.0;
-/// Thumbnail area height as a fraction of the card's width.
-const THUMB_ASPECT: f32 = 0.75;
-/// Horizontal padding of a grid row (`px_3`) on each side.
-const ROW_PAD_X: f32 = 12.0;
-const ROW_GAP: f32 = 10.0;
 const TOOLBAR_HEIGHT: f32 = 32.0;
 
 impl Workspace {
@@ -63,7 +53,8 @@ impl Workspace {
                             LibraryView::Compare => self.render_compare(cx),
                             LibraryView::Survey => self.render_survey(cx),
                         })
-                        .children(self.render_search_chip(cx)),
+                        .children(self.render_search_chip(cx))
+                        .children(self.render_rename_chip(cx)),
                 )
                 .child(self.render_cull_bar(cx))
         };
@@ -357,7 +348,10 @@ impl Workspace {
         )
         .into_any_element();
 
-        vec![self.render_folder_tree(cx), catalog, filter]
+        let mut sections = vec![self.render_folder_tree(cx), catalog];
+        sections.extend(self.missing_sections(cx));
+        sections.push(filter);
+        sections
     }
 
     /// Histogram ("Main") and the selected photo's metadata.
@@ -385,10 +379,12 @@ impl Workspace {
                         info_row(&theme, "File", asset.file_name()),
                         info_row(&theme, "Size", dimensions),
                         info_row(&theme, "Location", location),
+                        self.file_actions_row(cx),
                     ],
                 )
                 .into_any_element(),
             );
+            metadata.extend(self.metadata_sections(cx));
 
             let entity = cx.entity();
             let flags = div()
@@ -642,163 +638,6 @@ impl Workspace {
             })
             .max()
             .unwrap_or(260) as f32
-    }
-
-    fn render_grid(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        // The chosen card size is a target: the column count is however many
-        // of that size fit between the docks.
-        let arrangement = self.settings.layout.preset.arrangement();
-        let center_width = f32::from(window.viewport_size().width)
-            - self.dock_width(DockSide::Left, arrangement.left)
-            - self.dock_width(DockSide::Right, arrangement.right);
-        let target = (self.settings.library.grid_card_size as f32).max(48.0);
-        let usable = center_width - 2.0 * ROW_PAD_X;
-        let columns = (((usable + ROW_GAP) / (target + ROW_GAP)).floor() as usize).max(1);
-        // Spread the leftover pixels across the columns so the grid fills
-        // the width evenly. The width depends on the column count, never on
-        // how many photos the last row holds, so a lone card keeps its size.
-        let card_width = ((usable - ROW_GAP * (columns as f32 - 1.0)) / columns as f32)
-            .floor()
-            .max(48.0);
-        self.grid_columns_cache.set(columns);
-        let thumb_height = (card_width * THUMB_ASPECT).floor();
-        let row_height = thumb_height + FOOTER_HEIGHT + CARD_BORDER;
-        let visible_count = self.catalog.visible_indices().len();
-        let row_count = visible_count.div_ceil(columns);
-
-        div()
-            .id("library-body")
-            .flex_1()
-            .min_h(px(0.0))
-            .min_w(px(0.0))
-            .overflow_hidden()
-            .child(
-                uniform_list(
-                    "library-grid",
-                    row_count,
-                    cx.processor(move |this, range: std::ops::Range<usize>, _window, cx| {
-                        let theme = this.theme;
-                        let visible = this.catalog.visible_indices();
-                        let selected = this.catalog.selected;
-                        let entity = cx.entity();
-
-                        range
-                            .map(|row| {
-                                let start = row * columns;
-                                let end = (start + columns).min(visible.len());
-
-                                let cells = (start..end)
-                                    .map(|i| {
-                                        let asset_ix = visible[i];
-                                        let asset = &this.catalog.assets[asset_ix];
-                                        let is_selected = asset_ix == selected;
-                                        let in_multi = this.in_selection(asset_ix);
-                                        let entity = entity.clone();
-
-                                        let thumb: AnyElement = match asset.thumbnail_path.as_ref()
-                                        {
-                                            Some(path) => img(path.clone())
-                                                .object_fit(ObjectFit::Contain)
-                                                .size_full()
-                                                .into_any_element(),
-                                            None => div()
-                                                .size_full()
-                                                .flex()
-                                                .items_center()
-                                                .justify_center()
-                                                .text_color(theme.text_faint)
-                                                .text_xs()
-                                                .child("…")
-                                                .into_any_element(),
-                                        };
-
-                                        div()
-                                            .id(("grid-cell", asset_ix))
-                                            .w(px(card_width))
-                                            .flex_shrink_0()
-                                            .h(px(row_height))
-                                            .flex()
-                                            .flex_col()
-                                            .rounded_md()
-                                            .overflow_hidden()
-                                            .bg(theme.surface)
-                                            .border_2()
-                                            .border_color(if is_selected {
-                                                theme.accent
-                                            } else if in_multi {
-                                                theme.accent.opacity(0.55)
-                                            } else {
-                                                theme.surface
-                                            })
-                                            .when(in_multi && !is_selected, |el| {
-                                                el.bg(theme.accent_muted.opacity(0.5))
-                                            })
-                                            .cursor_pointer()
-                                            .child(
-                                                div()
-                                                    .h(px(thumb_height))
-                                                    .w_full()
-                                                    .flex()
-                                                    .items_center()
-                                                    .justify_center()
-                                                    .bg(theme.background)
-                                                    .child(thumb),
-                                            )
-                                            .child(
-                                                div()
-                                                    .flex()
-                                                    .flex_row()
-                                                    .items_center()
-                                                    .justify_between()
-                                                    .px_2()
-                                                    .flex_1()
-                                                    .min_w(px(0.0))
-                                                    .overflow_hidden()
-                                                    .child(rustyedit_ui::flag_badge(
-                                                        asset.flag, &theme,
-                                                    ))
-                                                    .child(rustyedit_ui::rating_stars(
-                                                        format!("grid-rating-{asset_ix}"),
-                                                        asset.rating,
-                                                        &theme,
-                                                        9.0,
-                                                        None::<fn(u8, &mut Window, &mut gpui::App)>,
-                                                    )),
-                                            )
-                                            .on_click(move |event: &ClickEvent, _window, cx| {
-                                                entity.update(cx, |this, cx| {
-                                                    this.click_select(
-                                                        asset_ix,
-                                                        event.modifiers(),
-                                                        cx,
-                                                    );
-                                                    if event.click_count() >= 2 {
-                                                        this.enter_develop(cx);
-                                                    }
-                                                });
-                                            })
-                                            .into_any_element()
-                                    })
-                                    .collect::<Vec<_>>();
-
-                                div()
-                                    .flex()
-                                    .flex_row()
-                                    .w_full()
-                                    .gap(px(ROW_GAP))
-                                    .px_3()
-                                    .pb(px(ROW_GAP))
-                                    .children(cells)
-                                    .into_any_element()
-                            })
-                            .collect()
-                    }),
-                )
-                .track_scroll(self.grid_scroll.clone())
-                .pt_3()
-                .size_full(),
-            )
-            .into_any_element()
     }
 }
 

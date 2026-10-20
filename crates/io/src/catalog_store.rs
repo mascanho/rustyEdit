@@ -68,6 +68,22 @@ fn save_folder(catalog: &Catalog) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Saved photos whose originals are no longer on disk. Returned as assets
+/// (marked `missing`) so they can stay listed in the catalog for relocation
+/// or explicit removal instead of silently disappearing.
+pub fn missing_assets(saved: &Catalog) -> Vec<Asset> {
+    saved
+        .assets
+        .iter()
+        .filter(|asset| !asset.path.exists())
+        .cloned()
+        .map(|mut asset| {
+            asset.missing = true;
+            asset
+        })
+        .collect()
+}
+
 /// Carries flags, ratings, colour labels and develop settings from a previously saved
 /// catalog onto a freshly rescanned asset list (matched by file path), so
 /// re-opening a folder never loses prior culling or edit work even if files
@@ -85,6 +101,15 @@ pub fn merge_saved_state(fresh: &mut [Asset], saved: &Catalog) {
             asset.rating = previous.rating;
             asset.color_label = previous.color_label;
             asset.develop = previous.develop;
+            asset.title = previous.title.clone();
+            asset.caption = previous.caption.clone();
+            asset.creator = previous.creator.clone();
+            asset.copyright = previous.copyright.clone();
+            asset.keywords = previous.keywords.clone();
+            asset.stack_id = previous.stack_id;
+            asset.stack_cover = previous.stack_cover;
+            asset.content_hash = previous.content_hash;
+            asset.phash = previous.phash;
             asset.history = previous.history.clone();
             // Remembered so reopening never has to re-read every file.
             asset.width = previous.width;
@@ -92,5 +117,38 @@ pub fn merge_saved_state(fresh: &mut [Asset], saved: &Catalog) {
             asset.orientation = previous.orientation;
             asset.meta = previous.meta.clone();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_assets_flags_only_vanished_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "rustyedit-missing-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let present = dir.join("present.jpg");
+        std::fs::write(&present, b"x").unwrap();
+        let gone = dir.join("gone.jpg");
+
+        let saved = Catalog::new(
+            dir.clone(),
+            vec![Asset::new(0, present.clone()), Asset::new(1, gone.clone())],
+        );
+        let missing = missing_assets(&saved);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].path, gone);
+        assert!(missing[0].missing);
+        assert!(missing.iter().all(|asset| asset.path != present));
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

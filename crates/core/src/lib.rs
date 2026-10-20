@@ -6,8 +6,10 @@ mod albums;
 mod asset;
 mod catalog;
 mod catalog_def;
+mod collections;
 mod color_label;
 mod develop;
+mod duplicates;
 mod export;
 mod filters;
 mod flag;
@@ -21,8 +23,13 @@ pub use albums::{Album, Albums};
 pub use asset::{Asset, AssetState, PhotoMeta};
 pub use catalog::{Catalog, CatalogCounts, FilterMode, RatingFilter, SortKey, SortOrder};
 pub use catalog_def::CatalogDef;
+pub use collections::{default_keyword_sets, KeywordSet, SmartCollection, SmartCollections};
 pub use color_label::ColorLabel;
 pub use develop::{Adjustment, DevelopSettings};
+pub use duplicates::{
+    find_duplicates, find_duplicates_in, hamming, DuplicateGroup, DuplicateKind, PhotoHash,
+    SIMILAR_HAMMING,
+};
 pub use export::{ExportFormat, ExportOptions, ExportScope, ExportSize};
 pub use filters::{FilterSet, FocalBand, IsoBand};
 pub use flag::Flag;

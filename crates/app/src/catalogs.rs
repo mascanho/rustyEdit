@@ -90,8 +90,16 @@ impl Workspace {
     }
 
     fn remove_folder_from_catalog(&mut self, folder: std::path::PathBuf, cx: &mut Context<Self>) {
+        let label = folder
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| folder.display().to_string());
         self.catalog_def.remove_folder(&folder);
         self.save_catalog_def();
+        self.post_scan_message = Some(
+            format!("Removed \u{201C}{label}\u{201D} from this catalog; files were not deleted.")
+                .into(),
+        );
         self.open_catalog(None, cx);
     }
 

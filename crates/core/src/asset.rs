@@ -45,12 +45,19 @@ fn upright() -> u8 {
 }
 
 /// Everything about a photo the user can change and undo.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AssetState {
     pub flag: Flag,
     pub rating: Rating,
     pub color_label: ColorLabel,
     pub develop: DevelopSettings,
+    pub title: String,
+    pub caption: String,
+    pub creator: String,
+    pub copyright: String,
+    pub keywords: Vec<String>,
+    pub stack_id: Option<u64>,
+    pub stack_cover: bool,
 }
 
 /// A single photo known to the catalog.
@@ -72,10 +79,39 @@ pub struct Asset {
     pub develop: DevelopSettings,
     #[serde(default)]
     pub meta: PhotoMeta,
+    /// User-editable descriptive metadata. Defaulted so catalogs saved before
+    /// these fields existed still load.
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub caption: String,
+    #[serde(default)]
+    pub creator: String,
+    #[serde(default)]
+    pub copyright: String,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    /// Photos sharing a stack id belong to one stack; `stack_cover` marks the
+    /// representative used when the stack is collapsed.
+    #[serde(default)]
+    pub stack_id: Option<u64>,
+    #[serde(default)]
+    pub stack_cover: bool,
+    /// Sampled file-content hash, for exact-duplicate detection.
+    #[serde(default)]
+    pub content_hash: u64,
+    /// 64-bit difference hash (dHash) of the thumbnail, for similar-photo
+    /// detection.
+    #[serde(default)]
+    pub phash: u64,
     /// Every change made to this photo, oldest first. Defaulted so catalogs
     /// saved before history existed still load.
     #[serde(default)]
     pub history: Vec<HistoryEntry>,
+    /// Set when the file recorded in the catalog no longer exists on disk.
+    /// Runtime-only: it is recomputed on every scan, so it is never saved.
+    #[serde(skip)]
+    pub missing: bool,
 }
 
 impl Asset {
@@ -92,8 +128,47 @@ impl Asset {
             color_label: ColorLabel::default(),
             develop: DevelopSettings::default(),
             meta: PhotoMeta::default(),
+            title: String::new(),
+            caption: String::new(),
+            creator: String::new(),
+            copyright: String::new(),
+            keywords: Vec::new(),
+            stack_id: None,
+            stack_cover: false,
+            content_hash: 0,
+            phash: 0,
             history: Vec::new(),
+            missing: false,
         }
+    }
+
+    /// How many clockwise 90-degree turns the develop rotation represents.
+    pub fn rotation_quarters(&self) -> u8 {
+        (((self.develop.rotation_degrees / 90.0).round() as i32).rem_euclid(4)) as u8
+    }
+
+    /// Adds `keyword` unless the photo already has it (case-insensitively).
+    /// Returns whether it was added.
+    pub fn add_keyword(&mut self, keyword: &str) -> bool {
+        let keyword = keyword.trim();
+        if keyword.is_empty()
+            || self
+                .keywords
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(keyword))
+        {
+            return false;
+        }
+        self.keywords.push(keyword.to_string());
+        true
+    }
+
+    /// Removes `keyword` (case-insensitively). Returns whether it was present.
+    pub fn remove_keyword(&mut self, keyword: &str) -> bool {
+        let before = self.keywords.len();
+        self.keywords
+            .retain(|existing| !existing.eq_ignore_ascii_case(keyword.trim()));
+        self.keywords.len() != before
     }
 
     /// Logs a change to this photo (see [`HistoryEntry`]).
@@ -108,6 +183,13 @@ impl Asset {
             rating: self.rating,
             color_label: self.color_label,
             develop: self.develop,
+            title: self.title.clone(),
+            caption: self.caption.clone(),
+            creator: self.creator.clone(),
+            copyright: self.copyright.clone(),
+            keywords: self.keywords.clone(),
+            stack_id: self.stack_id,
+            stack_cover: self.stack_cover,
         }
     }
 

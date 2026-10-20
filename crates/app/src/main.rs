@@ -8,20 +8,27 @@ mod catalogs;
 mod compare;
 mod cull_bar;
 mod develop;
+mod duplicates;
 mod export;
+mod file_ops;
 mod file_tree;
 mod filmstrip;
 mod filters_panel;
+mod grid;
 mod histogram;
 mod history_panel;
 mod import;
 mod info_overlay;
+mod keywords;
 mod library;
+mod maintenance;
+mod metadata_panel;
 mod rail;
 mod resize;
 mod selection;
 mod settings_view;
 mod size_menu;
+mod stacks;
 mod undo;
 mod wheel_zoom;
 mod workspace;
@@ -32,10 +39,17 @@ use gpui::{
 };
 
 use actions::{
-    CloseSettings, CycleBackground, CycleFilter, CycleLayout, FlagPick, FlagReject, FlagUnflag,
+    AutoStack, BackupCatalog, ClearCache, CloseSettings, CycleBackground, CycleFilter, CycleLayout,
+    DeleteFromCatalog, DeleteFromDisk, FindDuplicates, FlagPick, FlagReject, FlagUnflag,
     FocusSearch, GoDevelop, GoExport, GoLibrary, ImportFolder, LabelBlue, LabelGreen, LabelRed,
-    LabelYellow, NextImage, OpenSettings, PrevImage, Quit, Rating0, Rating1, Rating2, Rating3,
-    Rating4, Rating5, Redo, SelectAll, ToggleInfo, ToggleZoom, Undo, ViewCompare, ViewSurvey,
+    LabelYellow, NextImage, OpenSettings, OptimizeCatalog, PrevImage, Quit, Rating0, Rating1,
+    Rating2, Rating3, Rating4, Rating5, Redo, RenamePhoto, RestoreCatalog, RestoreRemoved,
+    RevealInFinder, RotateLeft, RotateRight, SelectAll, StackSelected, SyncFolders, ToggleInfo,
+    ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
+};
+use actions::{
+    CycleGridStyle, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp, SelectDown,
+    SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
 };
 use workspace::Workspace;
 
@@ -48,6 +62,18 @@ fn main() {
             KeyBinding::new("cmd-o", ImportFolder, Some(KEY_CONTEXT)),
             KeyBinding::new("right", NextImage, Some(KEY_CONTEXT)),
             KeyBinding::new("left", PrevImage, Some(KEY_CONTEXT)),
+            KeyBinding::new("up", SelectUp, Some(KEY_CONTEXT)),
+            KeyBinding::new("down", SelectDown, Some(KEY_CONTEXT)),
+            KeyBinding::new("home", SelectFirst, Some(KEY_CONTEXT)),
+            KeyBinding::new("end", SelectLast, Some(KEY_CONTEXT)),
+            KeyBinding::new("pageup", SelectPageUp, Some(KEY_CONTEXT)),
+            KeyBinding::new("pagedown", SelectPageDown, Some(KEY_CONTEXT)),
+            KeyBinding::new("shift-left", ExtendLeft, Some(KEY_CONTEXT)),
+            KeyBinding::new("shift-right", ExtendRight, Some(KEY_CONTEXT)),
+            KeyBinding::new("shift-up", ExtendUp, Some(KEY_CONTEXT)),
+            KeyBinding::new("shift-down", ExtendDown, Some(KEY_CONTEXT)),
+            KeyBinding::new("shift-home", ExtendFirst, Some(KEY_CONTEXT)),
+            KeyBinding::new("shift-end", ExtendLast, Some(KEY_CONTEXT)),
             KeyBinding::new("p", FlagPick, Some(KEY_CONTEXT)),
             KeyBinding::new("x", FlagReject, Some(KEY_CONTEXT)),
             KeyBinding::new("u", FlagUnflag, Some(KEY_CONTEXT)),
@@ -69,6 +95,7 @@ fn main() {
             KeyBinding::new("z", ToggleZoom, Some(KEY_CONTEXT)),
             KeyBinding::new("i", ToggleInfo, Some(KEY_CONTEXT)),
             KeyBinding::new("b", CycleBackground, Some(KEY_CONTEXT)),
+            KeyBinding::new("j", CycleGridStyle, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-f", FocusSearch, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-z", Undo, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-shift-z", Redo, Some(KEY_CONTEXT)),
@@ -77,20 +104,64 @@ fn main() {
             KeyBinding::new("n", ViewSurvey, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-,", OpenSettings, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-shift-l", CycleLayout, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-g", StackSelected, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-shift-g", AutoStack, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-shift-u", Unstack, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-shift-k", ToggleStack, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-shift-d", FindDuplicates, Some(KEY_CONTEXT)),
+            KeyBinding::new("backspace", DeleteFromCatalog, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-backspace", DeleteFromDisk, Some(KEY_CONTEXT)),
+            KeyBinding::new("f2", RenamePhoto, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-[", RotateLeft, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-]", RotateRight, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-shift-o", RevealInFinder, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-shift-r", SyncFolders, Some(KEY_CONTEXT)),
             KeyBinding::new("escape", CloseSettings, Some("SettingsModal")),
         ]);
 
         cx.on_action(|_: &Quit, cx| cx.quit());
 
-        cx.set_menus(vec![Menu {
-            name: "RustyEdit".into(),
-            items: vec![
-                MenuItem::action("Settings…", OpenSettings),
-                MenuItem::action("Next Layout", CycleLayout),
-                MenuItem::separator(),
-                MenuItem::action("Quit RustyEdit", Quit),
-            ],
-        }]);
+        cx.set_menus(vec![
+            Menu {
+                name: "RustyEdit".into(),
+                items: vec![
+                    MenuItem::action("Settings…", OpenSettings),
+                    MenuItem::action("Next Layout", CycleLayout),
+                    MenuItem::separator(),
+                    MenuItem::action("Quit RustyEdit", Quit),
+                ],
+            },
+            Menu {
+                name: "Photo".into(),
+                items: vec![
+                    MenuItem::action("Reveal in Finder", RevealInFinder),
+                    MenuItem::action("Rename Photo…", RenamePhoto),
+                    MenuItem::action("Rotate Left", RotateLeft),
+                    MenuItem::action("Rotate Right", RotateRight),
+                    MenuItem::separator(),
+                    MenuItem::action("Remove from Catalog", DeleteFromCatalog),
+                    MenuItem::action("Move to Trash…", DeleteFromDisk),
+                    MenuItem::separator(),
+                    MenuItem::action("Stack Selected Photos", StackSelected),
+                    MenuItem::action("Auto-stack by Capture Time", AutoStack),
+                    MenuItem::action("Unstack", Unstack),
+                    MenuItem::action("Collapse/Expand Stack", ToggleStack),
+                    MenuItem::action("Find Duplicates…", FindDuplicates),
+                ],
+            },
+            Menu {
+                name: "Catalog".into(),
+                items: vec![
+                    MenuItem::action("Synchronize Folders", SyncFolders),
+                    MenuItem::action("Restore Removed Photos", RestoreRemoved),
+                    MenuItem::separator(),
+                    MenuItem::action("Back Up Catalog…", BackupCatalog),
+                    MenuItem::action("Restore Catalog from Backup…", RestoreCatalog),
+                    MenuItem::action("Optimize Catalog", OptimizeCatalog),
+                    MenuItem::action("Clear Thumbnail & Preview Cache", ClearCache),
+                ],
+            },
+        ]);
 
         let bounds = Bounds::centered(None, size(px(1440.0), px(900.0)), cx);
 

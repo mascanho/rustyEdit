@@ -180,7 +180,10 @@ impl Workspace {
         let viewport = self.filmstrip_viewport_width() as f64;
         let frame_px = self.film_frame_width();
         let frame_width = frame_px as f64;
-        let count = self.catalog.assets.len();
+        // Show the same photos as the grid: filters and collapsed stacks
+        // apply to the filmstrip too.
+        let visible = self.catalog.visible_indices();
+        let count = visible.len();
 
         let first = ((scroll_x / frame_width).floor() as usize)
             .saturating_sub(OVERSCAN_FRAMES)
@@ -191,11 +194,12 @@ impl Workspace {
         let frames: Vec<AnyElement> = (first..last)
             .map(|ix| {
                 let entity = entity.clone();
+                let asset_ix = visible[ix];
                 let left = (ix as f64 * frame_width - scroll_x) as f32;
                 film_frame(
-                    ix,
-                    &self.catalog.assets[ix],
-                    ix == selected,
+                    asset_ix,
+                    &self.catalog.assets[asset_ix],
+                    asset_ix == selected,
                     &theme,
                     &look,
                     prefs,
@@ -205,7 +209,7 @@ impl Workspace {
                 .top_0()
                 .left(px(left))
                 .on_click(move |_, _window, cx| {
-                    entity.update(cx, |this, cx| this.select_asset(ix, cx));
+                    entity.update(cx, |this, cx| this.select_asset(asset_ix, cx));
                 })
                 .into_any_element()
             })
@@ -281,7 +285,7 @@ impl Workspace {
     }
 
     fn filmstrip_max_scroll(&self) -> f64 {
-        let content = self.catalog.assets.len() as f64 * self.film_frame_width() as f64;
+        let content = self.catalog.visible_indices().len() as f64 * self.film_frame_width() as f64;
         (content - self.filmstrip_viewport_width() as f64).max(0.0)
     }
 
@@ -293,9 +297,12 @@ impl Workspace {
 
     /// Scrolls the minimum amount needed to bring frame `ix` fully into view.
     pub(crate) fn reveal_in_filmstrip(&mut self, ix: usize) {
+        let Some(position) = self.catalog.visible_position(ix) else {
+            return;
+        };
         let frame_width = self.film_frame_width() as f64;
         let viewport = self.filmstrip_viewport_width() as f64;
-        let left = ix as f64 * frame_width;
+        let left = position as f64 * frame_width;
         let right = left + frame_width;
 
         if left < self.filmstrip_scroll_x {

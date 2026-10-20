@@ -2,10 +2,12 @@
 //! type, year, ISO and focal-length bands, edited state, and text search.
 //! Each facet is single-choice; all active facets must match.
 
+use serde::{Deserialize, Serialize};
+
 use crate::{asset::Asset, color_label::ColorLabel};
 
 /// Sensitivity bands, since exact ISO values are too many to list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum IsoBand {
     /// ISO 400 and below.
     Low,
@@ -46,7 +48,7 @@ impl IsoBand {
 }
 
 /// Focal-length bands (as marked on the lens, not 35mm-equivalent).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FocalBand {
     /// Under 35 mm.
     Wide,
@@ -80,7 +82,7 @@ impl FocalBand {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FilterSet {
     /// `Some(ColorLabel::None)` means "no label".
     pub label: Option<ColorLabel>,
@@ -93,8 +95,12 @@ pub struct FilterSet {
     pub focal: Option<FocalBand>,
     /// `Some(true)` = has Develop edits, `Some(false)` = untouched.
     pub edited: Option<bool>,
-    /// Free text; every word must appear in the file name, camera, lens or
-    /// file type.
+    /// One keyword that every visible photo must carry (matched
+    /// case-insensitively).
+    pub keyword: Option<String>,
+    /// Free text; every word must appear in the file name or in the photo's
+    /// metadata (camera, lens, file type, title, caption, creator, copyright,
+    /// keywords).
     pub search: String,
 }
 
@@ -110,6 +116,7 @@ impl FilterSet {
             self.iso.is_some(),
             self.focal.is_some(),
             self.edited.is_some(),
+            self.keyword.is_some(),
             !self.search.trim().is_empty(),
         ]
         .into_iter()
@@ -167,14 +174,28 @@ impl FilterSet {
                 return false;
             }
         }
+        if let Some(keyword) = &self.keyword {
+            if !asset
+                .keywords
+                .iter()
+                .any(|k| k.eq_ignore_ascii_case(keyword))
+            {
+                return false;
+            }
+        }
         let query = self.search.trim();
         if !query.is_empty() {
             let haystack = format!(
-                "{} {} {} {}",
+                "{} {} {} {} {} {} {} {} {}",
                 asset.file_name(),
                 asset.meta.camera,
                 asset.meta.lens,
-                asset.kind()
+                asset.kind(),
+                asset.title,
+                asset.caption,
+                asset.creator,
+                asset.copyright,
+                asset.keywords.join(" ")
             )
             .to_lowercase();
             if !query

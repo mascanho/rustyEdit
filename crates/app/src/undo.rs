@@ -49,7 +49,7 @@ impl Workspace {
                     && top.changes[0].0 == changes[0].0
                     && top.at.elapsed() < COALESCE
                 {
-                    top.changes[0].2 = changes[0].2;
+                    top.changes[0].2 = changes[0].2.clone();
                     top.at = Instant::now();
                     // Dragged back to where it started: nothing to undo.
                     if top.changes[0].1 == top.changes[0].2 {
@@ -99,6 +99,20 @@ impl Workspace {
             self.catalog.restore_state(*ix, state);
         }
         self.mark_catalog_dirty(cx);
+
+        // Rotation is baked into the cached thumbnail, so undo/redo of a
+        // rotate has to rebuild those previews as well.
+        let rotated: Vec<usize> = entry
+            .changes
+            .iter()
+            .filter(|(_, before, after)| {
+                before.develop.rotation_degrees != after.develop.rotation_degrees
+            })
+            .map(|(ix, ..)| *ix)
+            .collect();
+        if !rotated.is_empty() {
+            self.refresh_asset_thumbnails(&rotated, cx);
+        }
 
         // Take the user to what changed so the undo is visible.
         if let Some(&(ix, ..)) = entry.changes.first() {

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     path::PathBuf,
     sync::{atomic::AtomicUsize, Arc},
     time::Duration,
@@ -70,9 +71,14 @@ impl Workspace {
         let folders = self.catalog_def.folders.clone();
         if folders.is_empty() {
             self.install_catalog(Catalog::default(), self.thumbnail_cache.clone(), None, cx);
+            self.pending_sync_report = false;
+            self.post_scan_message = None;
             self.status_message = Some("This catalog is empty \u{2014} import a folder.".into());
             return;
         }
+        let excluded: HashSet<PathBuf> = self.catalog_def.excluded.iter().cloned().collect();
+        let before_paths: HashSet<PathBuf> =
+            self.catalog.assets.iter().map(|a| a.path.clone()).collect();
         self.is_importing = true;
         self.status_message = Some(format!("Scanning {}…", self.catalog_def.name).into());
         if let Some(folder) = folders.last() {
@@ -88,10 +94,17 @@ impl Workspace {
                     let mut all = Vec::new();
                     for folder in &scan_folders {
                         let mut assets = rustyedit_io::scan_folder(folder);
+                        assets.retain(|asset| !excluded.contains(&asset.path));
+                        let mut missing = Vec::new();
                         if let Some(saved) = rustyedit_io::load_catalog(folder) {
                             rustyedit_io::merge_saved_state(&mut assets, &saved);
+                            missing = rustyedit_io::missing_assets(&saved);
                         }
+                        missing.retain(|asset| !excluded.contains(&asset.path));
                         all.extend(assets);
+                        // Keep vanished photos listed so they can be located
+                        // or explicitly removed instead of silently dropped.
+                        all.extend(missing);
                     }
                     // Ids are positions in the combined list.
                     for (ix, asset) in all.iter_mut().enumerate() {
@@ -148,6 +161,8 @@ impl Workspace {
                     asset.height = info.height;
                     asset.orientation = info.orientation;
                     asset.meta = info.meta;
+                    asset.content_hash = info.content_hash;
+                    asset.phash = info.phash;
                 }
             }
 
@@ -163,11 +178,32 @@ impl Workspace {
             }
 
             this.update(cx, |this, cx| {
+                let after_paths: HashSet<PathBuf> = assets.iter().map(|a| a.path.clone()).collect();
+                let missing = assets.iter().filter(|a| a.missing).count();
+                let added = after_paths.difference(&before_paths).count();
+                let removed = before_paths.difference(&after_paths).count();
                 let catalog = Catalog::new_multi(folders, assets);
                 this.install_catalog(catalog, Some(Arc::new(cache)), select, cx);
                 this.is_importing = false;
                 this.import_progress = None;
-                this.status_message = None;
+                if this.pending_sync_report {
+                    this.pending_sync_report = false;
+                    let removed_note = if removed > 0 {
+                        format!(", {removed} removed")
+                    } else {
+                        String::new()
+                    };
+                    let missing_note = if missing > 0 {
+                        format!(", {missing} missing")
+                    } else {
+                        String::new()
+                    };
+                    this.status_message = Some(
+                        format!("Synchronized: {added} added{removed_note}{missing_note}.").into(),
+                    );
+                } else {
+                    this.status_message = this.post_scan_message.take();
+                }
                 cx.notify();
             })
             .ok();
@@ -195,6 +231,9 @@ impl Workspace {
         self.histogram_loading = None;
         self.develop_histogram = None;
         self.active_album = None;
+        self.active_smart = None;
+        self.duplicate_groups = None;
+        self.duplicates_loading = false;
         self.metadata_cache.clear();
         self.metadata_loading.clear();
         self.loupe_paths.clear();
