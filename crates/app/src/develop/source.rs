@@ -56,7 +56,9 @@ impl Workspace {
         self.source_image = None;
         self.source_image_for = None;
         self.live_preview.clear();
-        // A new photo at 100% opens on its centre.
-        self.develop_ui.center_on.set(Some((0.5, 0.5)));
+        self.develop_ui.retouch.reset_selection();
+        self.develop_ui.gradients.reset_selection();
+        // A new photo keeps the zoom level, opening on its centre.
+        self.develop_ui.zoom.centre_on(0.5, 0.5);
     }
 }

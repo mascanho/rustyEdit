@@ -21,6 +21,23 @@ pub enum Icon {
     Info,
     Adjust,
     Tag,
+    /// Filled corner triangles: the histogram's clipping warnings.
+    ClipShadows,
+    ClipHighlights,
+    /// A circular arrow: put back to the default.
+    Reset,
+    /// Six dots: something that can be dragged to reorder it.
+    Grip,
+    /// Develop tools: spot healing (a plaster), cloning (a stamp), linear
+    /// and radial gradients, clipping warnings, and zoom.
+    Heal,
+    Clone,
+    LinearGradient,
+    RadialGradient,
+    Clipping,
+    ZoomIn,
+    Minus,
+    Plus,
 }
 
 /// `icon` drawn `size` pixels square in `color`.
@@ -97,6 +114,12 @@ impl Pen {
     fn arc(&mut self, cx: f32, cy: f32, r: f32, from: f32, to: f32) {
         let points = self.arc_points(cx, cy, r, from, to);
         self.line(&points);
+    }
+
+    fn solid(&mut self, points: &[(f32, f32)]) {
+        let points: Vec<_> = points.iter().map(|&(x, y)| self.at(x, y)).collect();
+        self.fill.add_polygon(&points, true);
+        self.has_fill = true;
     }
 
     fn dot(&mut self, cx: f32, cy: f32, r: f32) {
@@ -181,6 +204,66 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
         Icon::Tag => {
             pen.shape(&[(2.0, 2.0), (8.5, 2.0), (14.0, 7.5), (7.5, 14.0), (2.0, 8.5)]);
             pen.dot(5.3, 5.3, 1.1);
+        }
+        Icon::ClipShadows => pen.solid(&[(2.0, 2.0), (14.0, 2.0), (2.0, 14.0)]),
+        Icon::ClipHighlights => pen.solid(&[(2.0, 2.0), (14.0, 2.0), (14.0, 14.0)]),
+        Icon::Reset => {
+            pen.arc(8.0, 8.0, 5.0, -60.0, 230.0);
+            pen.line(&[(10.0, 1.5), (10.6, 3.7), (8.3, 4.6)]);
+        }
+        Icon::Grip => {
+            for y in [4.0, 8.0, 12.0] {
+                pen.dot(6.0, y, 1.2);
+                pen.dot(10.0, y, 1.2);
+            }
+        }
+        Icon::Heal => {
+            // A plaster lying diagonally, with its pad in the middle.
+            let rotate = |(x, y): (f32, f32)| {
+                let (s, c) = (
+                    std::f32::consts::FRAC_1_SQRT_2,
+                    std::f32::consts::FRAC_1_SQRT_2,
+                );
+                let (dx, dy) = (x - 8.0, y - 8.0);
+                (8.0 + dx * c - dy * s, 8.0 + dx * s + dy * c)
+            };
+            let band = [(1.5, 5.5), (14.5, 5.5), (14.5, 10.5), (1.5, 10.5)].map(rotate);
+            pen.shape(&band);
+            pen.shape(&[(6.0, 6.5), (10.0, 6.5), (10.0, 9.5), (6.0, 9.5)].map(rotate));
+        }
+        Icon::Clone => {
+            pen.circle(8.0, 4.0, 2.3);
+            pen.line(&[(7.0, 6.3), (7.0, 9.0)]);
+            pen.line(&[(9.0, 6.3), (9.0, 9.0)]);
+            pen.shape(&[(2.5, 9.0), (13.5, 9.0), (13.5, 12.0), (2.5, 12.0)]);
+            pen.line(&[(3.5, 14.2), (12.5, 14.2)]);
+        }
+        Icon::LinearGradient => {
+            pen.shape(&[(2.0, 2.0), (14.0, 2.0), (14.0, 14.0), (2.0, 14.0)]);
+            pen.line(&[(2.0, 5.5), (14.0, 5.5)]);
+            pen.line(&[(2.0, 8.0), (14.0, 8.0)]);
+            pen.line(&[(2.0, 10.5), (14.0, 10.5)]);
+        }
+        Icon::RadialGradient => {
+            pen.shape(&[(2.0, 2.0), (14.0, 2.0), (14.0, 14.0), (2.0, 14.0)]);
+            pen.circle(8.0, 8.0, 4.0);
+            pen.dot(8.0, 8.0, 1.1);
+        }
+        Icon::Clipping => {
+            pen.shape(&[(2.0, 2.0), (14.0, 2.0), (14.0, 14.0), (2.0, 14.0)]);
+            pen.solid(&[(2.0, 2.0), (7.5, 2.0), (2.0, 7.5)]);
+            pen.solid(&[(14.0, 2.0), (8.5, 2.0), (14.0, 7.5)]);
+        }
+        Icon::ZoomIn => {
+            pen.circle(7.0, 7.0, 4.8);
+            pen.line(&[(10.5, 10.5), (14.2, 14.2)]);
+            pen.line(&[(4.8, 7.0), (9.2, 7.0)]);
+            pen.line(&[(7.0, 4.8), (7.0, 9.2)]);
+        }
+        Icon::Minus => pen.line(&[(3.5, 8.0), (12.5, 8.0)]),
+        Icon::Plus => {
+            pen.line(&[(3.5, 8.0), (12.5, 8.0)]);
+            pen.line(&[(8.0, 3.5), (8.0, 12.5)]);
         }
     }
     pen.paint(window, color);

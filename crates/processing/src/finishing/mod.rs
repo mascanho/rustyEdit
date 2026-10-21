@@ -1,5 +1,6 @@
 //! The finishing stage: everything after tone, colour and detail. Tone
-//! curves, the Color Mixer, Color Grading, Dehaze, Vignette and Grain.
+//! curves, the Color Mixer, Color Grading, Dehaze, gradient masks, Vignette
+//! and Grain.
 //!
 //! It runs on the CPU after the (possibly GPU-rendered) base stage, split
 //! across threads by bands of rows. Each tool is set up once per render
@@ -9,6 +10,7 @@
 mod curves;
 mod effects;
 mod grading;
+mod local;
 mod mixer;
 
 use image::RgbImage;
@@ -17,6 +19,7 @@ use rustyedit_core::DevelopSettings;
 use curves::CurveLuts;
 use effects::{Dehaze, Grain, Vignette};
 use grading::Grading;
+use local::LocalAdjustments;
 use mixer::Mixer;
 
 /// The finishing tools a render needs, prepared from its settings.
@@ -25,6 +28,7 @@ pub(crate) struct Finishing {
     mixer: Option<Mixer>,
     grading: Option<Grading>,
     dehaze: Option<Dehaze>,
+    local: Option<LocalAdjustments>,
     vignette: Option<Vignette>,
     grain: Option<Grain>,
 }
@@ -37,6 +41,7 @@ impl Finishing {
             mixer: Mixer::new(&settings.mixer),
             grading: Grading::new(&settings.grading),
             dehaze: Dehaze::new(settings.dehaze),
+            local: LocalAdjustments::new(settings, width, height),
             vignette: Vignette::new(settings, width, height),
             grain: Grain::new(settings, width, height),
         };
@@ -44,6 +49,7 @@ impl Finishing {
             || finishing.mixer.is_some()
             || finishing.grading.is_some()
             || finishing.dehaze.is_some()
+            || finishing.local.is_some()
             || finishing.vignette.is_some()
             || finishing.grain.is_some();
         any.then_some(finishing)
@@ -93,6 +99,9 @@ impl Finishing {
             }
             if let Some(dehaze) = &self.dehaze {
                 rgb = dehaze.apply(rgb);
+            }
+            if let Some(local) = &self.local {
+                rgb = local.apply(rgb, x as u32, y);
             }
             if let Some(vignette) = &self.vignette {
                 rgb = vignette.apply(rgb, x as u32, y);

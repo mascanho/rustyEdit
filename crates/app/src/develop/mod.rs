@@ -5,10 +5,17 @@
 //!
 //! - `source`: decoding the photo into a downscaled working copy
 //! - `preview`: rendering adjustments into the live, in-memory preview
-//! - `viewer`: the photo, fitted or at 100% with drag-to-pan
+//! - `viewer`: the photo, fitted or zoomed, with drag-to-pan
+//! - `zoom`: Ctrl + wheel zoom around the pointer, Space-drag panning
 //! - `adjustments`: the slider sections and every Develop-settings change
+//! - `retouch`: Heal and Clone spots, and drawing / dragging them
+//! - `gradients`: Linear and Radial masks with local adjustments
+//! - `sections`: each editing section's title bar (drag grip, reset
+//!   button, on/off switch) and the user's section order
 //! - `curve_editor`, `color_mixer`, `color_grading`: the editing panel's
 //!   graphical and tabbed sections
+//! - `tool_strip`: the pinned row of photo tools and view toggles under
+//!   the histogram, and picking a tool
 //! - `tools`: where the tools column goes and what it holds
 //! - `navigator`, `presets`, `snapshots`, `history`: its sections
 
@@ -16,22 +23,32 @@ mod adjustments;
 mod color_grading;
 mod color_mixer;
 mod curve_editor;
+mod gradients;
 mod history;
 mod navigator;
 mod presets;
 mod preview;
+mod retouch;
+mod sections;
 mod snapshots;
 mod source;
+mod tool_strip;
 mod tools;
 mod viewer;
+mod zoom;
 
 pub(crate) use adjustments::HistoryNote;
+use gradients::GradientUi;
 pub(crate) use preview::LivePreview;
+use retouch::RetouchUi;
+use zoom::DevelopZoom;
 
 use std::{cell::Cell, rc::Rc};
 
-use gpui::{div, prelude::*, px, AnyElement, Bounds, Context, Pixels, Point, ScrollHandle, Window};
-use rustyedit_core::{settings::DockSide, Adjustment, CurveChannel, MixerProp, Presets, Settings};
+use gpui::{div, prelude::*, px, AnyElement, Bounds, Context, Pixels, ScrollHandle, Window};
+use rustyedit_core::{
+    settings::DockSide, Adjustment, CurveChannel, DevelopSection, MixerProp, Presets, Settings,
+};
 use rustyedit_ui::PanelSide;
 
 use crate::{library::panel_group_heading, workspace::Workspace};
@@ -40,15 +57,8 @@ use crate::{library::panel_group_heading, workspace::Workspace};
 pub(crate) struct DevelopUi {
     pub(crate) tools_collapsed: bool,
     pub(crate) tools_scroll: ScrollHandle,
-    /// Scroll position of the photo at 100%.
-    pub(crate) viewer_scroll: ScrollHandle,
-    /// Where to centre the 100% view (as fractions of the photo) once its
-    /// viewport has been laid out.
-    pub(crate) center_on: Cell<Option<(f32, f32)>>,
-    /// Size of the photo at 100% in logical pixels, from the last render.
-    pub(crate) zoomed_size: Cell<(f32, f32)>,
-    /// A drag on the photo at 100%: pointer and scroll offset at its start.
-    pub(crate) pan_drag: Option<(Point<Pixels>, Point<Pixels>)>,
+    /// Zoom level and pan position of the photo.
+    pub(crate) zoom: DevelopZoom,
     /// Where the Navigator's picture was painted, for turning clicks into
     /// positions on the photo.
     pub(crate) navigator_bounds: Rc<Cell<Bounds<Pixels>>>,
@@ -63,6 +73,10 @@ pub(crate) struct DevelopUi {
     pub(crate) curve_bounds: Rc<Cell<Bounds<Pixels>>>,
     /// The Color Mixer tab shown.
     pub(crate) mixer_prop: MixerProp,
+    /// Heal / Clone tool state.
+    pub(crate) retouch: RetouchUi,
+    /// Linear / Radial gradient tool state.
+    pub(crate) gradients: GradientUi,
 }
 
 impl DevelopUi {
@@ -70,10 +84,7 @@ impl DevelopUi {
         Self {
             tools_collapsed: !settings.develop.tools_expanded_on_startup,
             tools_scroll: ScrollHandle::new(),
-            viewer_scroll: ScrollHandle::new(),
-            center_on: Cell::new(None),
-            zoomed_size: Cell::new((0.0, 0.0)),
-            pan_drag: None,
+            zoom: DevelopZoom::default(),
             navigator_bounds: Rc::new(Cell::new(Bounds::default())),
             navigator_dragging: false,
             presets: rustyedit_io::load_presets(),
@@ -81,6 +92,8 @@ impl DevelopUi {
             curve_drag: None,
             curve_bounds: Rc::new(Cell::new(Bounds::default())),
             mixer_prop: MixerProp::default(),
+            retouch: RetouchUi::default(),
+            gradients: GradientUi::default(),
         }
     }
 }
@@ -104,7 +117,8 @@ impl Workspace {
         // A layout that stacks the Navigator with the Inspector stacks the
         // tools above the sliders in the one column.
         let mut panel_children = Vec::new();
-        if tools_side == Some(panel_side) {
+        let stacked = tools_side == Some(panel_side);
+        if stacked {
             panel_children.push(panel_group_heading(&self.theme, "Tools"));
             panel_children.extend(self.develop_tools_sections(cx));
             panel_children.push(panel_group_heading(&self.theme, "Edit"));
@@ -119,6 +133,19 @@ impl Workspace {
             },
             self.settings.layout.inspector_width as f32,
             &self.develop_panel_scroll,
+            Some(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(self.render_histogram_panel(cx))
+                    .child(self.render_tool_strip(cx))
+                    // Stacked layouts keep the Navigator in view here.
+                    .when(stacked, |el| {
+                        el.child(self.render_navigator(navigator::MAX_HEIGHT_SHARED, cx))
+                    })
+                    .into_any_element(),
+            ),
             panel_children,
         )
         .into_any_element();
@@ -148,25 +175,53 @@ impl Workspace {
         self.with_filmstrip(main.into_any_element(), cx)
     }
 
-    /// Histogram and the editing sections, broadly in the order a photo
-    /// is worked on: tone, then colour, then detail and effects. Each can
-    /// be collapsed.
+    /// The editing sections (the histogram is pinned above them) in the
+    /// user's order, then "Reset panel order" once it's been changed. The
+    /// default order follows how a photo is worked on: retouch, tone, then
+    /// colour, then detail and effects.
     fn develop_edit_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        vec![
-            self.render_main_section(cx),
-            self.adjustment_section("develop-basic", "Basic", &Adjustment::BASIC, cx),
-            self.disclosure("develop-curve", "Tone Curve", self.curve_section(cx), cx),
-            self.adjustment_section("develop-color", "Color", &Adjustment::COLOR, cx),
-            self.disclosure("develop-mixer", "Color Mixer", self.color_mixer_section(cx), cx),
-            self.disclosure(
-                "develop-grading",
-                "Color Grading",
-                self.color_grading_section(cx),
-                cx,
+        let mut sections: Vec<AnyElement> = self
+            .develop_section_order()
+            .into_iter()
+            .map(|section| {
+                let (key, children) = self.section_contents(section, cx);
+                self.develop_section(section, key, children, cx)
+            })
+            .collect();
+        sections.extend(self.section_order_footer(cx));
+        sections
+    }
+
+    /// A section's fold-state key and its controls.
+    fn section_contents(
+        &self,
+        section: DevelopSection,
+        cx: &mut Context<Self>,
+    ) -> (&'static str, Vec<AnyElement>) {
+        use DevelopSection as S;
+        match section {
+            S::Retouch => ("develop-retouch", self.retouch_section(cx)),
+            S::Gradients => ("develop-gradients", self.gradients_section(cx)),
+            S::Basic => (
+                "develop-basic",
+                self.adjustment_sliders(&Adjustment::BASIC, cx),
             ),
-            self.adjustment_section("develop-detail", "Detail", &Adjustment::DETAIL, cx),
-            self.adjustment_section("develop-effects", "Effects", &Adjustment::EFFECTS, cx),
-        ]
+            S::ToneCurve => ("develop-curve", self.curve_section(cx)),
+            S::Color => (
+                "develop-color",
+                self.adjustment_sliders(&Adjustment::COLOR, cx),
+            ),
+            S::ColorMixer => ("develop-mixer", self.color_mixer_section(cx)),
+            S::ColorGrading => ("develop-grading", self.color_grading_section(cx)),
+            S::Detail => (
+                "develop-detail",
+                self.adjustment_sliders(&Adjustment::DETAIL, cx),
+            ),
+            S::Effects => (
+                "develop-effects",
+                self.adjustment_sliders(&Adjustment::EFFECTS, cx),
+            ),
+        }
     }
 
     /// The editing panel takes the Inspector's slot in the current layout,

@@ -72,5 +72,8 @@ actions!(
         CycleGridStyle,
         GridLarger,
         GridSmaller,
+        ToolSpotRemoval,
+        ToolLinearGradient,
+        ToolRadialGradient,
     ]
 );

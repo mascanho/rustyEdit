@@ -565,6 +565,9 @@ pub struct DevelopPreferences {
     /// Open Develop's tools column (Navigator, Presets, Snapshots, History)
     /// expanded instead of collapsed.
     pub tools_expanded_on_startup: bool,
+    /// The editing panel's section order, by `DevelopSection::key`; empty
+    /// for the default. See `DevelopSection::arrange`.
+    pub section_order: Vec<String>,
 }
 
 impl Default for DevelopPreferences {
@@ -572,6 +575,7 @@ impl Default for DevelopPreferences {
         Self {
             preview_quality: PreviewQuality::default(),
             tools_expanded_on_startup: true,
+            section_order: Vec::new(),
         }
     }
 }

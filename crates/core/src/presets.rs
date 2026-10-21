@@ -31,7 +31,8 @@ impl Presets {
         };
         let preset = DevelopPreset {
             name: name.clone(),
-            settings: DevelopSettings::default().with_look_of(settings),
+            // What the photo looks like: switched-off sections aren't saved.
+            settings: DevelopSettings::default().with_look_of(&settings.effective()),
         };
         match self
             .user

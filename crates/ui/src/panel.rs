@@ -102,7 +102,40 @@ pub fn disclosure_section(
     on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     children: Vec<AnyElement>,
 ) -> impl IntoElement {
+    disclosure_section_with(
+        id,
+        theme,
+        title,
+        expanded,
+        on_toggle,
+        SectionExtras::default(),
+        children,
+    )
+}
+
+/// Optional parts of a section's title bar and body.
+#[derive(Default)]
+pub struct SectionExtras {
+    /// Controls at the right end of the title bar (a reset button, an
+    /// on/off switch). Clicks on them don't fold the section.
+    pub trailing: Vec<AnyElement>,
+    /// Fade the body, e.g. while the section is switched off.
+    pub dimmed: bool,
+}
+
+/// [`disclosure_section`] with extra title-bar controls and a dimmed state.
+pub fn disclosure_section_with(
+    id: impl Into<ElementId>,
+    theme: &Theme,
+    title: impl Into<SharedString>,
+    expanded: bool,
+    on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    extras: SectionExtras,
+    children: Vec<AnyElement>,
+) -> impl IntoElement {
     let theme = *theme;
+    let SectionExtras { trailing, dimmed } = extras;
+    let has_trailing = !trailing.is_empty();
 
     div()
         .flex()
@@ -114,6 +147,21 @@ pub fn disclosure_section(
                 .id(id)
                 .cursor_pointer()
                 .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                .when(dimmed, |el| el.text_color(theme.text_faint))
+                .when(has_trailing, |el| {
+                    el.child(div().flex_1()).child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap_1p5()
+                            // Keep these clicks from folding the section.
+                            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation()
+                            })
+                            .children(trailing),
+                    )
+                })
                 .on_click(on_toggle),
         )
         .when(expanded, |el| {
@@ -125,6 +173,7 @@ pub fn disclosure_section(
                     .px_1()
                     .pt_2()
                     .pb_3()
+                    .when(dimmed, |el| el.opacity(0.45))
                     .children(children),
             )
         })
@@ -132,12 +181,13 @@ pub fn disclosure_section(
 
 /// A vertically scrollable container for stacking develop panel sections,
 /// docked to `side` at a fixed `width`, with a minimal scrollbar driven by
-/// `scroll`.
+/// `scroll`. `pinned` stays above the scrolling sections (the histogram).
 pub fn side_panel(
     theme: &Theme,
     side: PanelSide,
     width: f32,
     scroll: &ScrollHandle,
+    pinned: Option<AnyElement>,
     children: Vec<AnyElement>,
 ) -> impl IntoElement {
     let theme = *theme;
@@ -153,28 +203,45 @@ pub fn side_panel(
         .border_color(theme.border_subtle)
         .when(side == PanelSide::Left, |el| el.border_r_1())
         .when(side == PanelSide::Right, |el| el.border_l_1())
+        .children(pinned.map(|pinned| {
+            div()
+                .flex_shrink_0()
+                .px_3()
+                .pt_2()
+                .pb_2()
+                .border_b_1()
+                .border_color(theme.border_subtle)
+                .child(pinned)
+        }))
         .child(
             div()
-                .id("develop-side-panel")
-                .flex()
-                .flex_col()
-                .size_full()
-                .min_w(px(0.0))
-                .overflow_y_scroll()
-                .track_scroll(scroll)
-                .px_3()
-                .children(children),
+                .relative()
+                .flex_1()
+                .min_h(px(0.0))
+                .child(
+                    div()
+                        .id("develop-side-panel")
+                        .flex()
+                        .flex_col()
+                        .size_full()
+                        .min_w(px(0.0))
+                        .overflow_y_scroll()
+                        .track_scroll(scroll)
+                        .px_3()
+                        .children(children),
+                )
+                .child(vertical_scrollbar(
+                    "develop-side-panel-scrollbar",
+                    scroll.clone(),
+                    &theme,
+                )),
         )
-        .child(vertical_scrollbar(
-            "develop-side-panel-scrollbar",
-            scroll.clone(),
-            &theme,
-        ))
 }
 
 /// A docked side panel (Library's left/right panels) that can be collapsed
 /// down to a thin strip holding only its expand chevron, like Lightroom's
 /// panel groups.
+#[allow(clippy::too_many_arguments)]
 pub fn collapsible_panel(
     id: impl Into<ElementId>,
     theme: &Theme,
@@ -184,6 +251,26 @@ pub fn collapsible_panel(
     collapsed: bool,
     scroll: &ScrollHandle,
     on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    children: Vec<AnyElement>,
+) -> impl IntoElement {
+    collapsible_panel_pinned(
+        id, theme, title, side, width, collapsed, scroll, on_toggle, None, children,
+    )
+}
+
+/// [`collapsible_panel`] with `pinned` held under the title, above the
+/// scrolling `children`, so it never scrolls away (Develop's Navigator).
+#[allow(clippy::too_many_arguments)]
+pub fn collapsible_panel_pinned(
+    id: impl Into<ElementId>,
+    theme: &Theme,
+    title: impl Into<SharedString>,
+    side: PanelSide,
+    width: f32,
+    collapsed: bool,
+    scroll: &ScrollHandle,
+    on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    pinned: Option<AnyElement>,
     children: Vec<AnyElement>,
 ) -> impl IntoElement {
     let theme = *theme;
@@ -258,6 +345,15 @@ pub fn collapsible_panel(
     container
         .w(px(width))
         .child(header)
+        .children(pinned.map(|pinned| {
+            div()
+                .flex_shrink_0()
+                .px_3()
+                .py_2()
+                .border_b_1()
+                .border_color(theme.border_subtle)
+                .child(pinned)
+        }))
         .child(
             div()
                 .relative()

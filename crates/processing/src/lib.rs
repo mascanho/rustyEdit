@@ -1,6 +1,7 @@
 //! The non-destructive edit pipeline: turns a decoded source image plus a
 //! `DevelopSettings` into a rendered preview, in three stages:
 //!
+//! 0. `retouch`: spot removal (heal / clone) on the original photo;
 //! 1. `geometry`: flips and rotation;
 //! 2. the base stage (`tone`, `color`, `detail`), on the GPU (`gpu`) when
 //!    one is available and the CPU otherwise;
@@ -14,7 +15,10 @@ mod detail;
 mod finishing;
 mod geometry;
 mod gpu;
+mod retouch;
 mod tone;
+
+pub use retouch::find_spot_source;
 
 use image::{DynamicImage, RgbImage};
 use rustyedit_core::DevelopSettings;
@@ -27,6 +31,17 @@ pub fn apply(source: &DynamicImage, settings: &DevelopSettings) -> RgbImage {
 }
 
 fn apply_with(source: &DynamicImage, settings: &DevelopSettings, allow_gpu: bool) -> RgbImage {
+    // Sections switched off in the panel render as if untouched.
+    let settings = &settings.effective();
+    let retouched;
+    let source = if settings.spots.is_empty() {
+        source
+    } else {
+        let mut rgb = source.to_rgb8();
+        retouch::apply_spots(&mut rgb, &settings.spots);
+        retouched = DynamicImage::ImageRgb8(rgb);
+        &retouched
+    };
     let rotated = geometry::apply_geometry(source, settings);
     let mut buffer = rotated.to_rgb8();
 

@@ -18,19 +18,16 @@ pub(crate) enum HistoryNote<'a> {
 }
 
 impl Workspace {
-    /// A collapsible section of plain sliders (Basic, Color, Detail, Effects).
-    pub(super) fn adjustment_section(
+    /// A slider per adjustment (Basic, Color, Detail, Effects).
+    pub(super) fn adjustment_sliders(
         &self,
-        key: &'static str,
-        title: &'static str,
         adjustments: &[Adjustment],
         cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let children = adjustments
+    ) -> Vec<AnyElement> {
+        adjustments
             .iter()
             .map(|adj| self.adjustment_slider(*adj, cx))
-            .collect();
-        self.disclosure(key, title, children, cx)
+            .collect()
     }
 
     /// One slider bound to `adjustment` on the selected photo.

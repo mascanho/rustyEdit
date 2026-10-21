@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use gpui::{div, prelude::*, AnyElement, Context};
+use gpui::Context;
 use rustyedit_core::Histogram;
 
-use crate::workspace::{Mode, Workspace};
+use crate::workspace::Workspace;
 
 /// Histograms are ~4 KB each; cap the cache so browsing a huge catalog
 /// can't grow it without bound. Simply cleared when full — recomputing
@@ -60,48 +60,6 @@ impl Workspace {
             .ok();
         })
         .detach();
-    }
-
-    /// In Develop, the live histogram of the edited preview once one has
-    /// been rendered; otherwise the original photo's histogram.
-    fn current_histogram(&self) -> (Option<Arc<Histogram>>, &'static str) {
-        let Some(asset) = self.catalog.selected_asset() else {
-            return (None, "");
-        };
-        if self.mode == Mode::Develop {
-            if let Some((id, histogram)) = &self.develop_histogram {
-                if *id == asset.id {
-                    return (Some(histogram.clone()), "Edited preview");
-                }
-            }
-        }
-        (self.histogram_cache.get(&asset.id).cloned(), "Original")
-    }
-
-    /// The "Main" section at the top of the right-hand panels, currently
-    /// holding the histogram.
-    pub(crate) fn render_main_section(&self, cx: &mut Context<Self>) -> AnyElement {
-        let theme = self.theme;
-        let (histogram, source) = self.current_histogram();
-        let caption = if histogram.is_none() && self.catalog.selected_asset().is_some() {
-            "Calculating…"
-        } else {
-            source
-        };
-
-        self.disclosure(
-            "main",
-            "Main",
-            vec![
-                rustyedit_ui::histogram_view(&theme, histogram).into_any_element(),
-                div()
-                    .text_xs()
-                    .text_color(theme.text_faint)
-                    .child(caption)
-                    .into_any_element(),
-            ],
-            cx,
-        )
     }
 }
 

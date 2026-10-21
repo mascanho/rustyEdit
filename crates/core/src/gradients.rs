@@ -1,0 +1,310 @@
+//! Gradient masks: local adjustments that fade across the photo, either
+//! along a line (a graduated filter, e.g. to darken a sky) or out from an
+//! ellipse (a radial filter, e.g. to lift a face).
+//!
+//! Like retouch spots, positions are fractions of the *original* photo
+//! and sizes fractions of its long edge, so masks stay put when the photo
+//! is rotated; [`Gradient::on_display`] gives them as drawn. They live in a
+//! fixed-size array so `DevelopSettings` stays `Copy`.
+
+use serde::{Deserialize, Serialize};
+
+use crate::{retouch::to_display, DevelopSettings};
+
+/// Most gradients a photo can have.
+pub const MAX_GRADIENTS: usize = 8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum GradientKind {
+    /// Full strength at `start`, fading to nothing at `end`.
+    #[default]
+    Linear,
+    /// Full strength inside the ellipse around `start`, fading out at its
+    /// edge (or the reverse, inverted).
+    Radial,
+}
+
+impl GradientKind {
+    pub fn label(&self) -> &'static str {
+        match self {
+            GradientKind::Linear => "Linear",
+            GradientKind::Radial => "Radial",
+        }
+    }
+}
+
+/// The adjustments a gradient applies where its mask is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LocalProp {
+    Exposure,
+    Contrast,
+    Highlights,
+    Shadows,
+    Temperature,
+    Tint,
+    Saturation,
+    Dehaze,
+}
+
+impl LocalProp {
+    pub const ALL: [LocalProp; 8] = [
+        LocalProp::Exposure,
+        LocalProp::Contrast,
+        LocalProp::Highlights,
+        LocalProp::Shadows,
+        LocalProp::Temperature,
+        LocalProp::Tint,
+        LocalProp::Saturation,
+        LocalProp::Dehaze,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            LocalProp::Exposure => "Exposure",
+            LocalProp::Contrast => "Contrast",
+            LocalProp::Highlights => "Highlights",
+            LocalProp::Shadows => "Shadows",
+            LocalProp::Temperature => "Temp",
+            LocalProp::Tint => "Tint",
+            LocalProp::Saturation => "Saturation",
+            LocalProp::Dehaze => "Dehaze",
+        }
+    }
+}
+
+/// Each -100..=100, 0 meaning no change.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LocalAdjust {
+    pub exposure: f32,
+    pub contrast: f32,
+    pub highlights: f32,
+    pub shadows: f32,
+    pub temperature: f32,
+    pub tint: f32,
+    pub saturation: f32,
+    pub dehaze: f32,
+}
+
+impl LocalAdjust {
+    pub fn get(&self, prop: LocalProp) -> f32 {
+        match prop {
+            LocalProp::Exposure => self.exposure,
+            LocalProp::Contrast => self.contrast,
+            LocalProp::Highlights => self.highlights,
+            LocalProp::Shadows => self.shadows,
+            LocalProp::Temperature => self.temperature,
+            LocalProp::Tint => self.tint,
+            LocalProp::Saturation => self.saturation,
+            LocalProp::Dehaze => self.dehaze,
+        }
+    }
+
+    pub fn set(&mut self, prop: LocalProp, value: f32) {
+        let v = value.clamp(-100.0, 100.0);
+        match prop {
+            LocalProp::Exposure => self.exposure = v,
+            LocalProp::Contrast => self.contrast = v,
+            LocalProp::Highlights => self.highlights = v,
+            LocalProp::Shadows => self.shadows = v,
+            LocalProp::Temperature => self.temperature = v,
+            LocalProp::Tint => self.tint = v,
+            LocalProp::Saturation => self.saturation = v,
+            LocalProp::Dehaze => self.dehaze = v,
+        }
+    }
+
+    pub fn is_neutral(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Gradient {
+    pub kind: GradientKind,
+    /// Linear: where the effect is full. Radial: the centre.
+    pub start: (f32, f32),
+    /// Linear: where the effect has faded out. Radial: unused.
+    pub end: (f32, f32),
+    /// Radial: the ellipse's horizontal and vertical radii, as fractions
+    /// of the long edge (on the original photo).
+    pub radius: (f32, f32),
+    /// Radial: 0..=1, how much of the radius fades out.
+    pub feather: f32,
+    /// Apply outside the mask instead of inside it.
+    pub invert: bool,
+    pub adjust: LocalAdjust,
+}
+
+impl Gradient {
+    /// The gradient on the photo as shown (rotated and flipped): points as
+    /// fractions of the displayed photo, radii as fractions of its long
+    /// edge, swapped for quarter turns.
+    pub fn on_display(&self, settings: &DevelopSettings) -> Gradient {
+        let quarters = ((settings.rotation_degrees / 90.0).round() as i32).rem_euclid(4);
+        Gradient {
+            start: to_display(self.start, settings),
+            end: to_display(self.end, settings),
+            radius: if quarters % 2 == 1 {
+                (self.radius.1, self.radius.0)
+            } else {
+                self.radius
+            },
+            ..*self
+        }
+    }
+
+    /// Mask strength (0..=1) at pixel (`x`, `y`) of a `width` × `height`
+    /// image. `self` must already be [`Gradient::on_display`].
+    pub fn mask_at(&self, x: f32, y: f32, width: f32, height: f32) -> f32 {
+        let strength = match self.kind {
+            GradientKind::Linear => {
+                let (ax, ay) = (self.start.0 * width, self.start.1 * height);
+                let (bx, by) = (self.end.0 * width, self.end.1 * height);
+                let (dx, dy) = (bx - ax, by - ay);
+                let length = (dx * dx + dy * dy).max(1.0);
+                let t = ((x - ax) * dx + (y - ay) * dy) / length;
+                1.0 - smoothstep(t.clamp(0.0, 1.0))
+            }
+            GradientKind::Radial => {
+                let long = width.max(height);
+                let (cx, cy) = (self.start.0 * width, self.start.1 * height);
+                let rx = (self.radius.0 * long).max(1.0);
+                let ry = (self.radius.1 * long).max(1.0);
+                let d = (((x - cx) / rx).powi(2) + ((y - cy) / ry).powi(2)).sqrt();
+                let inner = 1.0 - self.feather.clamp(0.0, 1.0);
+                if d <= inner {
+                    1.0
+                } else if d >= 1.0 {
+                    0.0
+                } else {
+                    1.0 - smoothstep((d - inner) / (1.0 - inner).max(1e-3))
+                }
+            }
+        };
+        if self.invert {
+            1.0 - strength
+        } else {
+            strength
+        }
+    }
+}
+
+fn smoothstep(t: f32) -> f32 {
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// A photo's gradients, oldest first.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Gradients {
+    items: [Gradient; MAX_GRADIENTS],
+    len: u8,
+}
+
+impl Default for Gradients {
+    fn default() -> Self {
+        Self {
+            items: [Gradient::default(); MAX_GRADIENTS],
+            len: 0,
+        }
+    }
+}
+
+impl Gradients {
+    pub fn as_slice(&self) -> &[Gradient] {
+        &self.items[..(self.len as usize).min(MAX_GRADIENTS)]
+    }
+
+    pub fn len(&self) -> usize {
+        self.as_slice().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut Gradient> {
+        let len = self.len();
+        self.items[..len].get_mut(index)
+    }
+
+    /// Adds a gradient and returns its index, or `None` when full.
+    pub fn push(&mut self, gradient: Gradient) -> Option<usize> {
+        let len = self.len();
+        if len >= MAX_GRADIENTS {
+            return None;
+        }
+        self.items[len] = gradient;
+        self.len += 1;
+        Some(len)
+    }
+
+    pub fn remove(&mut self, index: usize) {
+        let len = self.len();
+        if index >= len {
+            return;
+        }
+        self.items.copy_within(index + 1..len, index);
+        self.items[len - 1] = Gradient::default();
+        self.len -= 1;
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    /// Whether any gradient actually changes something.
+    pub fn is_active(&self) -> bool {
+        self.as_slice().iter().any(|g| !g.adjust.is_neutral())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linear_mask_fades_from_start_to_end() {
+        let g = Gradient {
+            kind: GradientKind::Linear,
+            start: (0.5, 0.0),
+            end: (0.5, 1.0),
+            ..Default::default()
+        };
+        assert_eq!(g.mask_at(50.0, 0.0, 100.0, 100.0), 1.0);
+        assert!((g.mask_at(50.0, 50.0, 100.0, 100.0) - 0.5).abs() < 1e-3);
+        assert_eq!(g.mask_at(50.0, 100.0, 100.0, 100.0), 0.0);
+        let inverted = Gradient { invert: true, ..g };
+        assert_eq!(inverted.mask_at(50.0, 0.0, 100.0, 100.0), 0.0);
+    }
+
+    #[test]
+    fn radial_mask_is_full_inside_and_off_outside() {
+        let g = Gradient {
+            kind: GradientKind::Radial,
+            start: (0.5, 0.5),
+            radius: (0.2, 0.2),
+            feather: 0.5,
+            ..Default::default()
+        };
+        assert_eq!(g.mask_at(50.0, 50.0, 100.0, 100.0), 1.0);
+        assert_eq!(g.mask_at(95.0, 50.0, 100.0, 100.0), 0.0);
+        let edge = g.mask_at(65.0, 50.0, 100.0, 100.0);
+        assert!(edge > 0.0 && edge < 1.0);
+    }
+
+    #[test]
+    fn quarter_turn_swaps_radial_radii() {
+        let settings = DevelopSettings {
+            rotation_degrees: 90.0,
+            ..Default::default()
+        };
+        let g = Gradient {
+            kind: GradientKind::Radial,
+            radius: (0.3, 0.1),
+            ..Default::default()
+        };
+        assert_eq!(g.on_display(&settings).radius, (0.1, 0.3));
+    }
+}

@@ -1,12 +1,13 @@
 //! Ctrl + mouse wheel zooms the photos in every module: the loupe steps
-//! through its zoom levels, the grid resizes its cards, and Develop toggles
-//! between fit and 100%.
+//! through its zoom levels, the grid resizes its cards, and Develop zooms
+//! smoothly around the pointer.
 //!
 //! The wheel is intercepted in the capture phase, before any scroll
 //! container sees it, so zooming never scrolls the list underneath.
 
 use gpui::{
-    canvas, prelude::*, px, AnyElement, Context, DispatchPhase, ScrollWheelEvent, Window,
+    canvas, prelude::*, px, AnyElement, Context, DispatchPhase, Pixels, Point, ScrollWheelEvent,
+    Window,
 };
 use rustyedit_core::settings::{GRID_CARD_MAX, GRID_CARD_MIN, GRID_CARD_STEP};
 
@@ -34,8 +35,9 @@ impl Workspace {
                         return;
                     }
                     let delta = event.delta.pixel_delta(window.line_height());
-                    let handled =
-                        entity.update(cx, |this, cx| this.wheel_zoom(f32::from(delta.y), cx));
+                    let handled = entity.update(cx, |this, cx| {
+                        this.wheel_zoom(f32::from(delta.y), event.position, cx)
+                    });
                     if handled {
                         cx.stop_propagation();
                     }
@@ -75,7 +77,7 @@ impl Workspace {
 
     /// Applies a wheel movement (positive = away from the user = zoom in).
     /// Returns whether this screen zooms, i.e. whether the event was used.
-    fn wheel_zoom(&mut self, delta_y: f32, cx: &mut Context<Self>) -> bool {
+    fn wheel_zoom(&mut self, delta_y: f32, pointer: Point<Pixels>, cx: &mut Context<Self>) -> bool {
         if self.settings_open || self.catalog_menu_open {
             return false;
         }
@@ -86,6 +88,11 @@ impl Workspace {
         };
         if !zoomable {
             return false;
+        }
+        // Develop zooms continuously rather than in steps.
+        if self.mode == Mode::Develop {
+            self.zoom_develop_by(delta_y, pointer, cx);
+            return true;
         }
 
         // Accumulate small deltas; a change of direction starts over.
@@ -105,19 +112,21 @@ impl Workspace {
                 let levels: Vec<Option<f32>> = std::iter::once(None)
                     .chain(ZOOM_STEPS.iter().copied().map(Some))
                     .collect();
-                let current = levels
-                    .iter()
-                    .position(|l| *l == self.loupe_zoom)
-                    .unwrap_or(0);
+                // The footer slider can leave the zoom between levels;
+                // step on from the nearest one at or below it.
+                let current = match self.loupe_zoom {
+                    None => 0,
+                    Some(scale) => levels
+                        .iter()
+                        .rposition(|l| l.is_some_and(|l| l <= scale + 1e-3))
+                        .unwrap_or(0),
+                };
                 let next = (current as i32 + steps).clamp(0, levels.len() as i32 - 1) as usize;
                 if next != current {
                     self.set_loupe_zoom(levels[next], cx);
                 }
             }
             (Mode::Library, LibraryView::Grid) => self.step_grid_card_size(steps, cx),
-            (Mode::Develop, _) => {
-                self.set_develop_zoom_fit(steps < 0, cx);
-            }
             _ => {}
         }
         true

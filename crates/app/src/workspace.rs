@@ -24,6 +24,7 @@ use crate::actions::{
     Rating0, Rating1, Rating2, Rating3, Rating4, Rating5, ToggleZoom,
 };
 use crate::develop::{DevelopUi, LivePreview};
+use crate::histogram_panel::HistogramUi;
 use crate::file_tree::FileTree;
 use crate::selection::CullOp;
 
@@ -109,6 +110,10 @@ pub struct Workspace {
     pub(crate) loupe_scroll: ScrollHandle,
     pub(crate) loupe_center_pending: Cell<bool>,
     pub(crate) loupe_drag: Option<(gpui::Point<gpui::Pixels>, gpui::Point<gpui::Pixels>)>,
+    /// The loupe's photo area, recorded every frame (for its fit scale).
+    pub(crate) loupe_bounds: Rc<Cell<gpui::Bounds<gpui::Pixels>>>,
+    /// The display's pixel ratio, recorded every frame.
+    pub(crate) pixel_ratio: Cell<f32>,
     pub(crate) loupe_full_paths: HashMap<u64, PathBuf>,
     pub(crate) loupe_full_loading: HashSet<u64>,
     // Albums and smart collections (see `albums.rs`).
@@ -158,7 +163,6 @@ pub struct Workspace {
     pub(crate) filmstrip_scroll_x: f64,
     pub(crate) filmstrip_viewport: Rc<Cell<f32>>,
     pub(crate) grid_columns_cache: Rc<Cell<usize>>,
-    pub(crate) zoom_fit: bool,
     pub(crate) library_view: LibraryView,
     pub(crate) left_panel_collapsed: bool,
     pub(crate) right_panel_collapsed: bool,
@@ -195,6 +199,7 @@ pub struct Workspace {
     pub(crate) source_image_for: Option<u64>,
     pub(crate) live_preview: LivePreview,
     pub(crate) develop_ui: DevelopUi,
+    pub(crate) histogram_ui: HistogramUi,
     pub(crate) preview_epoch: u64,
 }
 
@@ -244,6 +249,8 @@ impl Workspace {
             loupe_scroll: ScrollHandle::new(),
             loupe_center_pending: Cell::new(false),
             loupe_drag: None,
+            loupe_bounds: Rc::new(Cell::new(gpui::Bounds::default())),
+            pixel_ratio: Cell::new(1.0),
             loupe_full_paths: HashMap::new(),
             loupe_full_loading: HashSet::new(),
             active_album: None,
@@ -276,7 +283,6 @@ impl Workspace {
             filmstrip_scroll_x: 0.0,
             filmstrip_viewport: Rc::new(Cell::new(0.0)),
             grid_columns_cache: Rc::new(Cell::new(1)),
-            zoom_fit: true,
             library_view: match settings.library.startup_view {
                 StartupView::Loupe => LibraryView::Loupe,
                 StartupView::Grid => LibraryView::Grid,
@@ -303,6 +309,7 @@ impl Workspace {
             source_image_for: None,
             live_preview: LivePreview::default(),
             develop_ui,
+            histogram_ui: HistogramUi::default(),
             preview_epoch: 0,
         };
         // Pick up where the last session left off.
@@ -465,6 +472,10 @@ impl Workspace {
             cx.notify();
             return;
         }
+        // Then puts down a Develop photo tool (Heal, Clone, gradients).
+        if self.mode == Mode::Develop && self.put_down_photo_tool(cx) {
+            return;
+        }
         self.mode = Mode::Library;
         cx.notify();
     }
@@ -494,7 +505,7 @@ impl Workspace {
             self.toggle_loupe_zoom(cx);
             return;
         }
-        self.set_develop_zoom_fit(!self.zoom_fit, cx);
+        self.toggle_develop_zoom(cx);
     }
 
     // --- Flags & ratings -----------------------------------------------------
@@ -736,6 +747,11 @@ impl Workspace {
             );
         }
 
+        if let Some(zoom) = self.render_footer_zoom(cx) {
+            right.push(rustyedit_ui::status_divider(&theme).into_any_element());
+            right.push(zoom);
+        }
+
         if let Some(asset) = self.catalog.selected_asset() {
             let entity = cx.entity();
             right.push(rustyedit_ui::status_divider(&theme).into_any_element());
@@ -768,6 +784,7 @@ impl Render for Workspace {
         // Replaced Develop preview frames are no longer drawn; free their
         // GPU memory before this frame paints.
         self.live_preview.release_retired(window);
+        self.pixel_ratio.set(window.scale_factor());
         let theme = self.theme;
         let focus_handle = self.focus_handle.clone();
 
@@ -779,6 +796,8 @@ impl Render for Workspace {
                 "Workspace"
             })
             .on_key_down(cx.listener(Self::on_text_key))
+            .on_key_down(cx.listener(Self::develop_key_down))
+            .on_key_up(cx.listener(Self::develop_key_up))
             .track_focus(&focus_handle)
             .on_action(cx.listener(Self::go_export))
             .on_action(cx.listener(Self::toggle_info))
@@ -823,6 +842,9 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::cycle_grid_style))
             .on_action(cx.listener(Self::grid_larger))
             .on_action(cx.listener(Self::grid_smaller))
+            .on_action(cx.listener(Self::tool_spot_removal))
+            .on_action(cx.listener(Self::tool_linear_gradient))
+            .on_action(cx.listener(Self::tool_radial_gradient))
             .on_action(cx.listener(Self::flag_pick))
             .on_action(cx.listener(Self::flag_reject))
             .on_action(cx.listener(Self::flag_unflag))

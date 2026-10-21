@@ -2,8 +2,7 @@
 //! and saving the current photo's look as a new preset.
 
 use gpui::{
-    div, hsla, linear_color_stop, linear_gradient, prelude::*, px, AnyElement, ClickEvent,
-    Context,
+    div, hsla, linear_color_stop, linear_gradient, prelude::*, px, AnyElement, ClickEvent, Context,
 };
 use rustyedit_core::{builtin_presets, DevelopPreset, DevelopSettings};
 use rustyedit_ui::Theme;
@@ -37,7 +36,8 @@ impl Workspace {
             .into_iter()
             .enumerate()
             .map(|(ix, preset)| {
-                let (active, name, look) = (is_active(&preset), preset.name.clone(), preset.settings);
+                let (active, name, look) =
+                    (is_active(&preset), preset.name.clone(), preset.settings);
                 preset_row(
                     ("develop-preset-builtin", ix),
                     &theme,
@@ -55,7 +55,8 @@ impl Workspace {
             .iter()
             .enumerate()
             .map(|(ix, preset)| {
-                let (active, name, look) = (is_active(preset), preset.name.clone(), preset.settings);
+                let (active, name, look) =
+                    (is_active(preset), preset.name.clone(), preset.settings);
                 let preset = preset.clone();
                 preset_row(
                     ("develop-preset-user", ix),
@@ -64,9 +65,11 @@ impl Workspace {
                     &look,
                     active,
                     cx.listener(move |this, _: &ClickEvent, _w, cx| this.apply_preset(&preset, cx)),
-                    Some(Box::new(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                        this.delete_preset(ix, cx);
-                    }))),
+                    Some(Box::new(cx.listener(
+                        move |this, _: &ClickEvent, _w, cx| {
+                            this.delete_preset(ix, cx);
+                        },
+                    ))),
                 )
             })
             .collect();
@@ -114,7 +117,13 @@ impl Workspace {
     }
 
     fn delete_preset(&mut self, index: usize, cx: &mut Context<Self>) {
-        let Some(name) = self.develop_ui.presets.user.get(index).map(|p| p.name.clone()) else {
+        let Some(name) = self
+            .develop_ui
+            .presets
+            .user
+            .get(index)
+            .map(|p| p.name.clone())
+        else {
             return;
         };
         self.develop_ui.presets.remove(index);
@@ -211,7 +220,9 @@ fn preset_group(
             .border_color(theme.border_subtle)
             .children(rows.into_iter().enumerate().map(|(ix, row)| {
                 div()
-                    .when(ix > 0, |el| el.border_t_1().border_color(theme.border_subtle))
+                    .when(ix > 0, |el| {
+                        el.border_t_1().border_color(theme.border_subtle)
+                    })
                     .child(row)
             }))
     };
@@ -249,7 +260,10 @@ fn preset_row(
         .pr_1p5()
         .cursor_pointer()
         .text_size(px(11.5))
-        .when(active, |el| el.bg(theme.accent_muted.opacity(0.6)).text_color(theme.text))
+        .when(active, |el| {
+            el.bg(theme.accent_muted.opacity(0.6))
+                .text_color(theme.text)
+        })
         .when(!active, |el| {
             el.text_color(theme.text_muted)
                 .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))

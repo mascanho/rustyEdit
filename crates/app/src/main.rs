@@ -15,8 +15,10 @@ mod file_ops;
 mod file_tree;
 mod filmstrip;
 mod filters_panel;
+mod footer_zoom;
 mod grid;
 mod histogram;
+mod histogram_panel;
 mod history_panel;
 mod import;
 mod info_overlay;
@@ -49,7 +51,8 @@ use actions::{
     ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
 };
 use actions::{
-    CycleGridStyle, GridLarger, GridSmaller, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp,
+    CycleGridStyle, GridLarger, GridSmaller, ToolLinearGradient, ToolRadialGradient,
+    ToolSpotRemoval, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp,
     SelectDown, SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
 };
 use workspace::Workspace;
@@ -97,6 +100,9 @@ fn main() {
             KeyBinding::new("i", ToggleInfo, Some(KEY_CONTEXT)),
             KeyBinding::new("b", CycleBackground, Some(KEY_CONTEXT)),
             KeyBinding::new("j", CycleGridStyle, Some(KEY_CONTEXT)),
+            KeyBinding::new("q", ToolSpotRemoval, Some(KEY_CONTEXT)),
+            KeyBinding::new("m", ToolLinearGradient, Some(KEY_CONTEXT)),
+            KeyBinding::new("shift-m", ToolRadialGradient, Some(KEY_CONTEXT)),
             // "+" is shift-= on most layouts; bind every way it can arrive.
             KeyBinding::new("ctrl-=", GridLarger, Some(KEY_CONTEXT)),
             KeyBinding::new("ctrl-+", GridLarger, Some(KEY_CONTEXT)),

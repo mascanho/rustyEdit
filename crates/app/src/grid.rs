@@ -56,6 +56,11 @@ impl Workspace {
         _w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // J shows clipping in Develop, as in Lightroom.
+        if self.mode == Mode::Develop {
+            self.toggle_clipping_overlay(cx);
+            return;
+        }
         if self.mode != Mode::Library || self.library_view != LibraryView::Grid {
             return;
         }

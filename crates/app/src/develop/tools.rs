@@ -1,6 +1,7 @@
 //! Develop's tools column: Navigator, Presets, Snapshots and History. It
 //! sits wherever the layout puts the Navigator: its own dock opposite the
-//! editing panel, stacked above the sliders, or nowhere at all. As its own
+//! editing panel, stacked above the sliders, or nowhere at all. The
+//! Navigator itself is pinned at its top, outside the scrolling sections. As its own
 //! dock it carries that side's icon rail, whose tools can take it over.
 
 use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString};
@@ -38,11 +39,21 @@ impl Workspace {
     /// filter) under its own heading, as Library stacks panels that share
     /// a dock.
     pub(super) fn develop_tools_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        // The Navigator isn't here: it's pinned above these, always shown.
         let mut sections = vec![
-            self.disclosure("develop-navigator", "Navigator", self.navigator_section(cx), cx),
             self.disclosure("develop-presets", "Presets", self.presets_section(cx), cx),
-            self.disclosure("develop-snapshots", "Snapshots", self.snapshots_section(cx), cx),
-            self.disclosure("develop-history", "History", self.develop_history_section(cx), cx),
+            self.disclosure(
+                "develop-snapshots",
+                "Snapshots",
+                self.snapshots_section(cx),
+                cx,
+            ),
+            self.disclosure(
+                "develop-history",
+                "History",
+                self.develop_history_section(cx),
+                cx,
+            ),
         ];
         sections.push(panel_group_heading(&self.theme, "Library"));
         sections.extend(self.navigator_sections(cx));
@@ -80,7 +91,9 @@ impl Workspace {
         } else {
             self.develop_tools_content(side, cx)
         };
-        let dock = rustyedit_ui::collapsible_panel(
+        let navigator =
+            (!collapsed).then(|| self.render_navigator(super::navigator::MAX_HEIGHT, cx));
+        let dock = rustyedit_ui::collapsible_panel_pinned(
             "develop-tools",
             &self.theme,
             title,
@@ -95,6 +108,7 @@ impl Workspace {
                 this.develop_ui.tools_collapsed = !this.develop_ui.tools_collapsed;
                 cx.notify();
             }),
+            navigator,
             content,
         )
         .into_any_element();
@@ -137,7 +151,9 @@ pub(super) fn list_row(
         .rounded_md()
         .cursor_pointer()
         .text_size(px(11.5))
-        .when(active, |el| el.bg(theme.accent_muted).text_color(theme.text))
+        .when(active, |el| {
+            el.bg(theme.accent_muted).text_color(theme.text)
+        })
         .when(!active, |el| {
             el.text_color(theme.text_muted)
                 .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))

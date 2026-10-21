@@ -1,8 +1,8 @@
-//! The photo in Develop: fitted to the window, or at 100% in a scrollable
-//! view that pans by dragging (or from the Navigator).
+//! The photo in Develop: fitted to the viewer, or zoomed (see `zoom`) in a
+//! scrollable view that pans by dragging, with Space held or not.
 
 use gpui::{
-    div, img, point, prelude::*, px, AnyElement, Context, ImageSource, MouseButton,
+    canvas, div, img, prelude::*, px, AnyElement, ClickEvent, Context, ImageSource, MouseButton,
     MouseDownEvent, MouseMoveEvent, ObjectFit, Window,
 };
 
@@ -15,20 +15,34 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let theme = self.theme;
-        let content = match (self.develop_image_source(), self.zoom_fit) {
+        let zoom = &self.develop_ui.zoom;
+        zoom.pixel_ratio.set(window.scale_factor());
+
+        let content = match (self.develop_image_source(), zoom.scale) {
             (None, _) => div()
                 .text_color(theme.text_muted)
                 .child("Loading…")
                 .into_any_element(),
-            (Some(source), true) => img(source)
+            (Some(source), None) => img(source)
                 .object_fit(ObjectFit::Contain)
                 .size_full()
                 .into_any_element(),
-            (Some(source), false) => self.render_zoomed_develop(source, window, cx),
+            (Some(source), Some(scale)) => self.render_zoomed_develop(source, scale, cx),
         };
 
+        let bounds = zoom.viewer_bounds.clone();
+        let grab_fitted = zoom.space_held && zoom.scale.is_none();
         div()
             .id("develop-viewer")
+            .relative()
+            .when(grab_fitted, |el| {
+                el.cursor_grab().on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|this, event: &MouseDownEvent, _w, cx| {
+                        this.grab_fitted_develop(event.position, cx);
+                    }),
+                )
+            })
             .on_mouse_down(
                 MouseButton::Right,
                 Self::right_click_listener(cx.entity(), self.catalog.selected),
@@ -40,7 +54,16 @@ impl Workspace {
             .items_center()
             .justify_center()
             .bg(theme.background)
+            // Records the viewer's bounds, for zooming around the pointer.
+            .child(
+                canvas(move |b, _, _| bounds.set(b), |_, _, _, _| {})
+                    .absolute()
+                    .size_full(),
+            )
             .child(content)
+            .children(self.render_retouch_overlay(cx))
+            .children(self.render_gradient_overlay(cx))
+            .child(self.render_zoom_badge(cx))
             .into_any_element()
     }
 
@@ -73,51 +96,42 @@ impl Workspace {
         Some((w * scale, h * scale))
     }
 
-    /// Switches between fit and 100%. Going to 100% centres the photo.
-    pub(crate) fn set_develop_zoom_fit(&mut self, fit: bool, cx: &mut Context<Self>) {
-        if self.zoom_fit == fit {
-            return;
-        }
-        self.zoom_fit = fit;
-        if !fit {
-            self.develop_ui.center_on.set(Some((0.5, 0.5)));
-        }
-        cx.notify();
-    }
-
     fn render_zoomed_develop(
         &self,
         source: ImageSource,
-        window: &Window,
+        scale: f32,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let zoom = &self.develop_ui.zoom;
         let Some((w, h)) = self.develop_image_size() else {
             return div().into_any_element();
         };
-        // Logical pixels, so a Retina display still shows 1 image pixel
-        // per physical pixel at 100%.
-        let (w, h) = (w / window.scale_factor(), h / window.scale_factor());
-        self.develop_ui.zoomed_size.set((w, h));
+        // Logical pixels: at 100% a Retina display shows one photo pixel per
+        // physical pixel.
+        let ratio = zoom.pixel_ratio.get();
+        let (w, h) = (w * scale / ratio, h * scale / ratio);
+        zoom.zoomed_size.set((w, h));
+        zoom.apply_anchor();
 
-        // Centre where asked once the viewport's size is known.
-        if let Some((fx, fy)) = self.develop_ui.center_on.get() {
-            if self.develop_ui.viewer_scroll.bounds().size.width > px(0.0) {
-                self.scroll_develop_to(fx, fy);
-                self.develop_ui.center_on.set(None);
-            }
-        }
-
+        let panning = zoom.pan.is_some();
         div()
             .id("develop-zoom")
             .size_full()
             .overflow_scroll()
-            .track_scroll(&self.develop_ui.viewer_scroll)
-            .cursor_grab()
+            .track_scroll(&zoom.scroll)
+            .when(panning, |el| el.cursor_grabbing())
+            .when(!panning, |el| el.cursor_grab())
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|this, event: &MouseDownEvent, _w, _cx| {
-                    let offset = this.develop_ui.viewer_scroll.offset();
-                    this.develop_ui.pan_drag = Some((event.position, offset));
+                cx.listener(|this, event: &MouseDownEvent, _w, cx| {
+                    // With a retouch tool picked, clicks place spots; only
+                    // Space + drag pans.
+                    let zoom = &this.develop_ui.zoom;
+                    if this.photo_tool_active() && !zoom.space_held {
+                        return;
+                    }
+                    this.start_develop_pan(event.position);
+                    cx.notify();
                 }),
             )
             .child(
@@ -132,42 +146,57 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// Scrolls the 100% view so the photo point at (`fx`, `fy`), as
-    /// fractions of its width and height, sits in the middle of the view.
-    pub(super) fn scroll_develop_to(&self, fx: f32, fy: f32) {
-        let scroll = &self.develop_ui.viewer_scroll;
-        let (w, h) = self.develop_ui.zoomed_size.get();
-        let view = scroll.bounds().size;
-        let (vw, vh) = (f32::from(view.width), f32::from(view.height));
-        let x = (fx * w - vw / 2.0).clamp(0.0, (w - vw).max(0.0));
-        let y = (fy * h - vh / 2.0).clamp(0.0, (h - vh).max(0.0));
-        scroll.set_offset(point(px(-x), px(-y)));
+    /// The zoom level in the viewer's corner; clicking it toggles Fit and
+    /// 100%.
+    fn render_zoom_badge(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let hint = if self.develop_ui.zoom.scale.is_some() {
+            "Ctrl + scroll to zoom \u{00B7} Space + drag to move \u{00B7} click for Fit"
+        } else {
+            "Ctrl + scroll to zoom \u{00B7} click for 100%"
+        };
+        div()
+            .id("develop-zoom-badge")
+            .absolute()
+            .left(px(10.0))
+            .bottom(px(10.0))
+            .h(px(22.0))
+            .px_2()
+            .flex()
+            .items_center()
+            .rounded_md()
+            .bg(theme.surface.opacity(0.85))
+            .border_1()
+            .border_color(theme.border)
+            .text_size(px(11.0))
+            .text_color(theme.text)
+            .cursor_pointer()
+            .hover(|el| el.bg(theme.surface_elevated))
+            .child(self.develop_zoom_label())
+            .tooltip(rustyedit_ui::tip(hint, &theme))
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.toggle_develop_zoom(cx);
+            }))
+            .into_any_element()
     }
 
-    /// The part of the photo the 100% view shows, as fractions
-    /// `(left, top, width, height)`; `None` when fitted.
+    /// The part of the photo in view; `None` when fitted.
     pub(super) fn develop_visible_region(&self) -> Option<(f32, f32, f32, f32)> {
-        if self.zoom_fit {
-            return None;
-        }
-        let (w, h) = self.develop_ui.zoomed_size.get();
-        let scroll = &self.develop_ui.viewer_scroll;
-        let view = scroll.bounds().size;
-        let (vw, vh) = (f32::from(view.width), f32::from(view.height));
-        if w <= 0.0 || h <= 0.0 || vw <= 0.0 {
-            return None;
-        }
-        let offset = scroll.offset();
-        let (fw, fh) = ((vw / w).min(1.0), (vh / h).min(1.0));
-        let left = (-f32::from(offset.x) / w).clamp(0.0, 1.0 - fw);
-        let top = (-f32::from(offset.y) / h).clamp(0.0, 1.0 - fh);
-        Some((left, top, fw, fh))
+        self.develop_ui.zoom.visible_region()
     }
 
-    /// Follows a drag on the 100% photo or the Navigator. Returns whether
-    /// one was in progress (and so the event is used).
-    pub(crate) fn develop_drag_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) -> bool {
-        if self.curve_drag_move(event.position, event.dragging(), cx) {
+    /// Follows a drag on the curve graph, the Navigator or the zoomed
+    /// photo. Returns whether one was in progress (and so the event is
+    /// used).
+    pub(crate) fn develop_drag_move(
+        &mut self,
+        event: &MouseMoveEvent,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.curve_drag_move(event.position, event.dragging(), cx)
+            || self.retouch_drag_move(event.position, event.dragging(), cx)
+            || self.gradient_drag_move(event.position, event.dragging(), cx)
+        {
             return true;
         }
         if self.develop_ui.navigator_dragging {
@@ -178,25 +207,20 @@ impl Workspace {
             }
             return true;
         }
-        let Some((start, start_offset)) = self.develop_ui.pan_drag else {
-            return false;
-        };
-        if !event.dragging() {
-            self.develop_ui.pan_drag = None;
-            return true;
-        }
-        let scroll = &self.develop_ui.viewer_scroll;
-        let max = scroll.max_offset();
-        let x = (start_offset.x + (event.position.x - start.x)).clamp(-max.width, px(0.0));
-        let y = (start_offset.y + (event.position.y - start.y)).clamp(-max.height, px(0.0));
-        scroll.set_offset(point(x, y));
-        cx.notify();
-        true
+        self.develop_pan_move(event.position, event.dragging(), cx)
     }
 
     pub(crate) fn end_develop_drag(&mut self) {
-        self.develop_ui.pan_drag = None;
+        self.develop_ui.zoom.pan = None;
         self.develop_ui.navigator_dragging = false;
         self.develop_ui.curve_drag = None;
+        self.end_retouch_drag();
+        self.end_gradient_drag();
+    }
+
+    /// Whether a tool that works by clicking the photo (Heal / Clone, a
+    /// gradient) is picked, so plain clicks don't pan.
+    fn photo_tool_active(&self) -> bool {
+        self.develop_ui.retouch.tool.is_some() || self.develop_ui.gradients.tool.is_some()
     }
 }

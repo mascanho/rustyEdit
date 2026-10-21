@@ -481,7 +481,7 @@ impl Workspace {
         }
 
         vec![
-            self.render_main_section(cx),
+            div().pt_3().child(self.render_histogram_panel(cx)).into_any_element(),
             self.disclosure("metadata", "Metadata", metadata, cx),
         ]
     }
@@ -583,6 +583,13 @@ impl Workspace {
 
         div()
             .id("library-loupe")
+            // Records the loupe's area, for the footer slider's fit scale.
+            .child({
+                let bounds = self.loupe_bounds.clone();
+                gpui::canvas(move |b, _, _| bounds.set(b), |_, _, _, _| {})
+                    .absolute()
+                    .size_full()
+            })
             .on_mouse_down(
                 gpui::MouseButton::Right,
                 Self::right_click_listener(cx.entity(), self.catalog.selected),

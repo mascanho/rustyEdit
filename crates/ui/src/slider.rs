@@ -2,11 +2,15 @@ use std::rc::Rc;
 
 use gpui::{
     div, hsla, linear_color_stop, linear_gradient, prelude::*, px, relative, AnyElement, App,
-    Context, DragMoveEvent, ElementId, Hsla, MouseButton, MouseDownEvent, Render, SharedString,
-    Window,
+    ClickEvent, Context, DragMoveEvent, ElementId, Hsla, MouseButton, MouseDownEvent, Render,
+    SharedString, Window,
 };
 
-use crate::theme::Theme;
+use crate::{
+    icons::{icon, Icon},
+    theme::Theme,
+    tooltip::tip,
+};
 
 /// An invisible 0x0 view used as the "dragged" element for slider drags.
 /// GPUI's drag API always renders *something* that follows the cursor; we
@@ -109,7 +113,25 @@ pub fn labeled_slider(
                         )
                         .child(label.into()),
                 )
-                .child(div().text_color(theme.text).child(shown)),
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap_1()
+                        .child(div().text_color(theme.text).child(shown))
+                        .child(reset_button(
+                            SharedString::from(format!("{:?}-reset", track_id)),
+                            (value - default).abs() > 0.05,
+                            &theme,
+                            {
+                                let on_change = on_change.clone();
+                                move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                                    on_change(default, window, cx)
+                                }
+                            },
+                        )),
+                ),
         )
         .child({
             let on_change = on_change.clone();
@@ -204,4 +226,93 @@ fn track_background(track: SliderTrack, theme: &Theme) -> AnyElement {
             }))
             .into_any_element(),
     }
+}
+
+/// The small "reset to default" button beside a slider's value. It keeps
+/// its space while hidden (at the default) so values don't jump around.
+pub fn reset_button(
+    id: impl Into<ElementId>,
+    visible: bool,
+    theme: &Theme,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let theme = *theme;
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(16.0))
+        .rounded_sm()
+        .when(!visible, |el| el.invisible())
+        .cursor_pointer()
+        .hover(|el| el.bg(theme.surface_elevated))
+        .child(icon(Icon::Reset, 11.0, theme.text_muted))
+        .tooltip(tip("Reset to default", &theme))
+        .on_click(on_click)
+}
+
+/// A label-less horizontal slider over `0..=1`, for toolbars and the
+/// footer: a thin track, an accent fill and a handle.
+pub fn compact_slider(
+    id: impl Into<ElementId>,
+    fraction: f32,
+    width: f32,
+    theme: &Theme,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let theme = *theme;
+    let id = id.into();
+    let drag_id = id.clone();
+    let fraction = fraction.clamp(0.0, 1.0);
+
+    div()
+        .id(id.clone())
+        .relative()
+        .flex()
+        .items_center()
+        .w(px(width))
+        .h(px(14.0))
+        .cursor_pointer()
+        .child(
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .h(px(3.0))
+                .rounded_full()
+                .bg(theme.border),
+        )
+        .child(
+            div()
+                .absolute()
+                .left_0()
+                .w(relative(fraction))
+                .h(px(3.0))
+                .rounded_full()
+                .bg(theme.accent),
+        )
+        .child(
+            div()
+                .absolute()
+                .left(relative(fraction))
+                .size(px(10.0))
+                .ml(px(-5.0))
+                .rounded_full()
+                .bg(theme.text)
+                .border_1()
+                .border_color(theme.surface)
+                .shadow_sm(),
+        )
+        .on_drag(SliderDrag(id), move |_, _, _, cx| cx.new(|_| DragGhost))
+        .on_drag_move(
+            move |event: &DragMoveEvent<SliderDrag>, window: &mut Window, cx: &mut App| {
+                if event.drag(cx).0 != drag_id {
+                    return;
+                }
+                let x = f32::from(event.event.position.x - event.bounds.origin.x);
+                let width = f32::from(event.bounds.size.width).max(1.0);
+                on_change((x / width).clamp(0.0, 1.0), window, cx);
+            },
+        )
 }

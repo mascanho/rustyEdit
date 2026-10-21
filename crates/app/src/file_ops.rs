@@ -33,6 +33,13 @@ impl Workspace {
         _w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // In Develop with a retouch or gradient tool out, Backspace removes
+        // the selected spot or gradient rather than the photo.
+        if self.mode == Mode::Develop
+            && (self.delete_selected_gradient(cx) || self.delete_selected_spot(cx))
+        {
+            return;
+        }
         self.delete_selected(false, cx);
     }
 

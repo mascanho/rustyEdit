@@ -28,6 +28,32 @@ pub fn toggle_switch(
         .on_click(on_click)
 }
 
+/// A smaller [`toggle_switch`], for section title bars.
+pub fn mini_toggle_switch(
+    id: impl Into<ElementId>,
+    on: bool,
+    theme: &Theme,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let theme = *theme;
+
+    div()
+        .id(id)
+        .flex()
+        .flex_row()
+        .items_center()
+        .flex_shrink_0()
+        .w(px(26.0))
+        .h(px(14.0))
+        .p(px(2.0))
+        .rounded_full()
+        .cursor_pointer()
+        .bg(if on { theme.accent } else { theme.border })
+        .when(on, |el| el.justify_end())
+        .child(div().size(px(10.0)).rounded_full().bg(theme.text))
+        .on_click(on_click)
+}
+
 /// A compact "− value +" integer editor moving in increments of `step`,
 /// with an optional unit suffix (e.g. "px"). Buttons dim at the bounds.
 #[allow(clippy::too_many_arguments)]

@@ -47,9 +47,11 @@ impl Workspace {
                 Some(relative_time(now, snapshot.at)),
                 snapshot.develop == asset.develop,
                 cx.listener(move |this, _: &ClickEvent, _w, cx| this.apply_snapshot(&snapshot, cx)),
-                Some(Box::new(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                    this.delete_snapshot(ix, cx);
-                }))),
+                Some(Box::new(cx.listener(
+                    move |this, _: &ClickEvent, _w, cx| {
+                        this.delete_snapshot(ix, cx);
+                    },
+                ))),
             ));
         }
         rows
@@ -66,7 +68,9 @@ impl Workspace {
             "" => next_snapshot_name(&asset.snapshots),
             trimmed => trimmed.to_string(),
         };
-        asset.snapshots.push(Snapshot::new(name.clone(), asset.develop));
+        asset
+            .snapshots
+            .push(Snapshot::new(name.clone(), asset.develop));
         self.status_message = Some(format!("Took snapshot \u{201C}{name}\u{201D}").into());
         self.mark_catalog_dirty(cx);
         cx.notify();

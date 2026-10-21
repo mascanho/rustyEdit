@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     curves::ToneCurves,
+    gradients::Gradients,
+    retouch::Spots,
     grading::{ColorGrading, GradeProp, ToneZone},
     mixer::{ColorBand, ColorMixer, MixerProp},
 };
@@ -37,6 +39,11 @@ pub struct DevelopSettings {
     pub clarity: f32,
     pub sharpening: f32,
 
+    /// Spot removal (heal / clone), applied before everything else.
+    pub spots: Spots,
+    /// Linear and radial gradient masks with local adjustments.
+    pub gradients: Gradients,
+
     // Tone curve, Color Mixer, Color Grading
     pub curves: ToneCurves,
     pub mixer: ColorMixer,
@@ -57,6 +64,11 @@ pub struct DevelopSettings {
     pub rotation_degrees: f32,
     pub flip_horizontal: bool,
     pub flip_vertical: bool,
+
+    /// Sections switched off in the panel, one bit per
+    /// [`crate::DevelopSection`]: their values are kept but not applied
+    /// (see [`DevelopSettings::effective`]).
+    pub disabled_sections: u16,
 }
 
 impl Default for DevelopSettings {
@@ -74,6 +86,8 @@ impl Default for DevelopSettings {
             saturation: 0.0,
             clarity: 0.0,
             sharpening: 0.0,
+            spots: Spots::default(),
+            gradients: Gradients::default(),
             curves: ToneCurves::default(),
             mixer: ColorMixer::default(),
             grading: ColorGrading::default(),
@@ -86,6 +100,7 @@ impl Default for DevelopSettings {
             rotation_degrees: 0.0,
             flip_horizontal: false,
             flip_vertical: false,
+            disabled_sections: 0,
         }
     }
 }
