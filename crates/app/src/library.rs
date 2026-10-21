@@ -583,6 +583,10 @@ impl Workspace {
 
         div()
             .id("library-loupe")
+            .on_mouse_down(
+                gpui::MouseButton::Right,
+                Self::right_click_listener(cx.entity(), self.catalog.selected),
+            )
             .relative()
             .flex_1()
             .min_h(px(0.0))

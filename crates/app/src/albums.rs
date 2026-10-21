@@ -512,6 +512,10 @@ impl Workspace {
         match target {
             TextTarget::Album => {
                 if let Some(id) = self.catalog_def.albums.create(&text) {
+                    // Photos right-clicked into "New album…" go straight in.
+                    for photo in std::mem::take(&mut self.pending_album_photos) {
+                        self.catalog_def.albums.toggle(id, &photo);
+                    }
                     self.save_catalog_def();
                     self.view_album(Some(id), cx);
                 }

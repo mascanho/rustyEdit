@@ -768,7 +768,8 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                     },
                     SettingItem {
                         label: "Colour label bar",
-                        description: "Run a bar in the label's colour along the card's bottom edge.",
+                        description:
+                            "Run a bar in the label's colour along the card's bottom edge.",
                         control: SettingControl::Toggle {
                             get: |s| s.grid.show_label_bar,
                             set: |s, v| s.grid.show_label_bar = v,
@@ -783,8 +784,9 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                         },
                     },
                     SettingItem {
-                        label: "Tooltips",
-                        description: "Show name, date, camera and keywords when hovering a card.",
+                        label: "Info button",
+                        description:
+                            "Show an \u{24D8} on each card; click it to see the photo's metadata.",
                         control: SettingControl::Toggle {
                             get: |s| s.grid.tooltips,
                             set: |s, v| s.grid.tooltips = v,

@@ -26,6 +26,10 @@ impl Workspace {
 
         let viewer = div()
             .id("develop-viewer")
+            .on_mouse_down(
+                gpui::MouseButton::Right,
+                Self::right_click_listener(cx.entity(), self.catalog.selected),
+            )
             .flex_1()
             .min_w(px(0.0))
             .flex()

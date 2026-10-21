@@ -30,7 +30,11 @@ impl Workspace {
                 .cloned()
                 .collect(),
             ExportScope::All => assets.clone(),
-            ExportScope::Selected => self.catalog.selected_asset().cloned().into_iter().collect(),
+            ExportScope::Selected => self
+                .target_indices()
+                .into_iter()
+                .filter_map(|ix| self.catalog.assets.get(ix).cloned())
+                .collect(),
         }
     }
 
@@ -38,7 +42,10 @@ impl Workspace {
         match scope {
             ExportScope::Picked => self.catalog.counts().picked,
             ExportScope::All => self.catalog.counts().total,
-            ExportScope::Selected => usize::from(self.catalog.selected_asset().is_some()),
+            ExportScope::Selected if self.catalog.selected_asset().is_some() => {
+                self.target_indices().len()
+            }
+            ExportScope::Selected => 0,
         }
     }
 

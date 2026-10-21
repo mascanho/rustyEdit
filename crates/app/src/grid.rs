@@ -50,7 +50,12 @@ impl CardGeometry {
 }
 
 impl Workspace {
-    pub fn cycle_grid_style(&mut self, _: &CycleGridStyle, _w: &mut Window, cx: &mut Context<Self>) {
+    pub fn cycle_grid_style(
+        &mut self,
+        _: &CycleGridStyle,
+        _w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.mode != Mode::Library || self.library_view != LibraryView::Grid {
             return;
         }
@@ -186,7 +191,7 @@ impl Workspace {
                 el.child(stack_badge(asset_ix, id, count, collapsed, entity, &theme))
             });
 
-        let mut card = div()
+        let card = div()
             .id(("grid-cell", asset_ix))
             .group(GRID_CARD_GROUP)
             .relative()
@@ -214,14 +219,14 @@ impl Workspace {
                 el.bg(theme.accent_muted.opacity(0.5))
             })
             .cursor_pointer();
-        if grid.tooltips {
-            card = card.tooltip(rustyedit_ui::tip(card_tooltip(asset), &theme));
-        }
 
         card.when(geometry.header > 0.0, |el| {
             el.child(card_header(asset, asset_ix, entity, &theme))
         })
         .child(thumb)
+        .when(grid.tooltips, |el| {
+            el.child(info_button(asset_ix, entity, &theme))
+        })
         .when(geometry.footer > 0.0, |el| {
             el.child(card_footer(asset, grid, &theme))
         })
@@ -236,6 +241,10 @@ impl Workspace {
                     .bg(color),
             )
         })
+        .on_mouse_down(
+            gpui::MouseButton::Right,
+            Self::right_click_listener(entity.clone(), asset_ix),
+        )
         .on_click({
             let entity = entity.clone();
             move |event: &ClickEvent, _window, cx| {
@@ -440,7 +449,11 @@ fn minimal_badges(asset: &Asset, theme: &Theme) -> Option<AnyElement> {
                 el.child(div().size(px(7.0)).rounded_full().bg(color))
             })
             .when(rating > 0, |el| {
-                el.child(div().text_color(theme.star).child(format!("\u{2605}{rating}")))
+                el.child(
+                    div()
+                        .text_color(theme.star)
+                        .child(format!("\u{2605}{rating}")),
+                )
             })
             .into_any_element(),
     )
@@ -592,6 +605,39 @@ fn card_facts(asset: &Asset) -> String {
 
 /// Everything about a photo in a few lines, so even Bare cards can be
 /// identified by hovering.
+/// The small ⓘ in a card's top-right corner, always visible. Clicking it
+/// opens the photo's metadata; nothing appears just from hovering.
+fn info_button(asset_ix: usize, entity: &Entity<Workspace>, theme: &Theme) -> AnyElement {
+    let entity = entity.clone();
+    let theme = *theme;
+    div()
+        .id(("grid-info", asset_ix))
+        .absolute()
+        .top(px(4.0))
+        .right(px(4.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(14.0))
+        .rounded_full()
+        .bg(theme.background.opacity(0.7))
+        .text_size(px(9.0))
+        .italic()
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .text_color(theme.text_muted)
+        .cursor_pointer()
+        .hover(|el| el.bg(theme.accent_muted).text_color(theme.text))
+        .tooltip(rustyedit_ui::tip("Photo info", &theme))
+        .child("i")
+        .on_click(move |event: &ClickEvent, _window, cx| {
+            cx.stop_propagation();
+            let position = event.position();
+            entity.update(cx, |this, cx| this.open_card_info(asset_ix, position, cx));
+        })
+        .into_any_element()
+}
+
+#[allow(dead_code)]
 fn card_tooltip(asset: &Asset) -> String {
     let mut lines = vec![asset.file_name()];
     if !asset.title.trim().is_empty() {

@@ -3,8 +3,8 @@ use gpui::{
     MouseButton, SharedString, Window,
 };
 use rustyedit_core::settings::{
-    CardOption, CardPreview, FilmstripPosition, GridStyle, LayoutPreset, PanelKind,
-    SettingControl, SettingItem, SETTINGS_PAGES,
+    CardOption, CardPreview, FilmstripPosition, GridStyle, LayoutPreset, PanelKind, SettingControl,
+    SettingItem, SETTINGS_PAGES,
 };
 use rustyedit_core::Settings;
 use rustyedit_ui::{FilmLook, Theme};
@@ -843,33 +843,46 @@ fn grid_preview(style: GridStyle, theme: &Theme) -> impl IntoElement {
         (300.0, 20.0),
     ];
     let ratings = [3usize, 5, 0, 2, 4, 1];
-    let labels = [None, Some(theme.label_red), None, Some(theme.label_green), None, None];
+    let labels = [
+        None,
+        Some(theme.label_red),
+        None,
+        Some(theme.label_green),
+        None,
+        None,
+    ];
     let (tile, gap) = match style {
         GridStyle::Detailed | GridStyle::Compact => (Some(theme.surface_elevated), 5.0),
         GridStyle::Minimal => (Some(theme.surface_elevated.opacity(0.5)), 5.0),
         GridStyle::Bare => (None, 3.0),
     };
-    let line = |width: f32, color: gpui::Hsla| {
-        div().h(px(2.0)).w(px(width)).rounded_full().bg(color)
-    };
+    let line =
+        |width: f32, color: gpui::Hsla| div().h(px(2.0)).w(px(width)).rounded_full().bg(color);
 
     let card = move |ix: usize| {
         let (sky, ground) = scenes[ix];
-        let photo = div().flex_1().min_h(px(0.0)).rounded(px(1.5)).bg(linear_gradient(
-            180.0,
-            linear_color_stop(hsla(sky / 360.0, 0.5, 0.6, 1.0), 0.0),
-            linear_color_stop(hsla(ground / 360.0, 0.5, 0.4, 1.0), 1.0),
-        ));
+        let photo = div()
+            .flex_1()
+            .min_h(px(0.0))
+            .rounded(px(1.5))
+            .bg(linear_gradient(
+                180.0,
+                linear_color_stop(hsla(sky / 360.0, 0.5, 0.6, 1.0), 0.0),
+                linear_color_stop(hsla(ground / 360.0, 0.5, 0.4, 1.0), 1.0),
+            ));
         let stars = div()
             .flex()
             .flex_row()
             .gap(px(1.0))
             .children((0..5).map(move |star| {
-                div().size(px(2.5)).rounded_full().bg(if star < ratings[ix] {
-                    theme.star
-                } else {
-                    theme.text_faint.opacity(0.5)
-                })
+                div()
+                    .size(px(2.5))
+                    .rounded_full()
+                    .bg(if star < ratings[ix] {
+                        theme.star
+                    } else {
+                        theme.text_faint.opacity(0.5)
+                    })
             }));
         let header = div()
             .flex()
@@ -907,9 +920,10 @@ fn grid_preview(style: GridStyle, theme: &Theme) -> impl IntoElement {
             .rounded(px(2.0))
             .overflow_hidden()
             .when_some(tile, |el, bg| el.bg(bg).p(px(1.5)))
-            .when(matches!(style, GridStyle::Detailed | GridStyle::Compact), |el| {
-                el.child(header)
-            })
+            .when(
+                matches!(style, GridStyle::Detailed | GridStyle::Compact),
+                |el| el.child(header),
+            )
             .child(photo)
             .when(style == GridStyle::Detailed, |el| {
                 el.child(

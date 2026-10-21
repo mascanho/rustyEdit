@@ -6,6 +6,7 @@ mod actions;
 mod albums;
 mod catalogs;
 mod compare;
+mod context_menu;
 mod cull_bar;
 mod develop;
 mod duplicates;
@@ -48,8 +49,8 @@ use actions::{
     ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
 };
 use actions::{
-    CycleGridStyle, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp, SelectDown,
-    SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
+    CycleGridStyle, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp,
+    SelectDown, SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
 };
 use workspace::Workspace;
 

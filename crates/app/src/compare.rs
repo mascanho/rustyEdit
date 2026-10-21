@@ -164,6 +164,17 @@ impl Workspace {
                             )),
                     ),
             )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &MouseDownEvent, _w, cx| {
+                    this.compare_active_left = is_left;
+                    this.open_context_menu(ix, event.position, cx);
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                Self::right_click_listener(cx.entity(), ix),
+            )
             .on_click(cx.listener(move |this, event: &ClickEvent, _w, cx| {
                 this.compare_active_left = is_left;
                 this.catalog.select(ix);

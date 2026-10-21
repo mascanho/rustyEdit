@@ -208,6 +208,10 @@ impl Workspace {
                 .absolute()
                 .top_0()
                 .left(px(left))
+                .on_mouse_down(
+                    gpui::MouseButton::Right,
+                    Self::right_click_listener(entity.clone(), asset_ix),
+                )
                 .on_click(move |_, _window, cx| {
                     entity.update(cx, |this, cx| this.select_asset(asset_ix, cx));
                 })

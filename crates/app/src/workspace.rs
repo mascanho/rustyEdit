@@ -84,6 +84,12 @@ pub struct Workspace {
     pub(crate) is_importing: bool,
     // Multi-selection, undo, compare and loupe zoom (see their modules).
     pub(crate) bottom_menu: Option<crate::size_menu::BottomMenu>,
+    // Right-click menu, and the state its entries use (see `context_menu.rs`).
+    pub(crate) context_menu: Option<crate::context_menu::ContextMenu>,
+    /// The photo whose ⓘ popup is open, and where it was clicked.
+    pub(crate) card_info: Option<(usize, gpui::Point<gpui::Pixels>)>,
+    pub(crate) edit_clipboard: Option<rustyedit_core::DevelopSettings>,
+    pub(crate) pending_album_photos: Vec<PathBuf>,
     /// Distinct cameras, lenses, years… for the Filters panel.
     pub(crate) facets: crate::filters_panel::Facets,
     /// Unspent Ctrl+wheel travel (see `wheel_zoom.rs`).
@@ -218,6 +224,10 @@ impl Workspace {
             post_scan_message: None,
             is_importing: false,
             bottom_menu: None,
+            context_menu: None,
+            card_info: None,
+            edit_clipboard: None,
+            pending_album_photos: Vec::new(),
             facets: Default::default(),
             wheel_accum: 0.0,
             selection: HashSet::new(),
@@ -455,6 +465,11 @@ impl Workspace {
     }
 
     pub fn go_library(&mut self, _: &GoLibrary, _window: &mut Window, cx: &mut Context<Self>) {
+        // Escape first dismisses an open context menu.
+        if self.context_menu.take().is_some() || self.card_info.take().is_some() {
+            cx.notify();
+            return;
+        }
         self.mode = Mode::Library;
         cx.notify();
     }
@@ -849,6 +864,12 @@ impl Render for Workspace {
                 self.bottom_menu.is_some() && self.mode == Mode::Library,
                 |el| el.child(self.render_bottom_menu(cx)),
             )
+            .when(self.card_info.is_some(), |el| {
+                el.child(self.render_card_info(window, cx))
+            })
+            .when(self.context_menu.is_some(), |el| {
+                el.child(self.render_context_menu(window, cx))
+            })
             .when(self.catalog_menu_open, |el| {
                 el.child(self.render_catalog_menu(cx))
             })
