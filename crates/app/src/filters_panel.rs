@@ -6,7 +6,9 @@
 use std::collections::HashMap;
 
 use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString, Window};
-use rustyedit_core::{Catalog, ColorLabel, FilterSet, FocalBand, IsoBand};
+use rustyedit_core::{
+    Catalog, ColorLabel, FilterMode, FilterSet, FocalBand, IsoBand, RatingFilter,
+};
 
 use crate::workspace::{TextTarget, Workspace};
 
@@ -307,6 +309,10 @@ impl Workspace {
         // Colour labels and edited state can change while culling, so they're
         // counted fresh; the loop is integer-only and cheap.
         let mut by_label = [0usize; 6];
+        let mut by_stars = [0usize; 6];
+        let counts = self.catalog.counts();
+        let current_rating = self.catalog.rating_filter();
+        let current_flag = self.catalog.filter();
         let (mut edited, mut untouched) = (0usize, 0usize);
         let mut keywords: HashMap<String, (String, usize)> = HashMap::new();
         for asset in &self.catalog.assets {
@@ -314,6 +320,7 @@ impl Workspace {
                 .iter()
                 .position(|l| *l == asset.color_label)
                 .map_or(5, |p| p)] += 1;
+            by_stars[asset.rating.value().min(5) as usize] += 1;
             if asset.develop.is_edited() {
                 edited += 1;
             } else {
@@ -386,6 +393,61 @@ impl Workspace {
                 ))
                 .into_any_element(),
         );
+
+        // Flag
+        let flag_rows: Vec<AnyElement> = [
+            (FilterMode::All, counts.total),
+            (FilterMode::Picked, counts.picked),
+            (FilterMode::Rejected, counts.rejected),
+            (FilterMode::Unflagged, counts.unflagged),
+        ]
+        .into_iter()
+        .map(|(mode, count)| {
+            self.choice_row(
+                format!("filter-flag-{}", mode.label()),
+                mode.label(),
+                count,
+                current_flag == mode,
+                None,
+                cx,
+                move |this, cx| {
+                    this.catalog.set_filter(mode);
+                    this.on_selection_changed(cx);
+                },
+            )
+        })
+        .collect();
+        out.push(self.facet_group("FLAG", flag_rows));
+
+        // Star rating
+        let mut rating_options = vec![
+            (RatingFilter::Any, counts.total),
+            (RatingFilter::Unrated, by_stars[0]),
+        ];
+        for n in 1..=5u8 {
+            rating_options.push((
+                RatingFilter::AtLeast(n),
+                by_stars[n as usize..].iter().sum(),
+            ));
+        }
+        let rating_rows: Vec<AnyElement> = rating_options
+            .into_iter()
+            .map(|(option, count)| {
+                self.choice_row(
+                    format!("filter-rating-{}", option.label()),
+                    option.label(),
+                    count,
+                    current_rating == option,
+                    Some(theme.star),
+                    cx,
+                    move |this, cx| {
+                        this.catalog.set_rating_filter(option);
+                        this.on_selection_changed(cx);
+                    },
+                )
+            })
+            .collect();
+        out.push(self.facet_group("RATING", rating_rows));
 
         // Colour label
         let mut rows = vec![self.facet_row(
@@ -620,6 +682,23 @@ impl Workspace {
         cx: &mut Context<Self>,
         change: impl Fn(&mut FilterSet) + 'static,
     ) -> AnyElement {
+        self.choice_row(id, label, count, active, swatch, cx, move |this, cx| {
+            this.update_filters(|f| change(f), cx)
+        })
+    }
+
+    /// [`facet_row`](Self::facet_row) with an arbitrary click action, for
+    /// filters that don't live in the `FilterSet` (flag, rating).
+    fn choice_row(
+        &self,
+        id: impl Into<SharedString>,
+        label: impl Into<SharedString>,
+        count: usize,
+        active: bool,
+        swatch: Option<gpui::Hsla>,
+        cx: &mut Context<Self>,
+        on_click: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+    ) -> AnyElement {
         let theme = self.theme;
         div()
             .id(id.into())
@@ -661,9 +740,7 @@ impl Workspace {
                     .text_xs()
                     .child(if active { "\u{2713}" } else { "" }),
             )
-            .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                this.update_filters(|f| change(f), cx)
-            }))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| on_click(this, cx)))
             .into_any_element()
     }
 }

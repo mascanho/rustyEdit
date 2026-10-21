@@ -64,6 +64,7 @@ impl Workspace {
             .children(self.render_retouch_overlay(cx))
             .children(self.render_gradient_overlay(cx))
             .child(self.render_zoom_badge(cx))
+            .children(self.render_info_overlay(cx))
             .into_any_element()
     }
 

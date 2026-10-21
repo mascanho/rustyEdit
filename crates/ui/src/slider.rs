@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
     div, hsla, linear_color_stop, linear_gradient, prelude::*, px, relative, AnyElement, App,
@@ -26,6 +26,45 @@ struct SliderDrag(ElementId);
 impl Render for DragGhost {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
+    }
+}
+
+/// Where a fine (modifier-held) drag started, so it moves relative to that
+/// point instead of jumping to the cursor. The UI runs on one thread, so a
+/// thread-local is enough.
+struct FineAnchor {
+    id: ElementId,
+    x: f32,
+    value: f32,
+    /// The precision factor this anchor was taken at.
+    factor: f32,
+}
+
+thread_local! {
+    static FINE_ANCHOR: RefCell<Option<FineAnchor>> = const { RefCell::new(None) };
+}
+
+/// How much a drag is slowed down by held modifiers: Shift = 10x finer,
+/// Alt/Option = 50x finer, otherwise 1 (absolute positioning).
+fn precision_factor(modifiers: gpui::Modifiers) -> f32 {
+    if modifiers.alt {
+        0.02
+    } else if modifiers.shift {
+        0.1
+    } else {
+        1.0
+    }
+}
+
+/// A slider value for display: whole numbers when it is one, otherwise a
+/// decimal so fine adjustments are visible.
+fn format_value(value: f32, signed: bool) -> String {
+    let fractional = (value - value.round()).abs() > 0.05;
+    match (signed, fractional) {
+        (true, true) => format!("{value:+.1}"),
+        (true, false) => format!("{value:+.0}"),
+        (false, true) => format!("{value:.1}"),
+        (false, false) => format!("{value:.0}"),
     }
 }
 
@@ -82,11 +121,7 @@ pub fn labeled_slider(
         let on_change = on_change.clone();
         move |_: &MouseDownEvent, window: &mut Window, cx: &mut App| on_change(default, window, cx)
     };
-    let shown = if signed {
-        format!("{value:+.0}")
-    } else {
-        format!("{value:.0}")
-    };
+    let shown = format_value(value, signed);
 
     div()
         .flex()
@@ -174,6 +209,34 @@ pub fn labeled_slider(
                         .border_color(theme.surface)
                         .shadow_sm(),
                 )
+                // Shift/Alt + scroll nudges the value: 1% of the range per
+                // notch with Shift, 0.1% with Alt. Plain scrolling is left
+                // to the panel.
+                .on_scroll_wheel({
+                    let on_change = on_change.clone();
+                    move |event: &gpui::ScrollWheelEvent, window: &mut Window, cx: &mut App| {
+                        let unit = if event.modifiers.alt {
+                            0.001
+                        } else if event.modifiers.shift {
+                            0.01
+                        } else {
+                            return;
+                        };
+                        let delta = event.delta.pixel_delta(px(16.0));
+                        // Shift turns a vertical wheel into a horizontal one
+                        // on some platforms, so take whichever axis moved.
+                        let (dx, dy) = (f32::from(delta.x), f32::from(delta.y));
+                        let notches = if dy.abs() >= dx.abs() { dy } else { dx } / 16.0;
+                        cx.stop_propagation();
+                        let next = (value + notches.clamp(-4.0, 4.0) * unit * (max - min))
+                            .clamp(min, max);
+                        on_change(next, window, cx);
+                    }
+                })
+                // A new press starts a new drag, so forget any fine anchor.
+                .on_mouse_down(MouseButton::Left, |_, _, _| {
+                    FINE_ANCHOR.with(|a| *a.borrow_mut() = None);
+                })
                 .on_drag(SliderDrag(track_id), move |_, _, _, cx| {
                     cx.new(|_| DragGhost)
                 })
@@ -185,8 +248,33 @@ pub fn labeled_slider(
                         let x = f32::from(event.event.position.x);
                         let origin_x = f32::from(event.bounds.origin.x);
                         let width = f32::from(event.bounds.size.width).max(1.0);
-                        let fraction = ((x - origin_x) / width).clamp(0.0, 1.0);
-                        on_change(min + fraction * (max - min), window, cx);
+                        let factor = precision_factor(event.event.modifiers);
+                        if factor >= 1.0 {
+                            FINE_ANCHOR.with(|a| *a.borrow_mut() = None);
+                            let fraction = ((x - origin_x) / width).clamp(0.0, 1.0);
+                            on_change(min + fraction * (max - min), window, cx);
+                            return;
+                        }
+                        // Fine drag: move relative to where the modifier was
+                        // pressed, scaled down. Pressing or releasing a
+                        // modifier mid-drag re-anchors, so there's no jump.
+                        let (anchor_x, anchor_value) = FINE_ANCHOR.with(|a| {
+                            let mut a = a.borrow_mut();
+                            match a.as_ref() {
+                                Some(f) if f.id == drag_id && f.factor == factor => (f.x, f.value),
+                                _ => {
+                                    *a = Some(FineAnchor {
+                                        id: drag_id.clone(),
+                                        x,
+                                        value,
+                                        factor,
+                                    });
+                                    (x, value)
+                                }
+                            }
+                        });
+                        let delta = (x - anchor_x) / width * (max - min) * factor;
+                        on_change((anchor_value + delta).clamp(min, max), window, cx);
                     },
                 )
         })

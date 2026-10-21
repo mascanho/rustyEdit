@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use gpui::{
     canvas, div, fill, point, prelude::*, px, size, App, Bounds, Context, DragMoveEvent,
     MouseButton, MouseDownEvent, Pixels, Render, ScrollHandle, SharedString, Window,
@@ -18,6 +20,13 @@ const THUMB_INSET: f32 = 2.0;
 /// the id and ignores drags started on another one.
 #[derive(Clone)]
 struct ScrollbarDrag(SharedString);
+
+thread_local! {
+    /// The scrollbar a drag is currently moving, if any. `has_active_drag`
+    /// is true for *every* kind of drag (sliders too), so it can't tell a
+    /// scrollbar drag apart on its own.
+    static ACTIVE_SCROLLBAR: RefCell<Option<SharedString>> = const { RefCell::new(None) };
+}
 
 /// The dragged element must render something; the thumb itself already
 /// tracks the cursor, so this stays empty.
@@ -73,7 +82,13 @@ pub fn vertical_scrollbar(
         // which is what lets the thumb react to hover below.
         .hover(|style| style.bg(gpui::transparent_black()))
         .on_mouse_down(MouseButton::Left, jump)
-        .on_drag(ScrollbarDrag(id), |_, _, _, cx| cx.new(|_| DragGhost))
+        .on_drag(ScrollbarDrag(id.clone()), {
+            let id = id.clone();
+            move |_, _, _, cx| {
+                ACTIVE_SCROLLBAR.with(|a| *a.borrow_mut() = Some(id.clone()));
+                cx.new(|_| DragGhost)
+            }
+        })
         .on_drag_move(drag)
         .child(
             canvas(
@@ -82,7 +97,12 @@ pub fn vertical_scrollbar(
                     let Some(thumb) = thumb_bounds(&handle, bounds) else {
                         return;
                     };
-                    let active = cx.has_active_drag() || bounds.contains(&window.mouse_position());
+                    if !cx.has_active_drag() {
+                        ACTIVE_SCROLLBAR.with(|a| *a.borrow_mut() = None);
+                    }
+                    let dragging = cx.has_active_drag()
+                        && ACTIVE_SCROLLBAR.with(|a| a.borrow().as_ref() == Some(&id));
+                    let active = dragging || bounds.contains(&window.mouse_position());
                     let width = px(if active {
                         THUMB_WIDTH_ACTIVE
                     } else {

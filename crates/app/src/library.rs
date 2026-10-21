@@ -4,7 +4,7 @@ use gpui::{
 };
 use rustyedit_core::{
     settings::{DockSide, PanelKind},
-    ColorLabel, FilterMode, Flag,
+    ColorLabel, Flag,
 };
 use rustyedit_ui::{PanelSide, Theme};
 use std::{sync::atomic::Ordering, time::Duration};
@@ -296,7 +296,7 @@ impl Workspace {
 
     // --- Side panels ----------------------------------------------------------
 
-    /// Catalog overview and filter buttons.
+    /// Folders and catalog overview. (Filters live in the Filters rail tool.)
     pub(crate) fn navigator_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let theme = self.theme;
         let counts = self.catalog.counts();
@@ -316,44 +316,8 @@ impl Workspace {
         )
         .into_any_element();
 
-        let filters: Vec<AnyElement> = [
-            (FilterMode::All, counts.total),
-            (FilterMode::Picked, counts.picked),
-            (FilterMode::Rejected, counts.rejected),
-            (FilterMode::Unflagged, counts.unflagged),
-        ]
-        .into_iter()
-        .map(|(mode, count)| {
-            rustyedit_ui::chrome_button(
-                SharedString::from(format!("library-filter-{}", mode.label())),
-                format!("{} ({count})", mode.label()),
-                self.catalog.filter() == mode,
-                &theme,
-                cx.listener(move |this, _: &ClickEvent, _window, cx| {
-                    this.catalog.set_filter(mode);
-                    this.on_selection_changed(cx);
-                }),
-            )
-            .into_any_element()
-        })
-        .collect();
-
-        let filter = rustyedit_ui::section(
-            &theme,
-            "Filter",
-            vec![div()
-                .flex()
-                .flex_col()
-                .items_start()
-                .gap_1()
-                .children(filters)
-                .into_any_element()],
-        )
-        .into_any_element();
-
         let mut sections = vec![self.render_folder_tree(cx), catalog];
         sections.extend(self.missing_sections(cx));
-        sections.push(filter);
         sections
     }
 

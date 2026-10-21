@@ -509,6 +509,9 @@ impl Workspace {
         if self.source_image_for != self.catalog.selected_asset().map(|a| a.id) {
             self.load_source_image(cx);
         }
+        if self.info_visible {
+            self.request_metadata(cx);
+        }
         cx.notify();
     }
 

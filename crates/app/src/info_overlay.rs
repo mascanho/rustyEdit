@@ -20,8 +20,13 @@ impl Workspace {
         _window: &mut gpui::Window,
         cx: &mut Context<Self>,
     ) {
-        // The overlay belongs to the loupe; ignore the key elsewhere.
-        if self.mode != Mode::Library || self.library_view != LibraryView::Loupe {
+        // The overlay sits over a single photo: the loupe or Develop.
+        let on_photo = match self.mode {
+            Mode::Develop => true,
+            Mode::Library => self.library_view == LibraryView::Loupe,
+            _ => false,
+        };
+        if !on_photo {
             return;
         }
         self.info_visible = !self.info_visible;
