@@ -127,6 +127,7 @@ impl Workspace {
         panel_children.extend(self.develop_edit_sections(cx));
 
         let panel = rustyedit_ui::side_panel(
+            "develop-side-panel",
             &self.theme,
             match panel_side {
                 DockSide::Left => PanelSide::Left,

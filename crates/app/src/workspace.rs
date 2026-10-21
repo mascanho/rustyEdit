@@ -24,8 +24,8 @@ use crate::actions::{
     Rating0, Rating1, Rating2, Rating3, Rating4, Rating5, ToggleZoom,
 };
 use crate::develop::{DevelopUi, LivePreview};
-use crate::histogram_panel::HistogramUi;
 use crate::file_tree::FileTree;
+use crate::histogram_panel::HistogramUi;
 use crate::selection::CullOp;
 
 /// How long after the last edit the catalog is written to disk.
@@ -162,6 +162,7 @@ pub struct Workspace {
     pub(crate) left_dock_scroll: ScrollHandle,
     pub(crate) right_dock_scroll: ScrollHandle,
     pub(crate) develop_panel_scroll: ScrollHandle,
+    pub(crate) export_panel_scroll: ScrollHandle,
     pub(crate) settings_scroll: ScrollHandle,
     /// Filmstrip scroll position in content pixels (see `filmstrip.rs`).
     pub(crate) filmstrip_scroll_x: f64,
@@ -285,6 +286,7 @@ impl Workspace {
             left_dock_scroll: ScrollHandle::new(),
             right_dock_scroll: ScrollHandle::new(),
             develop_panel_scroll: ScrollHandle::new(),
+            export_panel_scroll: ScrollHandle::new(),
             settings_scroll: ScrollHandle::new(),
             filmstrip_scroll_x: 0.0,
             filmstrip_viewport: Rc::new(Cell::new(0.0)),
@@ -704,13 +706,18 @@ impl Workspace {
                     .rounded_md()
                     .text_xl()
                     .cursor_pointer()
-                    .when(selected, |el| el.bg(theme.accent_muted).text_color(theme.text))
-                    .when(!selected, |el| el.text_color(theme.text_muted).hover(|el| el.bg(theme.surface_elevated).text_color(theme.text)))
+                    .when(selected, |el| {
+                        el.bg(theme.accent_muted).text_color(theme.text)
+                    })
+                    .when(!selected, |el| {
+                        el.text_color(theme.text_muted)
+                            .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                    })
                     .child("\u{2699}")
                     .tooltip(rustyedit_ui::tip("Settings (\u{2318},)", &theme))
                     .on_click(cx.listener(Self::click_settings))
                     .into_any_element()
-            }
+            },
         ];
 
         rustyedit_ui::title_bar(&theme, "RustyEdit", left, right).into_any_element()

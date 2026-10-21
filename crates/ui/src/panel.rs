@@ -183,7 +183,9 @@ pub fn disclosure_section_with(
 /// docked to `side` at a fixed `width`, with a minimal scrollbar driven by
 /// `scroll`. `pinned` stays above the scrolling sections (the histogram)
 /// and `footer` (see [`panel_footer`]) below them.
+#[allow(clippy::too_many_arguments)]
 pub fn side_panel(
+    id: impl Into<SharedString>,
     theme: &Theme,
     side: PanelSide,
     width: f32,
@@ -193,6 +195,8 @@ pub fn side_panel(
     children: Vec<AnyElement>,
 ) -> impl IntoElement {
     let theme = *theme;
+    let id = id.into();
+    let scrollbar_id = format!("{id}-scrollbar");
 
     div()
         .relative()
@@ -222,7 +226,7 @@ pub fn side_panel(
                 .min_h(px(0.0))
                 .child(
                     div()
-                        .id("develop-side-panel")
+                        .id(id)
                         .flex()
                         .flex_col()
                         .size_full()
@@ -232,11 +236,7 @@ pub fn side_panel(
                         .px_3()
                         .children(children),
                 )
-                .child(vertical_scrollbar(
-                    "develop-side-panel-scrollbar",
-                    scroll.clone(),
-                    &theme,
-                )),
+                .child(vertical_scrollbar(scrollbar_id, scroll.clone(), &theme)),
         )
         .children(footer)
 }

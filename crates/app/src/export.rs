@@ -267,7 +267,8 @@ impl Workspace {
             ))
             .into_any_element();
 
-        let action: AnyElement = match &self.export_progress {
+        // While an export runs, the centre column shows its progress.
+        let progress: Option<AnyElement> = match &self.export_progress {
             Some((done, total)) => {
                 let done = done.load(Ordering::Relaxed).min(*total);
                 let fraction = if *total == 0 {
@@ -275,71 +276,111 @@ impl Workspace {
                 } else {
                     done as f32 / *total as f32
                 };
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.text)
-                            .child(format!("Exporting {done} of {total}…")),
-                    )
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(6.0))
-                            .rounded_full()
-                            .bg(theme.border)
-                            .child(
-                                div()
-                                    .h_full()
-                                    .w(relative(fraction))
-                                    .rounded_full()
-                                    .bg(theme.accent),
-                            ),
-                    )
-                    .into_any_element()
+                Some(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.text)
+                                .child(format!("Exporting {done} of {total}…")),
+                        )
+                        .child(
+                            div()
+                                .w_full()
+                                .h(px(6.0))
+                                .rounded_full()
+                                .bg(theme.border)
+                                .child(
+                                    div()
+                                        .h_full()
+                                        .w(relative(fraction))
+                                        .rounded_full()
+                                        .bg(theme.accent),
+                                ),
+                        )
+                        .into_any_element(),
+                )
             }
-            None => {
-                let ready = count > 0 && options.destination.is_some();
-                div()
-                    .id("export-run")
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .h(px(40.0))
-                    .rounded_lg()
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .when(ready, |el| {
-                        el.bg(theme.accent)
-                            .text_color(theme.background)
-                            .cursor_pointer()
-                            .hover(|el| el.opacity(0.9))
-                            .on_click(
-                                cx.listener(|this, _: &ClickEvent, _w, cx| this.start_export(cx)),
-                            )
-                    })
-                    .when(!ready, |el| {
-                        el.bg(theme.surface_elevated).text_color(theme.text_faint)
-                    })
-                    .child(format!(
-                        "Export {count} photo{}",
-                        if count == 1 { "" } else { "s" }
-                    ))
-                    .into_any_element()
-            }
+            None => None,
         };
 
-        let mut cards = vec![
-            card(&theme, "Photos", vec![scope_row]),
-            card(&theme, "Format", format_children),
-            card(&theme, "Size", vec![size_row]),
-            card(&theme, "Destination", vec![destination_row]),
-            card(&theme, "Export", vec![action]),
+        // The settings live in the left panel, in the same titled sections
+        // the other modules use.
+        let sections: Vec<AnyElement> = vec![
+            rustyedit_ui::section(&theme, "Photos", vec![scope_row]).into_any_element(),
+            rustyedit_ui::section(&theme, "Format", format_children).into_any_element(),
+            rustyedit_ui::section(&theme, "Size", vec![size_row]).into_any_element(),
+            rustyedit_ui::section(&theme, "Destination", vec![destination_row]).into_any_element(),
+        ];
+
+        // The Export action sits in the panel's footer, like the other
+        // modules' footers.
+        let footer = rustyedit_ui::panel_footer(
+            &theme,
+            vec![vec![div()
+                .id("export-run")
+                .flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .h(px(26.0))
+                .rounded_md()
+                .text_size(px(11.5))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .when(count > 0 && options.destination.is_some(), |el| {
+                    el.bg(theme.accent)
+                        .text_color(theme.background)
+                        .cursor_pointer()
+                        .hover(|el| el.opacity(0.9))
+                        .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.start_export(cx)))
+                })
+                .when(!(count > 0 && options.destination.is_some()), |el| {
+                    el.bg(theme.surface_elevated).text_color(theme.text_faint)
+                })
+                .child(format!(
+                    "Export {count} photo{}",
+                    if count == 1 { "" } else { "s" }
+                ))
+                .into_any_element()]],
+        );
+
+        let panel = rustyedit_ui::side_panel(
+            "export-side-panel",
+            &theme,
+            rustyedit_ui::PanelSide::Left,
+            self.settings.layout.inspector_width as f32,
+            &self.export_panel_scroll,
+            None,
+            Some(footer),
+            sections,
+        )
+        .into_any_element();
+
+        // The centre column: what is going to be exported, and how it is
+        // going.
+        let mut summary: Vec<AnyElement> = vec![
+            summary_row(
+                &theme,
+                "Photos",
+                format!("{count} of {}", self.catalog.assets.len()),
+            ),
+            summary_row(&theme, "Format", options.format.label().to_string()),
+            summary_row(&theme, "Size", options.size.label().to_string()),
+            summary_row(
+                &theme,
+                "Destination",
+                options
+                    .destination
+                    .as_deref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "No folder chosen".into()),
+            ),
         ];
         if let Some(message) = &self.export_message {
-            cards.push(
+            summary.push(
                 div()
                     .text_sm()
                     .text_color(theme.text_muted)
@@ -347,16 +388,21 @@ impl Workspace {
                     .into_any_element(),
             );
         }
+        if let Some(progress) = progress {
+            summary.push(progress);
+        }
 
-        div()
+        let center = div()
             .id("export-page")
+            .flex()
+            .flex_col()
             .flex_1()
+            .min_w(px(0.0))
             .min_h(px(0.0))
             .overflow_y_scroll()
             .bg(theme.background)
-            .flex()
-            .flex_col()
             .items_center()
+            .px_4()
             .py_8()
             .child(
                 div()
@@ -365,32 +411,55 @@ impl Workspace {
                     .gap_4()
                     .w_full()
                     .max_w(px(560.0))
-                    .px_4()
                     .child(div().text_xl().text_color(theme.text).child("Export"))
-                    .children(cards),
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            .p_4()
+                            .rounded_xl()
+                            .bg(theme.surface)
+                            .border_1()
+                            .border_color(theme.border_subtle)
+                            .children(summary),
+                    ),
             )
-            .into_any_element()
+            .into_any_element();
+
+        let main = div()
+            .flex()
+            .flex_row()
+            .flex_1()
+            .min_h(px(0.0))
+            .child(panel)
+            .child(center);
+        self.with_filmstrip(main.into_any_element(), cx)
     }
 }
 
-fn card(theme: &rustyedit_ui::Theme, title: &'static str, children: Vec<AnyElement>) -> AnyElement {
+/// One "label on the left, value on the right" line of the export summary.
+fn summary_row(theme: &rustyedit_ui::Theme, label: &str, value: String) -> AnyElement {
     div()
         .flex()
-        .flex_col()
+        .flex_row()
+        .items_center()
+        .justify_between()
         .gap_3()
-        .p_4()
-        .rounded_xl()
-        .bg(theme.surface)
-        .border_1()
-        .border_color(theme.border_subtle)
         .child(
             div()
-                .text_xs()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_sm()
                 .text_color(theme.text_muted)
-                .child(title),
+                .child(label.to_string()),
         )
-        .children(children)
+        .child(
+            div()
+                .min_w(px(0.0))
+                .overflow_hidden()
+                .text_sm()
+                .text_color(theme.text)
+                .child(value),
+        )
         .into_any_element()
 }
 
