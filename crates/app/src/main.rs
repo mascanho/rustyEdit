@@ -94,6 +94,7 @@ fn main() {
             KeyBinding::new("8", LabelGreen, Some(KEY_CONTEXT)),
             KeyBinding::new("9", LabelBlue, Some(KEY_CONTEXT)),
             KeyBinding::new("g", GoLibrary, Some(KEY_CONTEXT)),
+            KeyBinding::new("l", GoLibrary, Some(KEY_CONTEXT)),
             KeyBinding::new("d", GoDevelop, Some(KEY_CONTEXT)),
             KeyBinding::new("e", GoExport, Some(KEY_CONTEXT)),
             KeyBinding::new("escape", GoLibrary, Some(KEY_CONTEXT)),

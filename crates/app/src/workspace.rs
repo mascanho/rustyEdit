@@ -149,7 +149,7 @@ pub struct Workspace {
     pub(crate) metadata_loading: HashSet<u64>,
     // Export module state (see `export.rs`).
     pub(crate) export_options: ExportOptions,
-    pub(crate) export_progress: Option<(Arc<std::sync::atomic::AtomicUsize>, usize)>,
+    pub(crate) export_run: Option<crate::export::ExportRun>,
     pub(crate) export_message: Option<SharedString>,
     /// Active tool on each side's icon rail (see `rail.rs`).
     pub(crate) left_rail_tool: Option<RailTool>,
@@ -277,7 +277,7 @@ impl Workspace {
             metadata_cache: HashMap::new(),
             metadata_loading: HashSet::new(),
             export_options: ExportOptions::default(),
-            export_progress: None,
+            export_run: None,
             export_message: None,
             left_rail_tool: None,
             right_rail_tool: None,
