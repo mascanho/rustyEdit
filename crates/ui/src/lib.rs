@@ -27,7 +27,10 @@ pub use cull_bar::{
 };
 pub use film_look::{EdgePrint, FilmLook, Sprockets};
 pub use flag_badge::flag_badge;
-pub use histogram::{histogram_view, HistogramProps, HISTOGRAM_HEIGHT};
+pub use histogram::{
+    histogram_view, histogram_view_with_height, paint_histogram, HistogramPaint, HistogramProps,
+    HISTOGRAM_HEIGHT,
+};
 pub use icon_rail::{icon_rail, RailButton, RAIL_WIDTH};
 pub use icons::{icon, Icon};
 pub use panel::{

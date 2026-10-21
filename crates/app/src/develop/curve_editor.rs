@@ -6,7 +6,7 @@ use gpui::{
     canvas, div, point, prelude::*, px, AnyElement, Bounds, ClickEvent, Context, Hsla, MouseButton,
     MouseDownEvent, PathBuilder, Pixels, Point, Window,
 };
-use rustyedit_core::{CurveChannel, ToneCurve, ToneCurves};
+use rustyedit_core::{CurveChannel, HistogramChannel, ToneCurve, ToneCurves};
 use rustyedit_ui::Theme;
 
 use super::adjustments::wheel;
@@ -124,8 +124,8 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// The graph: grid, the other channels' curves faintly, the chosen
-    /// channel's curve and its draggable points.
+    /// The graph: the histogram behind it, the grid, the other channels'
+    /// curves faintly, the chosen channel's curve and its draggable points.
     fn curve_graph(
         &self,
         curves: ToneCurves,
@@ -136,6 +136,10 @@ impl Workspace {
         let theme = self.theme;
         let bounds = self.develop_ui.curve_bounds.clone();
         let active_color = channel_color(channel, &theme);
+        // The live histogram of the photo, so the curve is read against
+        // the tones it is actually shaping.
+        let (histogram, _) = self.current_histogram();
+        let histogram_channel = histogram_channel(channel);
 
         let grid = (1..4).flat_map(|i| {
             let at = px(side * i as f32 / 4.0);
@@ -149,6 +153,19 @@ impl Workspace {
         let lines = canvas(
             move |b, _, _| bounds.set(b),
             move |b, _, window, _| {
+                if let Some(histogram) = &histogram {
+                    rustyedit_ui::paint_histogram(
+                        window,
+                        b,
+                        rustyedit_ui::HistogramPaint {
+                            histogram,
+                            channel: histogram_channel,
+                            log_scale: false,
+                            opacity: 0.45,
+                        },
+                        &theme,
+                    );
+                }
                 // The untouched diagonal, then other edited channels, then
                 // the one being edited on top.
                 paint_curve(window, b, &ToneCurve::default(), theme.border, 1.0);
@@ -304,6 +321,17 @@ fn channel_color(channel: CurveChannel, theme: &Theme) -> Hsla {
         CurveChannel::Red => wheel(0.0, 0.75, 0.6),
         CurveChannel::Green => wheel(120.0, 0.6, 0.5),
         CurveChannel::Blue => wheel(215.0, 0.8, 0.62),
+    }
+}
+
+/// Which distribution the histogram behind the curve shows: the master
+/// curve reads the photo as a whole, the others their own channel.
+fn histogram_channel(channel: CurveChannel) -> HistogramChannel {
+    match channel {
+        CurveChannel::Master => HistogramChannel::Rgb,
+        CurveChannel::Red => HistogramChannel::Red,
+        CurveChannel::Green => HistogramChannel::Green,
+        CurveChannel::Blue => HistogramChannel::Blue,
     }
 }
 

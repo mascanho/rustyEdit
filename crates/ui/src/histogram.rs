@@ -29,6 +29,16 @@ pub struct HistogramProps {
 }
 
 pub fn histogram_view(theme: &Theme, props: HistogramProps) -> impl IntoElement {
+    histogram_view_with_height(theme, props, HISTOGRAM_HEIGHT)
+}
+
+/// The same graph, in a panel of its own height, for the places that
+/// want a strip of it rather than a full box.
+pub fn histogram_view_with_height(
+    theme: &Theme,
+    props: HistogramProps,
+    height: f32,
+) -> impl IntoElement {
     let theme = *theme;
     let record = props.bounds.clone();
 
@@ -36,7 +46,7 @@ pub fn histogram_view(theme: &Theme, props: HistogramProps) -> impl IntoElement 
         .debug_selector(|| "histogram".into())
         .relative()
         .w_full()
-        .h(px(HISTOGRAM_HEIGHT))
+        .h(px(height))
         .rounded_md()
         .overflow_hidden()
         .bg(theme.background)
@@ -57,7 +67,6 @@ pub fn histogram_view(theme: &Theme, props: HistogramProps) -> impl IntoElement 
 
 fn paint(bounds: Bounds<Pixels>, props: &HistogramProps, theme: &Theme, window: &mut Window) {
     let width = f32::from(bounds.size.width);
-    let height = f32::from(bounds.size.height);
     let x_at = |fraction: f32| bounds.origin.x + px(fraction * width);
 
     if let Some(zone) = props.zone {
@@ -82,46 +91,17 @@ fn paint(bounds: Bounds<Pixels>, props: &HistogramProps, theme: &Theme, window: 
     }
 
     if let Some(histogram) = props.histogram.as_deref() {
-        let columns = (width.floor() as usize).max(2);
-        let scale = Scale::new(histogram.peak(), props.log_scale);
-        let heights = |bins: &[u32; 256]| column_heights(bins, columns, &scale, height);
-        match props.channel {
-            HistogramChannel::Rgb => {
-                let r = heights(&histogram.red);
-                let g = heights(&histogram.green);
-                let b = heights(&histogram.blue);
-                // Each channel, then where two overlap (yellow, cyan,
-                // magenta), then where all three do: the classic look,
-                // without needing blend modes.
-                let min2 = |a: &[f32], b: &[f32]| -> Vec<f32> {
-                    a.iter().zip(b).map(|(a, b)| a.min(*b)).collect()
-                };
-                let rg = min2(&r, &g);
-                let layers = [
-                    (r.clone(), hsla(0.0, 0.75, 0.52, 0.9)),
-                    (g.clone(), hsla(120.0 / 360.0, 0.6, 0.45, 0.9)),
-                    (b.clone(), hsla(215.0 / 360.0, 0.8, 0.56, 0.9)),
-                    (rg.clone(), hsla(55.0 / 360.0, 0.85, 0.52, 0.95)),
-                    (min2(&g, &b), hsla(185.0 / 360.0, 0.7, 0.5, 0.95)),
-                    (min2(&r, &b), hsla(300.0 / 360.0, 0.6, 0.58, 0.95)),
-                    (min2(&rg, &b), hsla(0.0, 0.0, 0.72, 0.95)),
-                ];
-                for (series, color) in layers {
-                    fill_series(window, bounds, &series, color);
-                }
-            }
-            channel => {
-                let color = match channel {
-                    HistogramChannel::Red => hsla(0.0, 0.75, 0.55, 1.0),
-                    HistogramChannel::Green => hsla(120.0 / 360.0, 0.6, 0.48, 1.0),
-                    HistogramChannel::Blue => hsla(215.0 / 360.0, 0.8, 0.6, 1.0),
-                    _ => theme.text_muted,
-                };
-                let series = heights(histogram.bins(channel));
-                fill_series(window, bounds, &series, color.opacity(0.55));
-                stroke_series(window, bounds, &series, color);
-            }
-        }
+        paint_histogram(
+            window,
+            bounds,
+            HistogramPaint {
+                histogram,
+                channel: props.channel,
+                log_scale: props.log_scale,
+                opacity: 1.0,
+            },
+            theme,
+        );
     }
 
     if let Some(level) = props.hover {
@@ -132,6 +112,68 @@ fn paint(bounds: Bounds<Pixels>, props: &HistogramProps, theme: &Theme, window: 
             ),
             theme.text.opacity(0.7),
         ));
+    }
+}
+
+/// What to paint, for the panels that draw the histogram inside a canvas
+/// of their own — behind a tone curve, for instance.
+pub struct HistogramPaint<'a> {
+    pub histogram: &'a Histogram,
+    pub channel: HistogramChannel,
+    pub log_scale: bool,
+    /// Fades the whole graph, so it can sit behind another one.
+    pub opacity: f32,
+}
+
+/// Draws the histogram's curves across `bounds`.
+pub fn paint_histogram(
+    window: &mut Window,
+    bounds: Bounds<Pixels>,
+    paint: HistogramPaint<'_>,
+    theme: &Theme,
+) {
+    let width = f32::from(bounds.size.width);
+    let height = f32::from(bounds.size.height);
+    let columns = (width.floor() as usize).max(2);
+    let scale = Scale::new(paint.histogram.peak(), paint.log_scale);
+    let heights = |bins: &[u32; 256]| column_heights(bins, columns, &scale, height);
+    let opacity = paint.opacity.clamp(0.0, 1.0);
+    match paint.channel {
+        HistogramChannel::Rgb => {
+            let r = heights(&paint.histogram.red);
+            let g = heights(&paint.histogram.green);
+            let b = heights(&paint.histogram.blue);
+            // Each channel, then where two overlap (yellow, cyan,
+            // magenta), then where all three do: the classic look,
+            // without needing blend modes.
+            let min2 = |a: &[f32], b: &[f32]| -> Vec<f32> {
+                a.iter().zip(b).map(|(a, b)| a.min(*b)).collect()
+            };
+            let rg = min2(&r, &g);
+            let layers = [
+                (r.clone(), hsla(0.0, 0.75, 0.52, 0.9)),
+                (g.clone(), hsla(120.0 / 360.0, 0.6, 0.45, 0.9)),
+                (b.clone(), hsla(215.0 / 360.0, 0.8, 0.56, 0.9)),
+                (rg.clone(), hsla(55.0 / 360.0, 0.85, 0.52, 0.95)),
+                (min2(&g, &b), hsla(185.0 / 360.0, 0.7, 0.5, 0.95)),
+                (min2(&r, &b), hsla(300.0 / 360.0, 0.6, 0.58, 0.95)),
+                (min2(&rg, &b), hsla(0.0, 0.0, 0.72, 0.95)),
+            ];
+            for (series, color) in layers {
+                fill_series(window, bounds, &series, color.opacity(opacity));
+            }
+        }
+        channel => {
+            let color = match channel {
+                HistogramChannel::Red => hsla(0.0, 0.75, 0.55, 1.0),
+                HistogramChannel::Green => hsla(120.0 / 360.0, 0.6, 0.48, 1.0),
+                HistogramChannel::Blue => hsla(215.0 / 360.0, 0.8, 0.6, 1.0),
+                _ => theme.text_muted,
+            };
+            let series = heights(paint.histogram.bins(channel));
+            fill_series(window, bounds, &series, color.opacity(0.55 * opacity));
+            stroke_series(window, bounds, &series, color.opacity(opacity));
+        }
     }
 }
 
