@@ -5,10 +5,13 @@
 //! The wheel is intercepted in the capture phase, before any scroll
 //! container sees it, so zooming never scrolls the list underneath.
 
-use gpui::{canvas, prelude::*, px, AnyElement, Context, DispatchPhase, ScrollWheelEvent};
+use gpui::{
+    canvas, prelude::*, px, AnyElement, Context, DispatchPhase, ScrollWheelEvent, Window,
+};
 use rustyedit_core::settings::{GRID_CARD_MAX, GRID_CARD_MIN, GRID_CARD_STEP};
 
 use crate::{
+    actions::{GridLarger, GridSmaller},
     compare::ZOOM_STEPS,
     workspace::{LibraryView, Mode, Workspace},
 };
@@ -42,6 +45,32 @@ impl Workspace {
         .absolute()
         .size(px(0.0))
         .into_any_element()
+    }
+
+    /// Grows (positive) or shrinks the grid cards by `steps` size steps.
+    fn step_grid_card_size(&mut self, steps: i32, cx: &mut Context<Self>) {
+        let size = (self.settings.library.grid_card_size as i32 + steps * GRID_CARD_STEP as i32)
+            .clamp(GRID_CARD_MIN as i32, GRID_CARD_MAX as i32) as u32;
+        self.update_settings(|s| s.library.grid_card_size = size, cx);
+    }
+
+    /// Ctrl + / Ctrl − in the grid: one card-size step, like a wheel notch.
+    fn keyboard_grid_zoom(&mut self, steps: i32, cx: &mut Context<Self>) {
+        if self.settings_open
+            || self.mode != Mode::Library
+            || self.library_view != LibraryView::Grid
+        {
+            return;
+        }
+        self.step_grid_card_size(steps, cx);
+    }
+
+    pub fn grid_larger(&mut self, _: &GridLarger, _w: &mut Window, cx: &mut Context<Self>) {
+        self.keyboard_grid_zoom(1, cx);
+    }
+
+    pub fn grid_smaller(&mut self, _: &GridSmaller, _w: &mut Window, cx: &mut Context<Self>) {
+        self.keyboard_grid_zoom(-1, cx);
     }
 
     /// Applies a wheel movement (positive = away from the user = zoom in).
@@ -85,19 +114,9 @@ impl Workspace {
                     self.set_loupe_zoom(levels[next], cx);
                 }
             }
-            (Mode::Library, LibraryView::Grid) => {
-                let size = (self.settings.library.grid_card_size as i32
-                    + steps * GRID_CARD_STEP as i32)
-                    .clamp(GRID_CARD_MIN as i32, GRID_CARD_MAX as i32)
-                    as u32;
-                self.update_settings(|s| s.library.grid_card_size = size, cx);
-            }
+            (Mode::Library, LibraryView::Grid) => self.step_grid_card_size(steps, cx),
             (Mode::Develop, _) => {
-                let fit = steps < 0;
-                if self.zoom_fit != fit {
-                    self.zoom_fit = fit;
-                    cx.notify();
-                }
+                self.set_develop_zoom_fit(steps < 0, cx);
             }
             _ => {}
         }

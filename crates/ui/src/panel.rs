@@ -2,9 +2,17 @@ use gpui::{
     div, prelude::*, px, AnyElement, App, ClickEvent, ElementId, ScrollHandle, SharedString, Window,
 };
 
-use crate::{button::glyph_button, scrollbar::vertical_scrollbar, theme::Theme};
+use crate::{
+    icons::{icon, Icon},
+    scrollbar::vertical_scrollbar,
+    theme::Theme,
+    tooltip::tip,
+};
 
 pub const COLLAPSED_PANEL_WIDTH: f32 = 28.0;
+/// Height of a docked panel's title row. The icon rail beside it starts
+/// with a button of the same height, so the two line up.
+pub const PANEL_HEADER_HEIGHT: f32 = 28.0;
 
 /// Which edge of the window a collapsible panel is docked to. Decides the
 /// border side and which way the collapse/expand chevrons point.
@@ -14,8 +22,50 @@ pub enum PanelSide {
     Right,
 }
 
-/// A titled group of controls inside the Develop side panel (e.g. "Basic",
-/// "Color", "Detail"), mirroring Lightroom's stacked, titled panel sections.
+/// Height of a section's title bar.
+const SECTION_HEADER_HEIGHT: f32 = 30.0;
+/// Size of the disclosure chevron.
+const CHEVRON_SIZE: f32 = 12.0;
+
+/// A section's title bar: a full-width band so each section reads as its
+/// own block. `chevron` is `Some(expanded)` for collapsible sections.
+fn section_header(theme: &Theme, title: SharedString, chevron: Option<bool>) -> gpui::Div {
+    let open = chevron.unwrap_or(true);
+    div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap_2()
+        .h(px(SECTION_HEADER_HEIGHT))
+        .px_2()
+        .rounded_md()
+        .text_size(px(12.0))
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .when(open, |el| {
+            el.bg(theme.surface_elevated.opacity(0.55))
+                .text_color(theme.text)
+        })
+        .when(!open, |el| el.text_color(theme.text_muted))
+        .when_some(chevron, |el, expanded| {
+            el.child(icon(
+                if expanded {
+                    Icon::ChevronDown
+                } else {
+                    Icon::ChevronRight
+                },
+                CHEVRON_SIZE,
+                if expanded {
+                    theme.accent
+                } else {
+                    theme.text_muted
+                },
+            ))
+        })
+        .child(title)
+}
+
+/// A titled group of controls in a side panel (e.g. Library's "Info"),
+/// styled like a [`disclosure_section`] that can't be collapsed.
 pub fn section(
     theme: &Theme,
     title: impl Into<SharedString>,
@@ -27,21 +77,21 @@ pub fn section(
         .flex()
         .flex_col()
         .w_full()
-        .border_b_1()
-        .border_color(theme.border_subtle)
-        .py_3()
-        .gap_2()
+        .pt_2()
+        .child(section_header(&theme, title.into(), None))
         .child(
             div()
-                .text_xs()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(theme.text_muted)
-                .child(title.into()),
+                .flex()
+                .flex_col()
+                .gap_2()
+                .px_1()
+                .pt_2()
+                .pb_3()
+                .children(children),
         )
-        .child(div().flex().flex_col().gap_2().children(children))
 }
 
-/// A section whose title row expands/collapses its contents, like the
+/// A section whose title bar expands/collapses its contents, like the
 /// stacked panels in Lightroom's side panels. The caller owns the
 /// `expanded` state and flips it in `on_toggle`.
 pub fn disclosure_section(
@@ -58,31 +108,25 @@ pub fn disclosure_section(
         .flex()
         .flex_col()
         .w_full()
-        .border_b_1()
-        .border_color(theme.border_subtle)
+        .pt_2()
         .child(
-            div()
+            section_header(&theme, title.into(), Some(expanded))
                 .id(id)
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap_1()
-                .py_2()
                 .cursor_pointer()
-                .text_xs()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(theme.text_muted)
-                .hover(|el| el.text_color(theme.text))
-                .child(
-                    div()
-                        .w(px(10.0))
-                        .child(if expanded { "\u{25BE}" } else { "\u{25B8}" }),
-                )
-                .child(title.into())
+                .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                 .on_click(on_toggle),
         )
         .when(expanded, |el| {
-            el.child(div().flex().flex_col().gap_2().pb_3().children(children))
+            el.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .px_1()
+                    .pt_2()
+                    .pb_3()
+                    .children(children),
+            )
         })
 }
 
@@ -146,23 +190,29 @@ pub fn collapsible_panel(
     let id = id.into();
 
     // Chevron points the way the panel will move when clicked.
-    let glyph = match (side, collapsed) {
-        (PanelSide::Left, false) | (PanelSide::Right, true) => "\u{2039}",
-        (PanelSide::Left, true) | (PanelSide::Right, false) => "\u{203A}",
+    let chevron = match (side, collapsed) {
+        (PanelSide::Left, false) | (PanelSide::Right, true) => Icon::ChevronLeft,
+        (PanelSide::Left, true) | (PanelSide::Right, false) => Icon::ChevronRight,
     };
-    let toggle = glyph_button(
-        ElementId::NamedChild(Box::new(id.clone()), "toggle".into()),
-        glyph,
-        if collapsed {
-            "Expand panel"
-        } else {
-            "Collapse panel"
-        },
-        theme.text_muted,
-        true,
-        &theme,
-        on_toggle,
-    );
+    let toggle = div()
+        .id(ElementId::NamedChild(Box::new(id.clone()), "toggle".into()))
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(PANEL_HEADER_HEIGHT - 4.0))
+        .rounded_md()
+        .cursor_pointer()
+        .hover(|el| el.bg(theme.surface_elevated))
+        .child(icon(chevron, 14.0, theme.text_muted))
+        .tooltip(tip(
+            if collapsed {
+                "Expand panel"
+            } else {
+                "Collapse panel"
+            },
+            &theme,
+        ))
+        .on_click(on_toggle);
 
     let container = div()
         .flex()
@@ -178,7 +228,7 @@ pub fn collapsible_panel(
         return container
             .w(px(COLLAPSED_PANEL_WIDTH))
             .items_center()
-            .pt_1()
+            .pt(px(2.0))
             .child(toggle)
             .into_any_element();
     }
@@ -189,8 +239,8 @@ pub fn collapsible_panel(
         .items_center()
         .justify_between()
         .flex_shrink_0()
-        .h(px(28.0))
-        .px_2()
+        .h(px(PANEL_HEADER_HEIGHT))
+        .px_1()
         .border_b_1()
         .border_color(theme.border_subtle)
         .when(side == PanelSide::Right, |el| el.flex_row_reverse())

@@ -201,14 +201,7 @@ impl Workspace {
         self.loupe_full_loading.clear();
         self.duplicate_groups = None;
         self.duplicates_loading = false;
-        self.source_image = None;
-        self.source_image_for = None;
-        if let Some(path) = self.preview_path.take() {
-            rustyedit_io::cleanup_live_preview(&path);
-        }
-        if let Some(path) = self.previous_preview_path.take() {
-            rustyedit_io::cleanup_live_preview(&path);
-        }
+        self.reset_develop_preview();
     }
 
     // --- Rename -------------------------------------------------------------
@@ -596,7 +589,7 @@ impl Workspace {
                 let old = asset.develop.rotation_degrees;
                 let new = (old + delta).rem_euclid(360.0);
                 asset.develop.rotation_degrees = new;
-                asset.record_change(
+                asset.record_develop_change(
                     "Rotate",
                     format!("{old:.0}\u{00B0}"),
                     format!("{new:.0}\u{00B0}"),

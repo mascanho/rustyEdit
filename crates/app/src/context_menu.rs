@@ -12,6 +12,7 @@ use gpui::{
 use rustyedit_core::{ColorLabel, DevelopSettings, ExportScope, Flag};
 
 use crate::{
+    develop::HistoryNote,
     selection::CullOp,
     workspace::{LibraryView, Mode, Workspace},
 };
@@ -279,7 +280,16 @@ impl Workspace {
                 "Paste edits",
                 |this, _w, cx| {
                     if let Some(settings) = this.edit_clipboard {
-                        this.set_develop_on_targets("paste edits", cx, move |_| settings);
+                        this.replace_develop(
+                            this.target_indices(),
+                            "paste edits",
+                            HistoryNote::Record {
+                                title: "Paste edits",
+                                detail: "Pasted",
+                            },
+                            cx,
+                            move |_| settings,
+                        );
                     }
                 },
             ));
@@ -290,7 +300,16 @@ impl Workspace {
                 "\u{21BA}",
                 "Reset edits",
                 |this, _w, cx| {
-                    this.set_develop_on_targets("reset edits", cx, |_| DevelopSettings::default());
+                    this.replace_develop(
+                        this.target_indices(),
+                        "reset edits",
+                        HistoryNote::Record {
+                            title: "Reset edits",
+                            detail: "Original",
+                        },
+                        cx,
+                        |_| DevelopSettings::default(),
+                    );
                 },
             ));
         }
@@ -389,28 +408,6 @@ impl Workspace {
         self.save_catalog_def();
         if self.active_album == Some(album) {
             self.view_album(Some(album), cx);
-        }
-        cx.notify();
-    }
-
-    /// Sets the Develop settings of every target photo as one undo step.
-    fn set_develop_on_targets(
-        &mut self,
-        label: &str,
-        cx: &mut Context<Self>,
-        new: impl Fn(&DevelopSettings) -> DevelopSettings,
-    ) {
-        let mut changes = Vec::new();
-        for ix in self.target_indices() {
-            let before = self.catalog.assets[ix].state();
-            let updated = new(&self.catalog.assets[ix].develop);
-            self.catalog.assets[ix].develop = updated;
-            changes.push((ix, before, self.catalog.assets[ix].state()));
-        }
-        self.push_undo(label.to_string(), changes, false);
-        self.mark_catalog_dirty(cx);
-        if self.mode == Mode::Develop {
-            self.request_preview_update(cx);
         }
         cx.notify();
     }

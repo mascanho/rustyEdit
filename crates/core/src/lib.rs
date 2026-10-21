@@ -8,16 +8,21 @@ mod catalog;
 mod catalog_def;
 mod collections;
 mod color_label;
+mod curves;
 mod develop;
 mod duplicates;
 mod export;
 mod filters;
 mod flag;
+mod grading;
 mod histogram;
 mod history;
+mod mixer;
+mod presets;
 mod rail;
 mod rating;
 pub mod settings;
+mod snapshot;
 
 pub use albums::{Album, Albums};
 pub use asset::{Asset, AssetState, PhotoMeta};
@@ -25,7 +30,10 @@ pub use catalog::{Catalog, CatalogCounts, FilterMode, RatingFilter, SortKey, Sor
 pub use catalog_def::CatalogDef;
 pub use collections::{default_keyword_sets, KeywordSet, SmartCollection, SmartCollections};
 pub use color_label::ColorLabel;
+pub use curves::{CurveChannel, ToneCurve, ToneCurves, MAX_CURVE_POINTS};
 pub use develop::{Adjustment, DevelopSettings};
+pub use grading::{ColorGrading, Grade, GradeProp, ToneZone};
+pub use mixer::{band_weight, BandAdjust, ColorBand, ColorMixer, MixerProp};
 pub use duplicates::{
     find_duplicates, find_duplicates_in, hamming, DuplicateGroup, DuplicateKind, PhotoHash,
     SIMILAR_HAMMING,
@@ -35,6 +43,8 @@ pub use filters::{FilterSet, FocalBand, IsoBand};
 pub use flag::Flag;
 pub use histogram::Histogram;
 pub use history::HistoryEntry;
+pub use presets::{builtin_presets, DevelopPreset, Presets};
 pub use rail::RailTool;
 pub use rating::Rating;
 pub use settings::Settings;
+pub use snapshot::{next_snapshot_name, Snapshot};

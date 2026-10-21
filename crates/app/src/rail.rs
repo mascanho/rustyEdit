@@ -4,7 +4,7 @@
 
 use gpui::{prelude::*, AnyElement, Context};
 use rustyedit_core::{settings::DockSide, RailTool};
-use rustyedit_ui::{PanelSide, RailButton};
+use rustyedit_ui::{Icon, PanelSide, RailButton};
 
 use crate::workspace::Workspace;
 
@@ -17,7 +17,7 @@ impl Workspace {
     }
 
     /// Builds `side`'s rail from the tool registry.
-    fn render_rail(&self, side: DockSide, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_rail(&self, side: DockSide, cx: &mut Context<Self>) -> AnyElement {
         let active = self.active_rail_tool(side);
         let (id, panel_side) = match side {
             DockSide::Left => ("rail-left", PanelSide::Left),
@@ -27,7 +27,7 @@ impl Workspace {
             .iter()
             .map(|&tool| RailButton {
                 id: format!("{id}-{}", tool.label()).into(),
-                glyph: tool.glyph().into(),
+                icon: rail_icon(tool),
                 tooltip: tool.label().into(),
                 active: active == Some(tool),
                 on_click: Box::new(cx.listener(move |this, _, _window, cx| {
@@ -127,5 +127,20 @@ impl Workspace {
             return; // Shown in the dock itself; nothing to announce.
         }
         self.status_message = Some(format!("{} \u{2014} coming soon", tool.label()).into());
+    }
+}
+
+/// The icon each rail tool is drawn with.
+fn rail_icon(tool: RailTool) -> Icon {
+    match tool {
+        RailTool::Folders => Icon::Folder,
+        RailTool::Search => Icon::Search,
+        RailTool::Collections => Icon::Collections,
+        RailTool::Filters => Icon::Filter,
+        RailTool::Duplicates => Icon::Duplicates,
+        RailTool::History => Icon::History,
+        RailTool::Info => Icon::Info,
+        RailTool::Adjust => Icon::Adjust,
+        RailTool::Keywords => Icon::Tag,
     }
 }

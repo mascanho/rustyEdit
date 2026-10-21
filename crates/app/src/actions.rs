@@ -70,5 +70,7 @@ actions!(
         ExtendFirst,
         ExtendLast,
         CycleGridStyle,
+        GridLarger,
+        GridSmaller,
     ]
 );

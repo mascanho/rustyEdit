@@ -23,6 +23,7 @@ use crate::actions::{
     ImportFolder, LabelBlue, LabelGreen, LabelRed, LabelYellow, NextImage, OpenSettings, PrevImage,
     Rating0, Rating1, Rating2, Rating3, Rating4, Rating5, ToggleZoom,
 };
+use crate::develop::{DevelopUi, LivePreview};
 use crate::file_tree::FileTree;
 use crate::selection::CullOp;
 
@@ -53,6 +54,10 @@ pub enum TextTarget {
     Keyword,
     /// Renaming the original file of the selected photo.
     Rename,
+    /// Naming a new Develop preset from the current look.
+    PresetName,
+    /// Naming a new snapshot of the selected photo.
+    SnapshotName,
 }
 
 /// What the Library module's center area shows: the selected photo large
@@ -188,16 +193,15 @@ pub struct Workspace {
     // Develop-mode live preview pipeline state.
     pub(crate) source_image: Option<Arc<DynamicImage>>,
     pub(crate) source_image_for: Option<u64>,
-    pub(crate) preview_path: Option<PathBuf>,
-    pub(crate) previous_preview_path: Option<PathBuf>,
-    pub(crate) preview_busy: bool,
-    pub(crate) preview_pending: bool,
+    pub(crate) live_preview: LivePreview,
+    pub(crate) develop_ui: DevelopUi,
     pub(crate) preview_epoch: u64,
 }
 
 impl Workspace {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let settings = rustyedit_io::load_settings();
+        let develop_ui = DevelopUi::new(&settings);
         let (catalog_def, catalog_list) = Self::init_catalogs();
         // Flush any not-yet-written edits synchronously on quit, since the
         // debounced background save may not have fired yet (or may be cut
@@ -297,10 +301,8 @@ impl Workspace {
             develop_histogram: None,
             source_image: None,
             source_image_for: None,
-            preview_path: None,
-            previous_preview_path: None,
-            preview_busy: false,
-            preview_pending: false,
+            live_preview: LivePreview::default(),
+            develop_ui,
             preview_epoch: 0,
         };
         // Pick up where the last session left off.
@@ -435,18 +437,11 @@ impl Workspace {
             self.loupe_zoom = None;
         }
         self.preview_epoch += 1;
-        self.source_image = None;
-        self.source_image_for = None;
         // The previous asset's rendered preview is now meaningless for the
         // newly selected asset; drop it immediately so the viewer falls
-        // back to the (correct) thumbnail/source image while the new
-        // preview is generated, instead of briefly showing the old photo.
-        if let Some(stale) = self.preview_path.take() {
-            rustyedit_io::cleanup_live_preview(&stale);
-        }
-        if let Some(stale) = self.previous_preview_path.take() {
-            rustyedit_io::cleanup_live_preview(&stale);
-        }
+        // back to the (correct) source image while the new preview is
+        // generated, instead of briefly showing the old photo.
+        self.reset_develop_preview();
         if self.mode == Mode::Develop {
             self.load_source_image(cx);
         }
@@ -499,8 +494,7 @@ impl Workspace {
             self.toggle_loupe_zoom(cx);
             return;
         }
-        self.zoom_fit = !self.zoom_fit;
-        cx.notify();
+        self.set_develop_zoom_fit(!self.zoom_fit, cx);
     }
 
     // --- Flags & ratings -----------------------------------------------------
@@ -771,6 +765,9 @@ impl Focusable for Workspace {
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Replaced Develop preview frames are no longer drawn; free their
+        // GPU memory before this frame paints.
+        self.live_preview.release_retired(window);
         let theme = self.theme;
         let focus_handle = self.focus_handle.clone();
 
@@ -824,6 +821,8 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::extend_first))
             .on_action(cx.listener(Self::extend_last))
             .on_action(cx.listener(Self::cycle_grid_style))
+            .on_action(cx.listener(Self::grid_larger))
+            .on_action(cx.listener(Self::grid_smaller))
             .on_action(cx.listener(Self::flag_pick))
             .on_action(cx.listener(Self::flag_reject))
             .on_action(cx.listener(Self::flag_unflag))

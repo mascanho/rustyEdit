@@ -65,11 +65,13 @@ impl Workspace {
     }
 }
 
-fn history_row(
+/// One change on the timeline. `highlight` lights its dot (the latest
+/// change here; the photo's current state in Develop).
+pub(crate) fn history_row(
     theme: &rustyedit_ui::Theme,
     entry: &HistoryEntry,
     when: String,
-    is_latest: bool,
+    highlight: bool,
     is_last: bool,
 ) -> AnyElement {
     let theme = *theme;
@@ -78,14 +80,18 @@ fn history_row(
         .flex()
         .flex_col()
         .items_center()
-        .w(px(10.0))
+        .w(px(12.0))
         .flex_shrink_0()
-        .pt(px(5.0))
-        .child(div().size(px(7.0)).rounded_full().bg(if is_latest {
-            theme.accent
-        } else {
-            theme.border
-        }))
+        .pt(px(4.0))
+        .child(
+            div()
+                .size(px(9.0))
+                .rounded_full()
+                .bg(if highlight { theme.accent } else { theme.border })
+                .when(highlight, |el| {
+                    el.border_2().border_color(theme.accent.opacity(0.35))
+                }),
+        )
         .when(!is_last, |el| {
             el.child(div().flex_1().w(px(1.0)).mt_1().bg(theme.border_subtle))
         });
@@ -127,13 +133,17 @@ fn history_row(
                     div()
                         .text_size(px(10.5))
                         .text_color(theme.text_muted)
-                        .child(format!("{} \u{2192} {}", entry.from, entry.to)),
+                        .child(if entry.from.is_empty() {
+                            entry.to.clone()
+                        } else {
+                            format!("{} \u{2192} {}", entry.from, entry.to)
+                        }),
                 ),
         )
         .into_any_element()
 }
 
-fn empty_note(theme: &rustyedit_ui::Theme, text: &'static str) -> AnyElement {
+pub(crate) fn empty_note(theme: &rustyedit_ui::Theme, text: &'static str) -> AnyElement {
     div()
         .py_3()
         .text_xs()
@@ -142,14 +152,14 @@ fn empty_note(theme: &rustyedit_ui::Theme, text: &'static str) -> AnyElement {
         .into_any_element()
 }
 
-fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }
 
-fn relative_time(now: u64, at: u64) -> String {
+pub(crate) fn relative_time(now: u64, at: u64) -> String {
     let secs = now.saturating_sub(at);
     match secs {
         0..=4 => "just now".into(),

@@ -10,6 +10,7 @@ mod film_look;
 mod flag_badge;
 mod histogram;
 mod icon_rail;
+mod icons;
 mod panel;
 mod rating_stars;
 mod scrollbar;
@@ -28,12 +29,14 @@ pub use film_look::{EdgePrint, FilmLook, Sprockets};
 pub use flag_badge::flag_badge;
 pub use histogram::{histogram_view, HISTOGRAM_HEIGHT};
 pub use icon_rail::{icon_rail, RailButton, RAIL_WIDTH};
+pub use icons::{icon, Icon};
 pub use panel::{
     collapsible_panel, disclosure_section, section, side_panel, PanelSide, COLLAPSED_PANEL_WIDTH,
+    PANEL_HEADER_HEIGHT,
 };
 pub use rating_stars::rating_stars;
 pub use scrollbar::vertical_scrollbar;
-pub use slider::labeled_slider;
+pub use slider::{labeled_slider, SliderSpec, SliderTrack};
 pub use status_bar::{status_bar, status_divider, STATUS_BAR_HEIGHT};
 pub use theme::Theme;
 pub use title_bar::{title_bar, TITLE_BAR_HEIGHT};

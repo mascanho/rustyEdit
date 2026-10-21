@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     color_label::ColorLabel, develop::DevelopSettings, flag::Flag, history, history::HistoryEntry,
-    rating::Rating,
+    rating::Rating, snapshot::Snapshot,
 };
 
 /// Facts read from the file's EXIF once, kept so sorting and filtering never
@@ -108,6 +108,9 @@ pub struct Asset {
     /// saved before history existed still load.
     #[serde(default)]
     pub history: Vec<HistoryEntry>,
+    /// Saved alternative Develop states, oldest first.
+    #[serde(default)]
+    pub snapshots: Vec<Snapshot>,
     /// Set when the file recorded in the catalog no longer exists on disk.
     /// Runtime-only: it is recomputed on every scan, so it is never saved.
     #[serde(skip)]
@@ -138,6 +141,7 @@ impl Asset {
             content_hash: 0,
             phash: 0,
             history: Vec::new(),
+            snapshots: Vec::new(),
             missing: false,
         }
     }
@@ -173,7 +177,19 @@ impl Asset {
 
     /// Logs a change to this photo (see [`HistoryEntry`]).
     pub fn record_change(&mut self, label: &str, from: impl Into<String>, to: impl Into<String>) {
-        history::record(&mut self.history, label, from.into(), to.into());
+        history::record(&mut self.history, label, from.into(), to.into(), None);
+    }
+
+    /// Logs a change to the Develop settings, remembering the settings it
+    /// produced so the change can be stepped back to later.
+    pub fn record_develop_change(
+        &mut self,
+        label: &str,
+        from: impl Into<String>,
+        to: impl Into<String>,
+    ) {
+        let develop = Some(self.develop);
+        history::record(&mut self.history, label, from.into(), to.into(), develop);
     }
 
     /// A snapshot of the undoable state.

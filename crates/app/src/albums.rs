@@ -524,6 +524,8 @@ impl Workspace {
             TextTarget::NewCatalog => self.create_catalog(&text, cx),
             TextTarget::Keyword => self.apply_keywords(vec![text], cx),
             TextTarget::Rename => self.commit_rename(text, cx),
+            TextTarget::PresetName => self.save_preset(text, cx),
+            TextTarget::SnapshotName => self.take_snapshot(text, cx),
             TextTarget::Title
             | TextTarget::Caption
             | TextTarget::Creator

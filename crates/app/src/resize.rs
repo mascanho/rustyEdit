@@ -113,6 +113,9 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.develop_drag_move(event, cx) {
+            return;
+        }
         if let Some((start, start_offset)) = self.loupe_drag {
             if event.dragging() {
                 let max = self.loupe_scroll.max_offset();
@@ -194,6 +197,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         self.loupe_drag = None;
+        self.end_develop_drag();
         self.finish_resize(cx);
     }
 

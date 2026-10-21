@@ -1,8 +1,9 @@
 use std::rc::Rc;
 
 use gpui::{
-    div, prelude::*, px, relative, App, Context, DragMoveEvent, ElementId, MouseButton,
-    MouseDownEvent, Render, SharedString, Window,
+    div, hsla, linear_color_stop, linear_gradient, prelude::*, px, relative, AnyElement, App,
+    Context, DragMoveEvent, ElementId, Hsla, MouseButton, MouseDownEvent, Render, SharedString,
+    Window,
 };
 
 use crate::theme::Theme;
@@ -24,27 +25,63 @@ impl Render for DragGhost {
     }
 }
 
+/// What a slider's track looks like.
+#[derive(Clone, Copy)]
+pub enum SliderTrack {
+    /// Neutral track with an accent fill from the default to the value.
+    Accent,
+    /// A colour ramp from left to right (temperature, a colour's
+    /// saturation, …), with no fill.
+    Gradient(Hsla, Hsla),
+    /// The full hue wheel, for picking a hue.
+    Hue,
+}
+
+/// A slider's range and presentation.
+#[derive(Clone, Copy)]
+pub struct SliderSpec {
+    pub min: f32,
+    pub max: f32,
+    /// What double-clicking the label resets to.
+    pub default: f32,
+    /// Show the value as an offset ("+12") rather than an amount ("12").
+    pub signed: bool,
+    pub track: SliderTrack,
+}
+
 /// A horizontal, draggable slider for a single develop adjustment. `value`
-/// is expected to already be clamped to `[min, max]` by the caller (the
-/// `Adjustment` enum in `rustyedit-core` owns that clamping).
+/// is expected to already be clamped to the spec's range by the caller
+/// (the `Adjustment` enum in `rustyedit-core` owns that clamping).
 pub fn labeled_slider(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     value: f32,
-    min: f32,
-    max: f32,
+    spec: SliderSpec,
     theme: &Theme,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let theme = *theme;
     let id = id.into();
-    let fraction = ((value - min) / (max - min).max(f32::EPSILON)).clamp(0.0, 1.0);
+    let SliderSpec {
+        min,
+        max,
+        default,
+        signed,
+        track,
+    } = spec;
+    let to_fraction = |v: f32| ((v - min) / (max - min).max(f32::EPSILON)).clamp(0.0, 1.0);
+    let fraction = to_fraction(value);
     let on_change = Rc::new(on_change);
 
     let track_id = id.clone();
     let reset = {
         let on_change = on_change.clone();
-        move |_: &MouseDownEvent, window: &mut Window, cx: &mut App| on_change(0.0, window, cx)
+        move |_: &MouseDownEvent, window: &mut Window, cx: &mut App| on_change(default, window, cx)
+    };
+    let shown = if signed {
+        format!("{value:+.0}")
+    } else {
+        format!("{value:.0}")
     };
 
     div()
@@ -72,7 +109,7 @@ pub fn labeled_slider(
                         )
                         .child(label.into()),
                 )
-                .child(div().text_color(theme.text).child(format!("{:+.0}", value))),
+                .child(div().text_color(theme.text).child(shown)),
         )
         .child({
             let on_change = on_change.clone();
@@ -84,24 +121,24 @@ pub fn labeled_slider(
                 .w_full()
                 .flex()
                 .items_center()
-                .child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .right_0()
-                        .h(px(4.0))
-                        .rounded_full()
-                        .bg(theme.border),
-                )
-                .child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .h(px(4.0))
-                        .w(relative(fraction))
-                        .rounded_full()
-                        .bg(theme.accent),
-                )
+                .child(track_background(track, &theme))
+                .when(matches!(track, SliderTrack::Accent), |el| {
+                    // Fill from the neutral point to the value, so a
+                    // bipolar slider fills left or right of centre.
+                    let (lo, hi) = {
+                        let d = to_fraction(default);
+                        (d.min(fraction), d.max(fraction))
+                    };
+                    el.child(
+                        div()
+                            .absolute()
+                            .left(relative(lo))
+                            .w(relative(hi - lo))
+                            .h(px(4.0))
+                            .rounded_full()
+                            .bg(theme.accent),
+                    )
+                })
                 .child(
                     div()
                         .absolute()
@@ -112,7 +149,8 @@ pub fn labeled_slider(
                         .rounded_full()
                         .bg(theme.text)
                         .border_1()
-                        .border_color(theme.surface),
+                        .border_color(theme.surface)
+                        .shadow_sm(),
                 )
                 .on_drag(SliderDrag(track_id), move |_, _, _, cx| {
                     cx.new(|_| DragGhost)
@@ -130,4 +168,40 @@ pub fn labeled_slider(
                     },
                 )
         })
+}
+
+/// The track behind the handle.
+fn track_background(track: SliderTrack, theme: &Theme) -> AnyElement {
+    let base = || {
+        div()
+            .absolute()
+            .left_0()
+            .right_0()
+            .h(px(4.0))
+            .rounded_full()
+            .overflow_hidden()
+    };
+    match track {
+        SliderTrack::Accent => base().bg(theme.border).into_any_element(),
+        SliderTrack::Gradient(from, to) => base()
+            .bg(linear_gradient(
+                90.0,
+                linear_color_stop(from, 0.0),
+                linear_color_stop(to, 1.0),
+            ))
+            .into_any_element(),
+        // Gradients take two stops, so the wheel is six segments.
+        SliderTrack::Hue => base()
+            .flex()
+            .flex_row()
+            .children((0..6).map(|i| {
+                let hue = |n: usize| hsla((n % 6) as f32 / 6.0, 0.75, 0.55, 1.0);
+                div().flex_1().h_full().bg(linear_gradient(
+                    90.0,
+                    linear_color_stop(hue(i), 0.0),
+                    linear_color_stop(hue(i + 1), 1.0),
+                ))
+            }))
+            .into_any_element(),
+    }
 }

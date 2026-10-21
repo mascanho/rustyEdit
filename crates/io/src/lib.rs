@@ -10,7 +10,7 @@ mod catalog_store;
 mod decode;
 mod maintenance;
 mod metadata;
-mod preview;
+mod preset_store;
 mod scan;
 mod settings_store;
 mod thumbnails;
@@ -28,8 +28,8 @@ pub use maintenance::{
     build_backup, move_to_trash, optimize_catalog, read_backup, restore_backup, write_backup,
     BackupSidecar, CatalogBackup, OptimizeReport,
 };
+pub use preset_store::{load as load_presets, save as save_presets};
 pub use metadata::{read_metadata, read_photo_meta, MetaGroup, Metadata};
-pub use preview::{cleanup_live_preview, next_live_preview_path};
 pub use scan::scan_folder;
 pub use settings_store::{load as load_settings, save as save_settings, settings_path};
 pub use thumbnails::{

@@ -111,6 +111,7 @@ pub fn merge_saved_state(fresh: &mut [Asset], saved: &Catalog) {
             asset.content_hash = previous.content_hash;
             asset.phash = previous.phash;
             asset.history = previous.history.clone();
+            asset.snapshots = previous.snapshots.clone();
             // Remembered so reopening never has to re-read every file.
             asset.width = previous.width;
             asset.height = previous.height;

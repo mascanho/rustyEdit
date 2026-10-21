@@ -49,7 +49,7 @@ use actions::{
     ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
 };
 use actions::{
-    CycleGridStyle, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp,
+    CycleGridStyle, GridLarger, GridSmaller, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp,
     SelectDown, SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
 };
 use workspace::Workspace;
@@ -97,6 +97,11 @@ fn main() {
             KeyBinding::new("i", ToggleInfo, Some(KEY_CONTEXT)),
             KeyBinding::new("b", CycleBackground, Some(KEY_CONTEXT)),
             KeyBinding::new("j", CycleGridStyle, Some(KEY_CONTEXT)),
+            // "+" is shift-= on most layouts; bind every way it can arrive.
+            KeyBinding::new("ctrl-=", GridLarger, Some(KEY_CONTEXT)),
+            KeyBinding::new("ctrl-+", GridLarger, Some(KEY_CONTEXT)),
+            KeyBinding::new("ctrl-shift-=", GridLarger, Some(KEY_CONTEXT)),
+            KeyBinding::new("ctrl--", GridSmaller, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-f", FocusSearch, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-z", Undo, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-shift-z", Redo, Some(KEY_CONTEXT)),

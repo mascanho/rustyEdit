@@ -18,6 +18,7 @@ use gpui::{
     Context, SharedString, UniformListScrollHandle,
 };
 use rustyedit_core::settings::FolderTreeSettings;
+use rustyedit_ui::Icon;
 use rustyedit_io::FsEntry;
 use rustyedit_ui::Theme;
 
@@ -379,6 +380,9 @@ impl Workspace {
     }
 }
 
+/// Size of a folder row's expand chevron.
+const CHEVRON_SIZE: f32 = 12.0;
+
 fn tree_row(
     ix: usize,
     row: &TreeRow,
@@ -390,14 +394,12 @@ fn tree_row(
     let indent = px(6.0 + row.depth as f32 * INDENT);
 
     let chevron = match row.kind {
-        RowKind::Folder { expanded, .. } => {
-            if expanded {
-                "\u{25BE}"
-            } else {
-                "\u{25B8}"
-            }
-        }
-        _ => "",
+        RowKind::Folder { expanded, .. } => Some(if expanded {
+            Icon::ChevronDown
+        } else {
+            Icon::ChevronRight
+        }),
+        _ => None,
     };
 
     let icon: AnyElement = match row.kind {
@@ -466,9 +468,8 @@ fn tree_row(
         .child(
             div()
                 .flex_shrink_0()
-                .w(px(10.0))
-                .text_color(theme.text_faint)
-                .child(chevron),
+                .w(px(CHEVRON_SIZE))
+                .children(chevron.map(|chevron| rustyedit_ui::icon(chevron, CHEVRON_SIZE, theme.text_muted))),
         )
         .child(icon)
         .child(div().min_w(px(0.0)).truncate().child(row.name.clone()))

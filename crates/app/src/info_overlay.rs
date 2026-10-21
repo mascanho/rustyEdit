@@ -248,11 +248,15 @@ impl Workspace {
                             .cursor_pointer()
                             .text_color(theme.text_faint)
                             .hover(|el| el.text_color(theme.text_muted))
-                            .child(div().w(px(10.0)).text_size(px(10.0)).child(if collapsed {
-                                "\u{25B8}"
-                            } else {
-                                "\u{25BE}"
-                            }))
+                            .child(rustyedit_ui::icon(
+                                if collapsed {
+                                    rustyedit_ui::Icon::ChevronRight
+                                } else {
+                                    rustyedit_ui::Icon::ChevronDown
+                                },
+                                12.0,
+                                theme.text_muted,
+                            ))
                             .child(
                                 div()
                                     .text_size(px(9.5))

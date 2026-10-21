@@ -328,9 +328,19 @@ impl PanelArrangement {
     /// Which side the Inspector (and so Develop's editing panel) lives on;
     /// `None` when the arrangement hides it.
     pub fn inspector_side(&self) -> Option<DockSide> {
-        if self.left.contains(&PanelKind::Inspector) {
+        self.side_of(PanelKind::Inspector)
+    }
+
+    /// Which side the Navigator (and so Develop's tools column) lives on;
+    /// `None` when the arrangement hides it.
+    pub fn navigator_side(&self) -> Option<DockSide> {
+        self.side_of(PanelKind::Navigator)
+    }
+
+    fn side_of(&self, panel: PanelKind) -> Option<DockSide> {
+        if self.left.contains(&panel) {
             Some(DockSide::Left)
-        } else if self.right.contains(&PanelKind::Inspector) {
+        } else if self.right.contains(&panel) {
             Some(DockSide::Right)
         } else {
             None
@@ -548,10 +558,22 @@ pub static FILMSTRIP_STYLE_CARDS: [CardOption; 6] = [
     },
 ];
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DevelopPreferences {
     pub preview_quality: PreviewQuality,
+    /// Open Develop's tools column (Navigator, Presets, Snapshots, History)
+    /// expanded instead of collapsed.
+    pub tools_expanded_on_startup: bool,
+}
+
+impl Default for DevelopPreferences {
+    fn default() -> Self {
+        Self {
+            preview_quality: PreviewQuality::default(),
+            tools_expanded_on_startup: true,
+        }
+    }
 }
 
 /// How large the decoded "smart preview" used while editing is. Bigger is
@@ -974,25 +996,39 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
     },
     SettingsPage {
         title: "Develop",
-        sections: &[SettingsSection {
-            title: "Performance",
-            items: &[SettingItem {
-                label: "Preview quality",
-                description: "Size of the working preview while editing. Higher is sharper \
-                              but makes sliders slower.",
-                control: SettingControl::Choice {
-                    options: &["Fast (1024px)", "Balanced (2048px)", "High (4096px)"],
-                    get: |s| s.develop.preview_quality as usize,
-                    set: |s, ix| {
-                        s.develop.preview_quality = match ix {
-                            0 => PreviewQuality::Fast,
-                            2 => PreviewQuality::High,
-                            _ => PreviewQuality::Balanced,
-                        }
+        sections: &[
+            SettingsSection {
+                title: "Tools column",
+                items: &[SettingItem {
+                    label: "Expand on startup",
+                    description: "Open the Navigator, Presets, Snapshots and History column \
+                                  expanded. It sits where the layout puts the Navigator.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.develop.tools_expanded_on_startup,
+                        set: |s, v| s.develop.tools_expanded_on_startup = v,
                     },
-                },
-            }],
-        }],
+                }],
+            },
+            SettingsSection {
+                title: "Performance",
+                items: &[SettingItem {
+                    label: "Preview quality",
+                    description: "Size of the working preview while editing. Higher is sharper \
+                              but makes sliders slower.",
+                    control: SettingControl::Choice {
+                        options: &["Fast (1024px)", "Balanced (2048px)", "High (4096px)"],
+                        get: |s| s.develop.preview_quality as usize,
+                        set: |s, ix| {
+                            s.develop.preview_quality = match ix {
+                                0 => PreviewQuality::Fast,
+                                2 => PreviewQuality::High,
+                                _ => PreviewQuality::Balanced,
+                            }
+                        },
+                    },
+                }],
+            },
+        ],
     },
 ];
 

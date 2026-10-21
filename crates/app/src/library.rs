@@ -294,7 +294,7 @@ impl Workspace {
     // --- Side panels ----------------------------------------------------------
 
     /// Catalog overview and filter buttons.
-    fn navigator_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    pub(crate) fn navigator_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let theme = self.theme;
         let counts = self.catalog.counts();
 
@@ -657,7 +657,7 @@ fn info_row(theme: &Theme, label: &'static str, value: impl Into<SharedString>) 
 }
 
 /// Divider heading that separates panels stacked in one dock.
-fn panel_group_heading(theme: &Theme, label: &'static str) -> AnyElement {
+pub(crate) fn panel_group_heading(theme: &Theme, label: &'static str) -> AnyElement {
     div()
         .flex()
         .flex_row()

@@ -1,16 +1,23 @@
 use gpui::{div, prelude::*, px, App, ClickEvent, ElementId, SharedString, Window};
 
-use crate::{panel::PanelSide, theme::Theme};
+use crate::{
+    icons::{icon, Icon},
+    panel::{PanelSide, PANEL_HEADER_HEIGHT},
+    theme::Theme,
+};
 
 /// Width of the rail, including its separator border.
 pub const RAIL_WIDTH: f32 = 36.0;
-const BUTTON_SIZE: f32 = 28.0;
+/// As tall as the dock's title row, so the first button lines up with it.
+const BUTTON_SIZE: f32 = PANEL_HEADER_HEIGHT;
+/// Every icon is drawn at this size, whatever the tool.
+const ICON_SIZE: f32 = 16.0;
 
 /// One icon in a rail. Plain data plus a callback, so the rail knows
 /// nothing about which tools exist.
 pub struct RailButton {
     pub id: SharedString,
-    pub glyph: SharedString,
+    pub icon: Icon,
     pub tooltip: SharedString,
     pub active: bool,
     pub on_click: Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
@@ -32,8 +39,8 @@ pub fn icon_rail(
         .flex()
         .flex_col()
         .items_center()
+        .justify_start()
         .gap_1()
-        .pt_2()
         .w(px(RAIL_WIDTH))
         .h_full()
         .flex_shrink_0()
@@ -49,16 +56,20 @@ pub fn icon_rail(
                 .justify_center()
                 .size(px(BUTTON_SIZE))
                 .rounded_md()
-                .text_size(px(15.0))
                 .cursor_pointer()
-                .when(button.active, |el| {
-                    el.bg(theme.accent_muted).text_color(theme.text)
-                })
+                .when(button.active, |el| el.bg(theme.accent_muted))
                 .when(!button.active, |el| {
-                    el.text_color(theme.text_muted)
-                        .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                    el.hover(|el| el.bg(theme.surface_elevated))
                 })
-                .child(button.glyph)
+                .child(icon(
+                    button.icon,
+                    ICON_SIZE,
+                    if button.active {
+                        theme.text
+                    } else {
+                        theme.text_muted
+                    },
+                ))
                 .tooltip(crate::tooltip::tip(button.tooltip, &theme))
                 .on_click(button.on_click)
         }))

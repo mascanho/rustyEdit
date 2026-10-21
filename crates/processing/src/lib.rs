@@ -1,11 +1,17 @@
 //! The non-destructive edit pipeline: turns a decoded source image plus a
-//! `DevelopSettings` into a rendered preview. Pure CPU/`image`-crate based
-//! with an optional wgpu compute backend (`gpu`); the pixel math lives in small, independently testable modules
-//! (`tone`, `color`, `detail`) so a future GPU shader backend could replace
-//! any one of them without touching the others.
+//! `DevelopSettings` into a rendered preview, in three stages:
+//!
+//! 1. `geometry`: flips and rotation;
+//! 2. the base stage (`tone`, `color`, `detail`), on the GPU (`gpu`) when
+//!    one is available and the CPU otherwise;
+//! 3. `finishing`: tone curves, Color Mixer, Color Grading and effects, on
+//!    the CPU across threads.
+//!
+//! Each stage is skipped while its settings are neutral.
 
 mod color;
 mod detail;
+mod finishing;
 mod geometry;
 mod gpu;
 mod tone;
@@ -24,20 +30,49 @@ fn apply_with(source: &DynamicImage, settings: &DevelopSettings, allow_gpu: bool
     let rotated = geometry::apply_geometry(source, settings);
     let mut buffer = rotated.to_rgb8();
 
-    if settings.is_edited() {
-        if allow_gpu {
-            if let Some(rendered) = gpu::apply(&buffer, settings) {
-                return rendered;
-            }
-        }
-        for pixel in buffer.pixels_mut() {
-            let with_tone = tone::apply_tone_rgb8(*pixel, settings);
-            *pixel = color::apply_color_rgb8(with_tone, settings);
-        }
-        detail::apply_detail(&mut buffer, settings);
+    if has_base_edits(settings) {
+        buffer = base_stage(buffer, settings, allow_gpu);
     }
-
+    if let Some(finishing) = finishing::Finishing::new(settings, buffer.width(), buffer.height())
+    {
+        finishing.apply(&mut buffer);
+    }
     buffer
+}
+
+/// Tone, colour and detail: on the GPU when possible, else the CPU.
+fn base_stage(mut buffer: RgbImage, settings: &DevelopSettings, allow_gpu: bool) -> RgbImage {
+    if allow_gpu {
+        if let Some(rendered) = gpu::apply(&buffer, settings) {
+            return rendered;
+        }
+    }
+    for pixel in buffer.pixels_mut() {
+        let with_tone = tone::apply_tone_rgb8(*pixel, settings);
+        *pixel = color::apply_color_rgb8(with_tone, settings);
+    }
+    detail::apply_detail(&mut buffer, settings);
+    buffer
+}
+
+/// Whether any of the base stage's sliders is off neutral.
+fn has_base_edits(s: &DevelopSettings) -> bool {
+    [
+        s.exposure,
+        s.contrast,
+        s.highlights,
+        s.shadows,
+        s.whites,
+        s.blacks,
+        s.temperature,
+        s.tint,
+        s.vibrance,
+        s.saturation,
+        s.clarity,
+        s.sharpening,
+    ]
+    .iter()
+    .any(|v| *v != 0.0)
 }
 
 /// Name of the GPU the develop pipeline runs on, or `None` when it falls
