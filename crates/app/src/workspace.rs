@@ -95,6 +95,10 @@ pub struct Workspace {
     /// The photo whose ⓘ popup is open, and where it was clicked.
     pub(crate) card_info: Option<(usize, gpui::Point<gpui::Pixels>)>,
     pub(crate) edit_clipboard: Option<rustyedit_core::DevelopSettings>,
+    /// The photo shown now and the one before it (asset ids), for
+    /// "Previous" in Develop.
+    pub(crate) current_photo: Option<u64>,
+    pub(crate) previous_photo: Option<u64>,
     pub(crate) pending_album_photos: Vec<PathBuf>,
     /// Distinct cameras, lenses, years… for the Filters panel.
     pub(crate) facets: crate::filters_panel::Facets,
@@ -236,6 +240,8 @@ impl Workspace {
             context_menu: None,
             card_info: None,
             edit_clipboard: None,
+            current_photo: None,
+            previous_photo: None,
             pending_album_photos: Vec::new(),
             facets: Default::default(),
             wheel_accum: 0.0,
@@ -438,6 +444,7 @@ impl Workspace {
     }
 
     pub(crate) fn on_selection_changed(&mut self, cx: &mut Context<Self>) {
+        self.remember_previous_photo();
         self.sync_compare_with_selection();
         // A new photo starts at fit-to-window.
         if self.loupe_zoom.is_some() {

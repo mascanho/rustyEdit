@@ -16,10 +16,12 @@ pub enum DevelopSection {
     // Last, so the on/off bits of the sections above keep their values.
     Retouch,
     Gradients,
+    Crop,
 }
 
 impl DevelopSection {
-    pub const ALL: [DevelopSection; 9] = [
+    pub const ALL: [DevelopSection; 10] = [
+        DevelopSection::Crop,
         DevelopSection::Retouch,
         DevelopSection::Gradients,
         DevelopSection::Basic,
@@ -33,6 +35,7 @@ impl DevelopSection {
 
     pub fn label(&self) -> &'static str {
         match self {
+            DevelopSection::Crop => "Crop & Straighten",
             DevelopSection::Retouch => "Retouch",
             DevelopSection::Gradients => "Gradients",
             DevelopSection::Basic => "Basic",
@@ -55,6 +58,7 @@ impl DevelopSection {
             DevelopSection::ColorGrading => "color_grading",
             DevelopSection::Detail => "detail",
             DevelopSection::Effects => "effects",
+            DevelopSection::Crop => "crop",
             DevelopSection::Retouch => "retouch",
             DevelopSection::Gradients => "gradients",
         }
@@ -120,6 +124,7 @@ impl DevelopSection {
     /// Copies this section's settings from `from` into `to`.
     fn copy(&self, from: &DevelopSettings, to: &mut DevelopSettings) {
         match self {
+            DevelopSection::Crop => to.crop = from.crop,
             DevelopSection::Retouch => to.spots = from.spots,
             DevelopSection::Gradients => to.gradients = from.gradients,
             DevelopSection::Basic => {

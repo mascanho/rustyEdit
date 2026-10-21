@@ -5,12 +5,15 @@
 //! 1. `geometry`: flips and rotation;
 //! 2. the base stage (`tone`, `color`, `detail`), on the GPU (`gpu`) when
 //!    one is available and the CPU otherwise;
-//! 3. `finishing`: tone curves, Color Mixer, Color Grading and effects, on
-//!    the CPU across threads.
+//! 3. `finishing` (before the crop): tone curves, Color Mixer, Color
+//!    Grading, Dehaze and gradient masks, on the CPU across threads;
+//! 4. `crop`: straighten and crop;
+//! 5. `finishing` (after the crop): Vignette and Grain, framed by the crop.
 //!
 //! Each stage is skipped while its settings are neutral.
 
 mod color;
+mod crop;
 mod detail;
 mod finishing;
 mod geometry;
@@ -48,8 +51,13 @@ fn apply_with(source: &DynamicImage, settings: &DevelopSettings, allow_gpu: bool
     if has_base_edits(settings) {
         buffer = base_stage(buffer, settings, allow_gpu);
     }
-    if let Some(finishing) = finishing::Finishing::new(settings, buffer.width(), buffer.height())
-    {
+    let (width, height) = buffer.dimensions();
+    if let Some(finishing) = finishing::Finishing::before_crop(settings, width, height) {
+        finishing.apply(&mut buffer);
+    }
+    let mut buffer = crop::straighten_and_crop(buffer, &settings.crop);
+    let (width, height) = buffer.dimensions();
+    if let Some(finishing) = finishing::Finishing::after_crop(settings, width, height) {
         finishing.apply(&mut buffer);
     }
     buffer

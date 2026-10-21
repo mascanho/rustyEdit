@@ -22,6 +22,7 @@
 mod adjustments;
 mod color_grading;
 mod color_mixer;
+mod crop;
 mod curve_editor;
 mod gradients;
 mod history;
@@ -146,6 +147,7 @@ impl Workspace {
                     })
                     .into_any_element(),
             ),
+            Some(self.develop_edit_footer(stacked, cx)),
             panel_children,
         )
         .into_any_element();
@@ -200,6 +202,7 @@ impl Workspace {
     ) -> (&'static str, Vec<AnyElement>) {
         use DevelopSection as S;
         match section {
+            S::Crop => ("develop-crop", self.crop_section(cx)),
             S::Retouch => ("develop-retouch", self.retouch_section(cx)),
             S::Gradients => ("develop-gradients", self.gradients_section(cx)),
             S::Basic => (

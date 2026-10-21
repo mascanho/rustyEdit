@@ -217,6 +217,7 @@ impl Workspace {
             });
         }
 
+        let footer = self.library_dock_footer(panels, cx);
         let (id, panel_side, collapsed) = match side {
             DockSide::Left => (
                 "library-dock-left",
@@ -231,7 +232,7 @@ impl Workspace {
         };
 
         Some(
-            rustyedit_ui::collapsible_panel(
+            rustyedit_ui::collapsible_panel_pinned(
                 id,
                 &self.theme,
                 title,
@@ -249,6 +250,8 @@ impl Workspace {
                     }
                     cx.notify();
                 }),
+                None,
+                footer,
                 children,
             )
             .into_any_element(),
@@ -481,7 +484,10 @@ impl Workspace {
         }
 
         vec![
-            div().pt_3().child(self.render_histogram_panel(cx)).into_any_element(),
+            div()
+                .pt_3()
+                .child(self.render_histogram_panel(cx))
+                .into_any_element(),
             self.disclosure("metadata", "Metadata", metadata, cx),
         ]
     }

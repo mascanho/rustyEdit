@@ -9,10 +9,9 @@ use gpui::{
     div, prelude::*, px, AnyElement, ClickEvent, ClipboardItem, Context, MouseButton,
     MouseDownEvent, Pixels, Point, SharedString, Window,
 };
-use rustyedit_core::{ColorLabel, DevelopSettings, ExportScope, Flag};
+use rustyedit_core::{ColorLabel, ExportScope, Flag};
 
 use crate::{
-    develop::HistoryNote,
     selection::CullOp,
     workspace::{LibraryView, Mode, Workspace},
 };
@@ -266,11 +265,7 @@ impl Workspace {
                 "ctx-copy-edits",
                 "\u{2398}",
                 "Copy edits",
-                |this, _w, cx| {
-                    this.edit_clipboard = this.catalog.selected_asset().map(|a| a.develop);
-                    this.status_message = Some("Edits copied.".into());
-                    cx.notify();
-                },
+                |this, _w, cx| this.copy_edits(cx),
             ));
         }
         if self.edit_clipboard.is_some() {
@@ -278,20 +273,7 @@ impl Workspace {
                 "ctx-paste-edits",
                 "\u{2399}",
                 "Paste edits",
-                |this, _w, cx| {
-                    if let Some(settings) = this.edit_clipboard {
-                        this.replace_develop(
-                            this.target_indices(),
-                            "paste edits",
-                            HistoryNote::Record {
-                                title: "Paste edits",
-                                detail: "Pasted",
-                            },
-                            cx,
-                            move |_| settings,
-                        );
-                    }
-                },
+                |this, _w, cx| this.paste_edits(cx),
             ));
         }
         if assets.iter().any(|a| a.develop.is_edited()) {
@@ -300,16 +282,7 @@ impl Workspace {
                 "\u{21BA}",
                 "Reset edits",
                 |this, _w, cx| {
-                    this.replace_develop(
-                        this.target_indices(),
-                        "reset edits",
-                        HistoryNote::Record {
-                            title: "Reset edits",
-                            detail: "Original",
-                        },
-                        cx,
-                        |_| DevelopSettings::default(),
-                    );
+                    this.reset_edits(cx);
                 },
             ));
         }

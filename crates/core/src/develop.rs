@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    crop::Crop,
     curves::ToneCurves,
     gradients::Gradients,
     retouch::Spots,
@@ -61,6 +62,8 @@ pub struct DevelopSettings {
     pub grain_size: f32,
 
     // Geometry
+    /// Straighten and crop, after rotation and flips.
+    pub crop: Crop,
     pub rotation_degrees: f32,
     pub flip_horizontal: bool,
     pub flip_vertical: bool,
@@ -97,6 +100,7 @@ impl Default for DevelopSettings {
             vignette_feather: 50.0,
             grain: 0.0,
             grain_size: 25.0,
+            crop: Crop::default(),
             rotation_degrees: 0.0,
             flip_horizontal: false,
             flip_vertical: false,
@@ -116,9 +120,10 @@ impl DevelopSettings {
     }
 
     /// These settings with `look`'s tone, colour and detail values, keeping
-    /// this photo's own rotation and flips. How presets are applied.
+    /// this photo's own crop, rotation and flips. How presets are applied.
     pub fn with_look_of(&self, look: &DevelopSettings) -> DevelopSettings {
         DevelopSettings {
+            crop: self.crop,
             rotation_degrees: self.rotation_degrees,
             flip_horizontal: self.flip_horizontal,
             flip_vertical: self.flip_vertical,

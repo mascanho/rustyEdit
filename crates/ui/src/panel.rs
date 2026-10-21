@@ -181,13 +181,15 @@ pub fn disclosure_section_with(
 
 /// A vertically scrollable container for stacking develop panel sections,
 /// docked to `side` at a fixed `width`, with a minimal scrollbar driven by
-/// `scroll`. `pinned` stays above the scrolling sections (the histogram).
+/// `scroll`. `pinned` stays above the scrolling sections (the histogram)
+/// and `footer` (see [`panel_footer`]) below them.
 pub fn side_panel(
     theme: &Theme,
     side: PanelSide,
     width: f32,
     scroll: &ScrollHandle,
     pinned: Option<AnyElement>,
+    footer: Option<AnyElement>,
     children: Vec<AnyElement>,
 ) -> impl IntoElement {
     let theme = *theme;
@@ -236,6 +238,7 @@ pub fn side_panel(
                     &theme,
                 )),
         )
+        .children(footer)
 }
 
 /// A docked side panel (Library's left/right panels) that can be collapsed
@@ -254,12 +257,13 @@ pub fn collapsible_panel(
     children: Vec<AnyElement>,
 ) -> impl IntoElement {
     collapsible_panel_pinned(
-        id, theme, title, side, width, collapsed, scroll, on_toggle, None, children,
+        id, theme, title, side, width, collapsed, scroll, on_toggle, None, None, children,
     )
 }
 
-/// [`collapsible_panel`] with `pinned` held under the title, above the
-/// scrolling `children`, so it never scrolls away (Develop's Navigator).
+/// [`collapsible_panel`] with `pinned` held under the title and `footer`
+/// (see [`panel_footer`]) along the bottom, both outside the scrolling
+/// `children` so they never scroll away.
 #[allow(clippy::too_many_arguments)]
 pub fn collapsible_panel_pinned(
     id: impl Into<ElementId>,
@@ -271,6 +275,7 @@ pub fn collapsible_panel_pinned(
     scroll: &ScrollHandle,
     on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     pinned: Option<AnyElement>,
+    footer: Option<AnyElement>,
     children: Vec<AnyElement>,
 ) -> impl IntoElement {
     let theme = *theme;
@@ -375,5 +380,62 @@ pub fn collapsible_panel_pinned(
                 )
                 .child(vertical_scrollbar(scrollbar_id, scroll.clone(), &theme)),
         )
+        .children(footer)
+        .into_any_element()
+}
+
+/// The fixed strip along the bottom of a side panel: rows of
+/// [`footer_button`]s, side by side.
+pub fn panel_footer(theme: &Theme, rows: Vec<Vec<AnyElement>>) -> AnyElement {
+    let theme = *theme;
+    div()
+        .flex()
+        .flex_col()
+        .flex_shrink_0()
+        .gap_1p5()
+        .px_3()
+        .py_2()
+        .bg(theme.surface)
+        .border_t_1()
+        .border_color(theme.border_subtle)
+        .children(
+            rows.into_iter()
+                .map(|row| div().flex().flex_row().gap_1p5().children(row)),
+        )
+        .into_any_element()
+}
+
+/// An equal-width button for [`panel_footer`]. Disabled buttons are faded
+/// and ignore clicks.
+pub fn footer_button(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    tooltip: impl Into<SharedString>,
+    enabled: bool,
+    theme: &Theme,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> AnyElement {
+    let theme = *theme;
+    div()
+        .id(id)
+        .flex_1()
+        .flex()
+        .items_center()
+        .justify_center()
+        .h(px(26.0))
+        .rounded_md()
+        .border_1()
+        .border_color(theme.border)
+        .bg(theme.surface_elevated.opacity(0.5))
+        .text_size(px(11.5))
+        .text_color(theme.text)
+        .when(enabled, |el| {
+            el.cursor_pointer()
+                .hover(|el| el.bg(theme.surface_elevated).border_color(theme.accent))
+                .on_click(on_click)
+        })
+        .when(!enabled, |el| el.opacity(0.4))
+        .child(label.into())
+        .tooltip(tip(tooltip, &theme))
         .into_any_element()
 }

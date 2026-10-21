@@ -1,6 +1,7 @@
 //! The finishing stage: everything after tone, colour and detail. Tone
-//! curves, the Color Mixer, Color Grading, Dehaze, gradient masks, Vignette
-//! and Grain.
+//! curves, the Color Mixer, Color Grading, Dehaze and gradient masks run
+//! on the whole picture before it's cropped; Vignette and Grain after, so
+//! they frame the crop.
 //!
 //! It runs on the CPU after the (possibly GPU-rendered) base stage, split
 //! across threads by bands of rows. Each tool is set up once per render
@@ -34,17 +35,37 @@ pub(crate) struct Finishing {
 }
 
 impl Finishing {
-    /// `None` when every finishing tool is neutral.
-    pub(crate) fn new(settings: &DevelopSettings, width: u32, height: u32) -> Option<Self> {
-        let finishing = Self {
+    /// The tools that run on the whole picture, before it's cropped:
+    /// `None` when they're all neutral.
+    pub(crate) fn before_crop(settings: &DevelopSettings, width: u32, height: u32) -> Option<Self> {
+        Self {
             curves: CurveLuts::new(&settings.curves),
             mixer: Mixer::new(&settings.mixer),
             grading: Grading::new(&settings.grading),
             dehaze: Dehaze::new(settings.dehaze),
             local: LocalAdjustments::new(settings, width, height),
+            vignette: None,
+            grain: None,
+        }
+        .if_any()
+    }
+
+    /// The tools framed by the crop (vignette, grain), run after it.
+    pub(crate) fn after_crop(settings: &DevelopSettings, width: u32, height: u32) -> Option<Self> {
+        Self {
+            curves: None,
+            mixer: None,
+            grading: None,
+            dehaze: None,
+            local: None,
             vignette: Vignette::new(settings, width, height),
             grain: Grain::new(settings, width, height),
-        };
+        }
+        .if_any()
+    }
+
+    fn if_any(self) -> Option<Self> {
+        let finishing = self;
         let any = finishing.curves.is_some()
             || finishing.mixer.is_some()
             || finishing.grading.is_some()
@@ -132,7 +153,8 @@ mod tests {
 
     #[test]
     fn neutral_settings_need_no_finishing() {
-        assert!(Finishing::new(&DevelopSettings::default(), 10, 10).is_none());
+        assert!(Finishing::before_crop(&DevelopSettings::default(), 10, 10).is_none());
+        assert!(Finishing::after_crop(&DevelopSettings::default(), 10, 10).is_none());
     }
 
     #[test]
@@ -142,7 +164,7 @@ mod tests {
             ..Default::default()
         };
         let mut image = RgbImage::from_pixel(101, 101, image::Rgb([200, 200, 200]));
-        Finishing::new(&settings, 101, 101)
+        Finishing::after_crop(&settings, 101, 101)
             .unwrap()
             .apply(&mut image);
         assert_eq!(image.get_pixel(50, 50)[0], 200);
@@ -158,7 +180,9 @@ mod tests {
             band.luminance = 80.0;
         }
         let mut image = RgbImage::from_pixel(8, 8, image::Rgb([128, 128, 128]));
-        Finishing::new(&settings, 8, 8).unwrap().apply(&mut image);
+        Finishing::before_crop(&settings, 8, 8)
+            .unwrap()
+            .apply(&mut image);
         assert_eq!(image.get_pixel(3, 3).0, [128, 128, 128]);
     }
 }

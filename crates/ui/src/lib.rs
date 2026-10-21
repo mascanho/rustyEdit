@@ -32,7 +32,8 @@ pub use icon_rail::{icon_rail, RailButton, RAIL_WIDTH};
 pub use icons::{icon, Icon};
 pub use panel::{
     collapsible_panel, collapsible_panel_pinned, disclosure_section, disclosure_section_with,
-    section, side_panel, PanelSide, SectionExtras, COLLAPSED_PANEL_WIDTH, PANEL_HEADER_HEIGHT,
+    footer_button, panel_footer, section, side_panel, PanelSide, SectionExtras,
+    COLLAPSED_PANEL_WIDTH, PANEL_HEADER_HEIGHT,
 };
 pub use rating_stars::rating_stars;
 pub use scrollbar::vertical_scrollbar;

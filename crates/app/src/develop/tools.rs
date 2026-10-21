@@ -109,6 +109,7 @@ impl Workspace {
                 cx.notify();
             }),
             navigator,
+            Some(self.develop_tools_footer(cx)),
             content,
         )
         .into_any_element();
