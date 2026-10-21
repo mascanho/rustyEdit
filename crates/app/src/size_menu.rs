@@ -77,6 +77,14 @@ impl Workspace {
         }
     }
 
+    /// The Develop viewer's backdrop colour.
+    pub(crate) fn viewer_bg(&self) -> gpui::Hsla {
+        match self.settings.develop.viewer_background.hsl() {
+            Some((h, s, l)) => gpui::hsla(h, s, l, 1.0),
+            None => self.theme.background,
+        }
+    }
+
     pub fn cycle_background(
         &mut self,
         _: &crate::actions::CycleBackground,
@@ -86,6 +94,9 @@ impl Workspace {
         if self.mode == crate::workspace::Mode::Library && self.library_view == LibraryView::Loupe {
             let next = self.settings.library.loupe_background.next();
             self.update_settings(|s| s.library.loupe_background = next, cx);
+        } else if self.mode == crate::workspace::Mode::Develop {
+            let next = self.settings.develop.viewer_background.next();
+            self.update_settings(|s| s.develop.viewer_background = next, cx);
         }
     }
 

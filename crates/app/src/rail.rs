@@ -96,6 +96,7 @@ impl Workspace {
             RailTool::Collections => Some(self.albums_sections(cx)),
             RailTool::Search => Some(self.search_sections(cx)),
             RailTool::Filters => Some(self.filters_sections(cx)),
+            RailTool::Presets => Some(self.presets_sections(cx)),
             RailTool::Keywords => Some(self.keywords_sections(cx)),
             RailTool::Duplicates => Some(self.duplicates_sections(cx)),
             _ => None,
@@ -122,6 +123,7 @@ impl Workspace {
                 | RailTool::Collections
                 | RailTool::Search
                 | RailTool::Filters
+                | RailTool::Presets
                 | RailTool::Keywords
         ) {
             return; // Shown in the dock itself; nothing to announce.
@@ -137,6 +139,7 @@ fn rail_icon(tool: RailTool) -> Icon {
         RailTool::Search => Icon::Search,
         RailTool::Collections => Icon::Collections,
         RailTool::Filters => Icon::Filter,
+        RailTool::Presets => Icon::Presets,
         RailTool::Duplicates => Icon::Duplicates,
         RailTool::History => Icon::History,
         RailTool::Info => Icon::Info,

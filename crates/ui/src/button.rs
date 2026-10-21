@@ -32,7 +32,6 @@ pub fn chrome_icon_button(
         .justify_center()
         .h(px(24.0))
         .px_2()
-        .rounded_md()
         .text_xs()
         .cursor_pointer()
         .when(selected, |el| {
@@ -67,7 +66,6 @@ pub fn glyph_button(
         .items_center()
         .justify_center()
         .size(px(20.0))
-        .rounded_sm()
         .cursor_pointer()
         .text_color(if active { color } else { theme.text_faint })
         .hover(|el| el.bg(theme.surface_elevated))

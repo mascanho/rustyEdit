@@ -79,7 +79,6 @@ impl Workspace {
             .items_center()
             .h(px(28.0))
             .px_2()
-            .rounded_md()
             .bg(theme.background)
             .border_1()
             .border_color(if editing.is_some() {
@@ -135,7 +134,6 @@ impl Workspace {
                         .gap_2()
                         .h(px(22.0))
                         .px_2()
-                        .rounded_md()
                         .cursor_pointer()
                         .text_size(px(11.5))
                         .text_color(theme.text_muted)
@@ -265,7 +263,6 @@ impl Workspace {
                         .gap_0p5()
                         .px_2()
                         .py_1()
-                        .rounded_md()
                         .cursor_pointer()
                         .hover(|el| el.bg(theme.surface_elevated))
                         .child(
@@ -325,7 +322,6 @@ impl Workspace {
                         .gap_2()
                         .h(px(24.0))
                         .px_2()
-                        .rounded_md()
                         .cursor_pointer()
                         .text_size(px(11.5))
                         .when(is_active, |el| {
@@ -347,7 +343,6 @@ impl Workspace {
                             div()
                                 .id(SharedString::from(format!("keyword-add-{keyword}")))
                                 .px(px(3.0))
-                                .rounded_md()
                                 .text_color(theme.text_faint)
                                 .hover(|el| el.text_color(theme.accent))
                                 .child("+")

@@ -210,7 +210,6 @@ impl Workspace {
             .items_center()
             .h(px(28.0))
             .px_2()
-            .rounded_md()
             .bg(theme.background)
             .border_1()
             .border_color(if editing.is_some() {
@@ -649,7 +648,13 @@ impl Workspace {
                 ),
             ],
         ));
-        out
+        // Side padding for the whole panel.
+        vec![div()
+            .flex()
+            .flex_col()
+            .px_3()
+            .children(out)
+            .into_any_element()]
     }
 
     fn facet_group(&self, title: &'static str, rows: Vec<AnyElement>) -> AnyElement {
@@ -657,16 +662,29 @@ impl Workspace {
         div()
             .flex()
             .flex_col()
-            .pt_3()
+            .mt_2()
+            .rounded_md()
+            .overflow_hidden()
+            .border_1()
+            .border_color(theme.border)
             .child(
                 div()
-                    .pb_1()
+                    .px_2()
+                    .py_1()
+                    .bg(theme.surface_elevated)
                     .text_size(px(10.0))
                     .font_weight(gpui::FontWeight::BOLD)
-                    .text_color(theme.text_faint)
+                    .text_color(theme.text_muted)
                     .child(title),
             )
-            .children(rows)
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .p_1()
+                    .bg(theme.background.opacity(0.45))
+                    .children(rows),
+            )
             .into_any_element()
     }
 
@@ -708,7 +726,6 @@ impl Workspace {
             .gap_2()
             .h(px(24.0))
             .px_2()
-            .rounded_md()
             .cursor_pointer()
             .text_size(px(11.5))
             .when(active, |el| {

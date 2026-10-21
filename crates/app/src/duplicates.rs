@@ -182,7 +182,6 @@ impl Workspace {
                     div()
                         .w(px(52.0))
                         .h(px(40.0))
-                        .rounded_md()
                         .overflow_hidden()
                         .bg(theme.background)
                         .child(img(source).object_fit(ObjectFit::Contain).size_full())

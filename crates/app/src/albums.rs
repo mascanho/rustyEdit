@@ -55,7 +55,6 @@ impl Workspace {
                             .items_center()
                             .h(px(26.0))
                             .px_2()
-                            .rounded_md()
                             .bg(theme.background)
                             .border_1()
                             .border_color(theme.accent)
@@ -153,7 +152,6 @@ impl Workspace {
                             .items_center()
                             .h(px(26.0))
                             .px_2()
-                            .rounded_md()
                             .bg(theme.background)
                             .border_1()
                             .border_color(theme.accent)
@@ -211,7 +209,6 @@ impl Workspace {
             .gap_2()
             .h(px(28.0))
             .px_2()
-            .rounded_md()
             .cursor_pointer()
             .text_sm()
             .when(active, |el| {
@@ -301,7 +298,6 @@ impl Workspace {
             .gap_2()
             .h(px(28.0))
             .px_2()
-            .rounded_md()
             .cursor_pointer()
             .text_sm()
             .when(active, |el| {
@@ -498,6 +494,11 @@ impl Workspace {
                 }
             }
         }
+        if target == TextTarget::PresetSearch {
+            if let Some((_, text)) = &self.text_draft {
+                self.develop_ui.preset_ui.search = text.clone();
+            }
+        }
         if target == TextTarget::Search {
             if let Some((_, text)) = &self.text_draft {
                 let query = text.clone();
@@ -525,6 +526,12 @@ impl Workspace {
             TextTarget::Keyword => self.apply_keywords(vec![text], cx),
             TextTarget::Rename => self.commit_rename(text, cx),
             TextTarget::PresetName => self.save_preset(text, cx),
+            TextTarget::PresetRename => self.rename_preset(text, cx),
+            TextTarget::RecipeName | TextTarget::RecipeIso | TextTarget::RecipeExposure => {
+                self.commit_recipe_text(target, text, cx)
+            }
+            // Search filters live as you type; Enter just ends editing.
+            TextTarget::PresetSearch => {}
             TextTarget::SnapshotName => self.take_snapshot(text, cx),
             TextTarget::Title
             | TextTarget::Caption

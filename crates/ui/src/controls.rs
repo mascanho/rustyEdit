@@ -92,7 +92,6 @@ pub fn stepper(
         .flex_row()
         .items_center()
         .flex_shrink_0()
-        .rounded_md()
         .border_1()
         .border_color(theme.border)
         .child(step_button(-1, value > min))

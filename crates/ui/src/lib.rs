@@ -9,6 +9,7 @@ mod cull_bar;
 mod film_look;
 mod flag_badge;
 mod histogram;
+mod scopes;
 mod icon_rail;
 mod icons;
 mod panel;
@@ -27,6 +28,7 @@ pub use cull_bar::{
 };
 pub use film_look::{EdgePrint, FilmLook, Sprockets};
 pub use flag_badge::flag_badge;
+pub use scopes::{scope_view, SCOPE_HEIGHT};
 pub use histogram::{
     histogram_view, histogram_view_with_height, paint_histogram, HistogramPaint, HistogramProps,
     HISTOGRAM_HEIGHT,

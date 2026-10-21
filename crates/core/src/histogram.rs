@@ -8,6 +8,91 @@ pub struct Histogram {
     pub green: [u32; 256],
     pub blue: [u32; 256],
     pub luma: [u32; 256],
+    /// Waveform and vectorscope data, when the image's width was known.
+    pub scopes: Scopes,
+}
+
+/// Columns and rows of the waveform grid; the level axis has `WAVE_ROWS`
+/// steps, the position axis `WAVE_COLS`.
+pub const WAVE_COLS: usize = 128;
+pub const WAVE_ROWS: usize = 64;
+/// The vectorscope grid is `VECTOR_SIZE` x `VECTOR_SIZE` cells of
+/// (Cb, Cr) chroma.
+pub const VECTOR_SIZE: usize = 64;
+
+/// Density grids behind the waveform and vectorscope views. Each waveform
+/// grid is `WAVE_ROWS` rows (row 0 = level 0) by `WAVE_COLS` columns
+/// (left to right across the photo); the vectorscope is Cb across and Cr
+/// up (row 0 = highest Cr). All empty until computed.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Scopes {
+    pub wave_red: Vec<u32>,
+    pub wave_green: Vec<u32>,
+    pub wave_blue: Vec<u32>,
+    pub wave_luma: Vec<u32>,
+    pub vector: Vec<u32>,
+}
+
+impl Scopes {
+    pub fn is_empty(&self) -> bool {
+        self.vector.is_empty()
+    }
+
+    /// The waveform grid for `channel` (luminance stands in for RGB).
+    pub fn wave(&self, channel: HistogramChannel) -> &[u32] {
+        match channel {
+            HistogramChannel::Rgb | HistogramChannel::Luma => &self.wave_luma,
+            HistogramChannel::Red => &self.wave_red,
+            HistogramChannel::Green => &self.wave_green,
+            HistogramChannel::Blue => &self.wave_blue,
+        }
+    }
+
+    /// BT.709 chroma of an 8-bit pixel, each in `-0.5..=0.5`.
+    pub fn chroma(r: f32, g: f32, b: f32) -> (f32, f32) {
+        let y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        ((b - y) / 1.8556, (r - y) / 1.5748)
+    }
+}
+
+/// How the panel shows the picture's tones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ScopeMode {
+    #[default]
+    Histogram,
+    /// Brightness against position across the photo.
+    Waveform,
+    /// Red, green and blue waveforms side by side.
+    Parade,
+    /// Colour (hue and saturation) as a plot.
+    Vectorscope,
+}
+
+impl ScopeMode {
+    pub const ALL: [ScopeMode; 4] = [
+        ScopeMode::Histogram,
+        ScopeMode::Waveform,
+        ScopeMode::Parade,
+        ScopeMode::Vectorscope,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            ScopeMode::Histogram => "Histogram",
+            ScopeMode::Waveform => "Waveform",
+            ScopeMode::Parade => "Parade",
+            ScopeMode::Vectorscope => "Vectorscope",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            ScopeMode::Histogram => "How many pixels are at each brightness",
+            ScopeMode::Waveform => "Brightness along the width of the photo",
+            ScopeMode::Parade => "Red, green and blue waveforms side by side",
+            ScopeMode::Vectorscope => "Hue and saturation of the colours",
+        }
+    }
 }
 
 /// Which distribution a histogram view draws.
@@ -146,19 +231,64 @@ impl Histogram {
     /// Builds a histogram from tightly packed 8-bit RGB pixels
     /// (`[r, g, b, r, g, b, …]`), e.g. `image::RgbImage::as_raw()`.
     pub fn from_rgb8(pixels: &[u8]) -> Self {
+        Self::from_rgb8_sized(pixels, 0)
+    }
+
+    /// [`from_rgb8`](Self::from_rgb8) that also builds the waveform and
+    /// vectorscope grids; `width` is the image width in pixels (0 skips the
+    /// waveforms, which need to know which column a pixel is in).
+    pub fn from_rgb8_sized(pixels: &[u8], width: usize) -> Self {
         let mut histogram = Self {
             red: [0; 256],
             green: [0; 256],
             blue: [0; 256],
             luma: [0; 256],
+            scopes: Scopes::default(),
         };
-        for px in pixels.chunks_exact(3) {
+        let waves = width > 0;
+        let mut scopes = Scopes {
+            vector: vec![0; VECTOR_SIZE * VECTOR_SIZE],
+            ..Scopes::default()
+        };
+        if waves {
+            for grid in [
+                &mut scopes.wave_red,
+                &mut scopes.wave_green,
+                &mut scopes.wave_blue,
+                &mut scopes.wave_luma,
+            ] {
+                *grid = vec![0; WAVE_COLS * WAVE_ROWS];
+            }
+        }
+        let level_row = |v: u8| (v as usize * (WAVE_ROWS - 1) + 127) / 255;
+        // Big images are sampled: the grids are tiny, so this loses nothing.
+        let stride = if pixels.len() / 3 > 1_500_000 { 2 } else { 1 };
+        for (i, px) in pixels.chunks_exact(3).enumerate() {
             let (r, g, b) = (px[0], px[1], px[2]);
+            let l = luma8(r, g, b);
             histogram.red[r as usize] += 1;
             histogram.green[g as usize] += 1;
             histogram.blue[b as usize] += 1;
-            histogram.luma[luma8(r, g, b) as usize] += 1;
+            histogram.luma[l as usize] += 1;
+
+            if stride > 1 && (i / width.max(1)) % stride != 0 {
+                continue;
+            }
+            if waves {
+                let col = (i % width) * WAVE_COLS / width;
+                scopes.wave_red[level_row(r) * WAVE_COLS + col] += 1;
+                scopes.wave_green[level_row(g) * WAVE_COLS + col] += 1;
+                scopes.wave_blue[level_row(b) * WAVE_COLS + col] += 1;
+                scopes.wave_luma[level_row(l) * WAVE_COLS + col] += 1;
+            }
+            let (cb, cr) = Scopes::chroma(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
+            // The small offset keeps float error from tipping neutral greys
+            // into the neighbouring cell.
+            let x = (((cb + 0.5) * VECTOR_SIZE as f32 + 0.01) as usize).min(VECTOR_SIZE - 1);
+            let y = (((0.5 - cr) * VECTOR_SIZE as f32 + 0.01) as usize).min(VECTOR_SIZE - 1);
+            scopes.vector[y * VECTOR_SIZE + x] += 1;
         }
+        histogram.scopes = scopes;
         histogram
     }
 
@@ -248,6 +378,30 @@ mod tests {
         assert_eq!(h.luma[255], 1);
         assert_eq!(h.luma[0], 1);
         assert_eq!(h.total(), 3);
+    }
+
+    #[test]
+    fn scopes_place_pixels_by_column_and_level() {
+        // Two pixels wide, one row: black on the left, white on the right.
+        let h = Histogram::from_rgb8_sized(&[0, 0, 0, 255, 255, 255], 2);
+        let wave = h.scopes.wave(HistogramChannel::Luma);
+        assert_eq!(wave[0], 1); // level 0, first column
+        assert_eq!(wave[(WAVE_ROWS - 1) * WAVE_COLS + WAVE_COLS / 2], 1); // second pixel: right half
+                                                                          // Neutral greys sit in the middle of the vectorscope.
+        let v = &h.scopes.vector;
+        let centre = (VECTOR_SIZE / 2) * VECTOR_SIZE + VECTOR_SIZE / 2;
+        assert_eq!(v[centre], 2);
+    }
+
+    #[test]
+    fn red_lands_above_and_blue_right_of_centre_on_the_vectorscope() {
+        let red = Histogram::from_rgb8_sized(&[255, 0, 0], 1);
+        let blue = Histogram::from_rgb8_sized(&[0, 0, 255], 1);
+        let at = |h: &Histogram| h.scopes.vector.iter().position(|&n| n > 0).unwrap();
+        let (rx, ry) = (at(&red) % VECTOR_SIZE, at(&red) / VECTOR_SIZE);
+        let (bx, by) = (at(&blue) % VECTOR_SIZE, at(&blue) / VECTOR_SIZE);
+        assert!(ry < VECTOR_SIZE / 2 && rx >= VECTOR_SIZE / 2 - 8);
+        assert!(bx > VECTOR_SIZE * 3 / 4 && by >= VECTOR_SIZE / 2 - 8);
     }
 
     #[test]

@@ -119,7 +119,7 @@ impl LocalAdjust {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Gradient {
     pub kind: GradientKind,
@@ -135,6 +135,26 @@ pub struct Gradient {
     /// Apply outside the mask instead of inside it.
     pub invert: bool,
     pub adjust: LocalAdjust,
+    /// The layer's eye is closed: kept, but not applied.
+    pub hidden: bool,
+    /// The layer's opacity, 0..=100: how much of its effect is applied.
+    pub opacity: f32,
+}
+
+impl Default for Gradient {
+    fn default() -> Self {
+        Self {
+            kind: GradientKind::default(),
+            start: (0.0, 0.0),
+            end: (0.0, 0.0),
+            radius: (0.0, 0.0),
+            feather: 0.0,
+            invert: false,
+            adjust: LocalAdjust::default(),
+            hidden: false,
+            opacity: 100.0,
+        }
+    }
 }
 
 impl Gradient {
@@ -183,11 +203,17 @@ impl Gradient {
                 }
             }
         };
-        if self.invert {
+        let strength = if self.invert {
             1.0 - strength
         } else {
             strength
-        }
+        };
+        strength * (self.opacity / 100.0).clamp(0.0, 1.0)
+    }
+
+    /// Whether this layer changes the picture at all.
+    pub fn is_visible(&self) -> bool {
+        !self.hidden && self.opacity > 0.0 && !self.adjust.is_neutral()
     }
 }
 
@@ -256,7 +282,30 @@ impl Gradients {
 
     /// Whether any gradient actually changes something.
     pub fn is_active(&self) -> bool {
-        self.as_slice().iter().any(|g| !g.adjust.is_neutral())
+        self.as_slice().iter().any(Gradient::is_visible)
+    }
+
+    /// Moves a layer one place later (`1`, towards the front) or earlier
+    /// (`-1`) in the order they are applied. Returns its new index.
+    pub fn move_by(&mut self, index: usize, delta: i32) -> Option<usize> {
+        let target = index as i64 + delta as i64;
+        if index >= self.len() || target < 0 || target as usize >= self.len() {
+            return None;
+        }
+        self.items.swap(index, target as usize);
+        Some(target as usize)
+    }
+
+    /// Copies a layer to just in front of itself. Returns the copy's index,
+    /// or `None` when the list is full.
+    pub fn duplicate(&mut self, index: usize) -> Option<usize> {
+        let len = self.len();
+        if index >= len || len >= MAX_GRADIENTS {
+            return None;
+        }
+        self.items.copy_within(index..len, index + 1);
+        self.len += 1;
+        Some(index + 1)
     }
 }
 
@@ -292,6 +341,51 @@ mod tests {
         assert_eq!(g.mask_at(95.0, 50.0, 100.0, 100.0), 0.0);
         let edge = g.mask_at(65.0, 50.0, 100.0, 100.0);
         assert!(edge > 0.0 && edge < 1.0);
+    }
+
+    #[test]
+    fn layers_can_be_hidden_faded_reordered_and_duplicated() {
+        let mut layers = Gradients::default();
+        let mut shadows = Gradient::default();
+        shadows.adjust.exposure = 20.0;
+        let mut sky = Gradient::default();
+        sky.adjust.exposure = -30.0;
+        layers.push(shadows);
+        layers.push(sky);
+
+        // Hidden or fully faded layers don't count.
+        assert!(layers.is_active());
+        for ix in 0..2 {
+            layers.get_mut(ix).unwrap().hidden = true;
+        }
+        assert!(!layers.is_active());
+        layers.get_mut(0).unwrap().hidden = false;
+        layers.get_mut(0).unwrap().opacity = 0.0;
+        assert!(!layers.is_active());
+
+        // Reordering swaps; the ends stay put.
+        assert_eq!(layers.move_by(0, 1), Some(1));
+        assert_eq!(layers.as_slice()[1].adjust.exposure, 20.0);
+        assert_eq!(layers.move_by(1, 1), None);
+
+        // Duplicating puts the copy in front of the original.
+        assert_eq!(layers.duplicate(0), Some(1));
+        assert_eq!(layers.len(), 3);
+        assert_eq!(layers.as_slice()[1], layers.as_slice()[0]);
+        while layers.duplicate(0).is_some() {}
+        assert_eq!(layers.len(), MAX_GRADIENTS);
+    }
+
+    #[test]
+    fn opacity_scales_the_mask() {
+        let g = Gradient {
+            kind: GradientKind::Radial,
+            start: (0.5, 0.5),
+            radius: (0.2, 0.2),
+            opacity: 40.0,
+            ..Default::default()
+        };
+        assert!((g.mask_at(50.0, 50.0, 100.0, 100.0) - 0.4).abs() < 1e-4);
     }
 
     #[test]

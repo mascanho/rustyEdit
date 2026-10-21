@@ -6,9 +6,15 @@
 //! sections, Q / M / Shift+M) goes through [`Workspace::toggle_photo_tool`],
 //! so only one is ever active and its section is open.
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString, Window};
-use rustyedit_core::{GradientKind, SpotKind};
+use gpui::{
+    deferred, div, prelude::*, px, AnyElement, App, ClickEvent, Context, MouseDownEvent,
+    SharedString, Window,
+};
+use rustyedit_core::{settings::LoupeBackground, GradientKind, SpotKind};
 use rustyedit_ui::Icon;
+
+use super::grid_overlay::GridOverlay;
+use crate::before_after::BaMode;
 
 use crate::{
     actions::{ToolLinearGradient, ToolRadialGradient, ToolSpotRemoval},
@@ -167,14 +173,6 @@ impl Workspace {
             )
         });
 
-        let ui = &self.histogram_ui;
-        let clipping = self.strip_button(
-            "tool-clipping".into(),
-            Icon::Clipping,
-            "Show clipping (J)",
-            ui.show_shadow_clipping && ui.show_highlight_clipping,
-            cx.listener(|this, _: &ClickEvent, _w, cx| this.toggle_clipping_overlay(cx)),
-        );
         let zoom = self.strip_button(
             "tool-zoom".into(),
             Icon::ZoomIn,
@@ -202,9 +200,488 @@ impl Workspace {
                     .items_center()
                     .gap_0p5()
                     .child(div().w(px(1.0)).h(px(16.0)).mx_1().bg(theme.border))
-                    .child(clipping)
-                    .child(zoom),
+                    .child(zoom)
+                    .child(self.before_after_menu_button(cx))
+                    .child(self.grid_menu_button(cx))
+                    .child(self.view_menu_button(cx)),
             )
+            .into_any_element()
+    }
+
+    /// The before / after button with its dropdown of comparison views.
+    fn before_after_menu_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let open = self.develop_ui.ba_menu_open;
+        let active = self.ba.mode != BaMode::Off;
+
+        let button = div()
+            .id("tool-before-after")
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_center()
+            .gap_0p5()
+            .h(px(28.0))
+            .px_1p5()
+            .rounded_md()
+            .cursor_pointer()
+            .when(open || active, |el| el.bg(theme.accent_muted))
+            .when(!(open || active), |el| {
+                el.hover(|el| el.bg(theme.surface_elevated))
+            })
+            .child(rustyedit_ui::icon(
+                Icon::BeforeAfter,
+                16.0,
+                if open || active {
+                    theme.text
+                } else {
+                    theme.text_muted
+                },
+            ))
+            .child(rustyedit_ui::icon(
+                Icon::ChevronDown,
+                10.0,
+                theme.text_faint,
+            ))
+            .tooltip(rustyedit_ui::tip("Before / After (\\)", &theme))
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                let ui = &mut this.develop_ui;
+                ui.ba_menu_open = !ui.ba_menu_open;
+                ui.view_menu_open = false;
+                ui.grid_menu_open = false;
+                cx.notify();
+            }));
+
+        let rows = BaMode::ALL.iter().map(|&option| {
+            let entity = cx.entity();
+            let current = self.ba.mode == option;
+            div()
+                .id(SharedString::from(format!("ba-menu-{}", option.label())))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .min_h(px(34.0))
+                .px_2()
+                .cursor_pointer()
+                .text_size(px(11.5))
+                .text_color(if current {
+                    theme.text
+                } else {
+                    theme.text_muted
+                })
+                .hover(|el| el.bg(theme.surface).text_color(theme.text))
+                .child(
+                    div()
+                        .w(px(12.0))
+                        .text_color(theme.accent)
+                        .child(if current { "\u{2713}" } else { "" }),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .child(option.label())
+                        .child(
+                            div()
+                                .text_size(px(9.5))
+                                .text_color(theme.text_faint)
+                                .child(option.description()),
+                        ),
+                )
+                .on_click(move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
+                    entity.update(cx, |this, cx| {
+                        this.develop_ui.ba_menu_open = false;
+                        this.set_ba_mode(option, cx);
+                    });
+                })
+        });
+
+        let menu = div()
+            .id("ba-menu")
+            .absolute()
+            .top(px(30.0))
+            .right_0()
+            .w(px(230.0))
+            .py_1()
+            .bg(theme.surface_elevated)
+            .border_1()
+            .border_color(theme.border)
+            .rounded_md()
+            .shadow_lg()
+            .occlude()
+            .on_mouse_down_out(cx.listener(|this, _: &MouseDownEvent, _w, cx| {
+                this.develop_ui.ba_menu_open = false;
+                cx.notify();
+            }))
+            .children(rows)
+            .child(div().h(px(1.0)).my_1().bg(theme.border_subtle))
+            .child(
+                div()
+                    .px_2()
+                    .py_1()
+                    .text_size(px(10.0))
+                    .text_color(theme.text_faint)
+                    .child("Press \\ to switch on and off"),
+            );
+
+        div()
+            .relative()
+            .child(button)
+            .when(open, |el| el.child(deferred(menu).with_priority(1)))
+            .into_any_element()
+    }
+
+    /// The grid button with its dropdown of composition guides.
+    fn grid_menu_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let ui = &self.develop_ui;
+        let open = ui.grid_menu_open;
+        let active = ui.grid_overlay != GridOverlay::Off;
+
+        let button = div()
+            .id("tool-grid")
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_center()
+            .gap_0p5()
+            .h(px(28.0))
+            .px_1p5()
+            .rounded_md()
+            .cursor_pointer()
+            .when(open || active, |el| el.bg(theme.accent_muted))
+            .when(!(open || active), |el| {
+                el.hover(|el| el.bg(theme.surface_elevated))
+            })
+            .child(rustyedit_ui::icon(
+                Icon::Grid,
+                16.0,
+                if open || active {
+                    theme.text
+                } else {
+                    theme.text_muted
+                },
+            ))
+            .child(rustyedit_ui::icon(
+                Icon::ChevronDown,
+                10.0,
+                theme.text_faint,
+            ))
+            .tooltip(rustyedit_ui::tip("Composition guides", &theme))
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.develop_ui.grid_menu_open = !this.develop_ui.grid_menu_open;
+                this.develop_ui.view_menu_open = false;
+                this.develop_ui.ba_menu_open = false;
+                cx.notify();
+            }));
+
+        let rows = GridOverlay::ALL.iter().map(|&option| {
+            let entity = cx.entity();
+            let current = ui.grid_overlay == option;
+            div()
+                .id(SharedString::from(format!("grid-{}", option.label())))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .h(px(26.0))
+                .px_2()
+                .cursor_pointer()
+                .text_size(px(11.5))
+                .text_color(if current {
+                    theme.text
+                } else {
+                    theme.text_muted
+                })
+                .hover(|el| el.bg(theme.surface).text_color(theme.text))
+                .child(
+                    div()
+                        .w(px(12.0))
+                        .text_color(theme.accent)
+                        .child(if current { "\u{2713}" } else { "" }),
+                )
+                .child(div().flex_1().child(option.label()))
+                .on_click(move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
+                    entity.update(cx, |this, cx| {
+                        this.develop_ui.grid_overlay = option;
+                        this.develop_ui.grid_menu_open = false;
+                        cx.notify();
+                    });
+                })
+        });
+
+        let menu = div()
+            .id("grid-menu")
+            .absolute()
+            .top(px(30.0))
+            .right_0()
+            .w(px(200.0))
+            .py_1()
+            .bg(theme.surface_elevated)
+            .border_1()
+            .border_color(theme.border)
+            .rounded_md()
+            .shadow_lg()
+            .occlude()
+            .on_mouse_down_out(cx.listener(|this, _: &MouseDownEvent, _w, cx| {
+                this.develop_ui.grid_menu_open = false;
+                cx.notify();
+            }))
+            .children(rows)
+            .when(ui.grid_overlay.has_orientations(), |el| {
+                let entity = cx.entity();
+                el.child(div().h(px(1.0)).my_1().bg(theme.border_subtle))
+                    .child(
+                        div()
+                            .id("grid-rotate")
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap_2()
+                            .h(px(26.0))
+                            .px_2()
+                            .cursor_pointer()
+                            .text_size(px(11.5))
+                            .text_color(theme.text_muted)
+                            .hover(|el| el.bg(theme.surface).text_color(theme.text))
+                            .child(div().w(px(12.0)))
+                            .child(div().flex_1().child("Flip orientation"))
+                            .on_click(move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
+                                entity.update(cx, |this, cx| {
+                                    let ui = &mut this.develop_ui;
+                                    ui.grid_orientation = (ui.grid_orientation + 1) % 4;
+                                    cx.notify();
+                                });
+                            }),
+                    )
+            });
+
+        div()
+            .relative()
+            .child(button)
+            .when(open, |el| el.child(deferred(menu).with_priority(1)))
+            .into_any_element()
+    }
+
+    /// The eye button with its dropdown of view options.
+    fn view_menu_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let open = self.develop_ui.view_menu_open;
+        let ui = &self.histogram_ui;
+
+        let button = div()
+            .id("tool-view")
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_center()
+            .gap_0p5()
+            .h(px(28.0))
+            .px_1p5()
+            .rounded_md()
+            .cursor_pointer()
+            .when(open, |el| el.bg(theme.accent_muted))
+            .when(!open, |el| el.hover(|el| el.bg(theme.surface_elevated)))
+            .child(rustyedit_ui::icon(
+                Icon::View,
+                16.0,
+                if open { theme.text } else { theme.text_muted },
+            ))
+            .child(rustyedit_ui::icon(
+                Icon::ChevronDown,
+                10.0,
+                theme.text_faint,
+            ))
+            .tooltip(rustyedit_ui::tip("View options", &theme))
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.develop_ui.view_menu_open = !this.develop_ui.view_menu_open;
+                this.develop_ui.grid_menu_open = false;
+                this.develop_ui.ba_menu_open = false;
+                cx.notify();
+            }));
+
+        let entity = cx.entity();
+        let item = |id: &'static str,
+                    label: &'static str,
+                    hint: &'static str,
+                    on: bool,
+                    close: bool,
+                    action: fn(&mut Workspace, &mut Context<Workspace>)| {
+            let entity = entity.clone();
+            div()
+                .id(id)
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .h(px(26.0))
+                .px_2()
+                .cursor_pointer()
+                .text_size(px(11.5))
+                .text_color(theme.text_muted)
+                .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                .child(div().w(px(12.0)).text_color(theme.accent).child(if on {
+                    "\u{2713}"
+                } else {
+                    ""
+                }))
+                .child(div().flex_1().child(label))
+                .child(
+                    div()
+                        .text_size(px(10.0))
+                        .text_color(theme.text_faint)
+                        .child(hint),
+                )
+                .on_click(move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
+                    entity.update(cx, |this, cx| {
+                        action(this, cx);
+                        if close {
+                            this.develop_ui.view_menu_open = false;
+                        }
+                        cx.notify();
+                    });
+                })
+        };
+
+        let menu = div()
+            .id("view-menu")
+            .absolute()
+            .top(px(30.0))
+            .right_0()
+            .w(px(220.0))
+            .py_1()
+            .bg(theme.surface_elevated)
+            .border_1()
+            .border_color(theme.border)
+            .rounded_md()
+            .shadow_lg()
+            .occlude()
+            .on_mouse_down_out(cx.listener(|this, _: &MouseDownEvent, _w, cx| {
+                this.develop_ui.view_menu_open = false;
+                cx.notify();
+            }))
+            .child(item(
+                "view-shadows",
+                "Shadow clipping",
+                "",
+                ui.show_shadow_clipping,
+                false,
+                |this, cx| {
+                    this.histogram_ui.show_shadow_clipping =
+                        !this.histogram_ui.show_shadow_clipping;
+                    this.request_preview_update(cx);
+                },
+            ))
+            .child(item(
+                "view-highlights",
+                "Highlight clipping",
+                "",
+                ui.show_highlight_clipping,
+                false,
+                |this, cx| {
+                    this.histogram_ui.show_highlight_clipping =
+                        !this.histogram_ui.show_highlight_clipping;
+                    this.request_preview_update(cx);
+                },
+            ))
+            .child(div().h(px(1.0)).my_1().bg(theme.border_subtle))
+            .child(
+                div()
+                    .px_2()
+                    .pb_1()
+                    .text_size(px(10.0))
+                    .font_weight(gpui::FontWeight::BOLD)
+                    .text_color(theme.text_faint)
+                    .child("BACKGROUND (B)"),
+            )
+            .children(LoupeBackground::ALL.iter().map(|&option| {
+                let entity = cx.entity();
+                let current = self.settings.develop.viewer_background == option;
+                let swatch = match option.hsl() {
+                    Some((h, s, l)) => gpui::hsla(h, s, l, 1.0),
+                    None => theme.background,
+                };
+                div()
+                    .id(SharedString::from(format!("view-bg-{}", option.label())))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_2()
+                    .h(px(26.0))
+                    .px_2()
+                    .cursor_pointer()
+                    .text_size(px(11.5))
+                    .text_color(if current {
+                        theme.text
+                    } else {
+                        theme.text_muted
+                    })
+                    .hover(|el| el.bg(theme.surface).text_color(theme.text))
+                    .child(
+                        div()
+                            .w(px(12.0))
+                            .text_color(theme.accent)
+                            .child(if current { "\u{2713}" } else { "" }),
+                    )
+                    .child(
+                        div()
+                            .size(px(14.0))
+                            .rounded_sm()
+                            .bg(swatch)
+                            .border_1()
+                            .border_color(theme.border),
+                    )
+                    .child(div().flex_1().child(option.label()))
+                    .on_click(move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
+                        entity.update(cx, |this, cx| {
+                            this.update_settings(|s| s.develop.viewer_background = option, cx);
+                        });
+                    })
+            }))
+            .child(div().h(px(1.0)).my_1().bg(theme.border_subtle))
+            .child(item(
+                "view-before-after",
+                "Before / After",
+                "\\",
+                self.ba.mode != crate::before_after::BaMode::Off,
+                true,
+                |this, cx| {
+                    let next = if this.ba.mode == crate::before_after::BaMode::Off {
+                        crate::before_after::BaMode::Split
+                    } else {
+                        crate::before_after::BaMode::Off
+                    };
+                    this.set_ba_mode(next, cx);
+                },
+            ))
+            .child(item(
+                "view-zoom",
+                "Zoom to 100%",
+                "Z",
+                self.develop_ui.zoom.scale.is_some(),
+                true,
+                |this, cx| this.toggle_develop_zoom(cx),
+            ))
+            .child(item(
+                "view-info",
+                "Photo info",
+                "I",
+                self.info_visible,
+                true,
+                |this, cx| {
+                    this.info_visible = !this.info_visible;
+                    if this.info_visible {
+                        this.request_metadata(cx);
+                    }
+                },
+            ));
+
+        div()
+            .relative()
+            .child(button)
+            .when(open, |el| el.child(deferred(menu).with_priority(1)))
             .into_any_element()
     }
 

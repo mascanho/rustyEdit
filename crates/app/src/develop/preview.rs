@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use gpui::{Context, RenderImage, Window};
 use image::{Frame, RgbImage, RgbaImage};
-use rustyedit_core::Histogram;
+use rustyedit_core::{DevelopSettings, Histogram};
 
 use crate::workspace::Workspace;
 
@@ -24,6 +24,10 @@ pub(crate) struct LivePreview {
     /// Frames that were replaced and still occupy GPU atlas space. Freed on
     /// the next render pass, which has the window that owns the atlas.
     retired: Vec<Arc<RenderImage>>,
+    /// The photo without its edits (but with its crop and rotation), for
+    /// Before / After; `before_key` says which photo and geometry it is for.
+    before: Option<Arc<RenderImage>>,
+    before_key: Option<(u64, DevelopSettings)>,
     /// A render is running on the background executor.
     busy: bool,
     /// Adjustments changed while busy; render again when it finishes.
@@ -33,6 +37,17 @@ pub(crate) struct LivePreview {
 impl LivePreview {
     pub(crate) fn image(&self) -> Option<Arc<RenderImage>> {
         self.image.clone()
+    }
+
+    pub(crate) fn before(&self) -> Option<Arc<RenderImage>> {
+        self.before.clone()
+    }
+
+    fn show_before(&mut self, image: Arc<RenderImage>, key: (u64, DevelopSettings)) {
+        if let Some(old) = self.before.replace(image) {
+            self.retired.push(old);
+        }
+        self.before_key = Some(key);
     }
 
     /// Pixel size of the current frame.
@@ -57,6 +72,10 @@ impl LivePreview {
         if let Some(old) = self.image.take() {
             self.retired.push(old);
         }
+        if let Some(old) = self.before.take() {
+            self.retired.push(old);
+        }
+        self.before_key = None;
     }
 
     /// Frees the GPU memory of every retired frame. Call once per render.
@@ -94,23 +113,48 @@ impl Workspace {
             shadows: self.histogram_ui.show_shadow_clipping,
             highlights: self.histogram_ui.show_highlight_clipping,
         };
+        // The before image only depends on the photo and its geometry, so it
+        // is rendered once, not on every slider step.
+        let geometry = DevelopSettings {
+            crop: settings.crop,
+            rotation_degrees: settings.rotation_degrees,
+            flip_horizontal: settings.flip_horizontal,
+            flip_vertical: settings.flip_vertical,
+            ..DevelopSettings::default()
+        };
+        let before_key = (asset_id, geometry);
+        let need_before =
+            self.ba_active() && self.live_preview.before_key.as_ref() != Some(&before_key);
         self.live_preview.busy = true;
         self.live_preview.pending = false;
 
         let render = cx.background_executor().spawn(async move {
             let rendered = rustyedit_processing::apply(&source, &settings);
-            let histogram = Histogram::from_rgb8(rendered.as_raw());
-            (to_render_image(&rendered, clipping), histogram)
+            let histogram = Histogram::from_rgb8_sized(rendered.as_raw(), rendered.width() as usize);
+            let before = need_before.then(|| {
+                let plain = rustyedit_processing::apply(&source, &geometry);
+                to_render_image(
+                    &plain,
+                    ClippingOverlay {
+                        shadows: false,
+                        highlights: false,
+                    },
+                )
+            });
+            (to_render_image(&rendered, clipping), histogram, before)
         });
 
         cx.spawn(async move |this, cx| {
-            let (image, histogram) = render.await;
+            let (image, histogram, before) = render.await;
             this.update(cx, |this, cx| {
                 this.live_preview.busy = false;
                 // A render for a photo that's no longer selected is dropped
                 // without ever reaching the GPU.
                 if this.preview_epoch == epoch {
                     this.live_preview.show(image);
+                    if let Some(before) = before {
+                        this.live_preview.show_before(before, before_key);
+                    }
                     this.develop_histogram = Some((asset_id, Arc::new(histogram)));
                 }
                 if this.live_preview.pending {
@@ -134,11 +178,13 @@ struct ClippingOverlay {
 
 impl ClippingOverlay {
     /// The warning colour for an RGB pixel, if it's clipped: blue where
-    /// every channel is pure black, red where any channel is blown.
+    /// every channel is (near) pure black, red where any channel is (near)
+    /// blown. A little tolerance, since JPEG sources rarely hit 0 or 255
+    /// exactly.
     fn colour(&self, [r, g, b]: [u8; 3]) -> Option<[u8; 3]> {
-        if self.highlights && r.max(g).max(b) == 255 {
+        if self.highlights && r.max(g).max(b) >= 254 {
             Some([255, 40, 40])
-        } else if self.shadows && r.max(g).max(b) == 0 {
+        } else if self.shadows && r.max(g).max(b) <= 2 {
             Some([40, 110, 255])
         } else {
             None

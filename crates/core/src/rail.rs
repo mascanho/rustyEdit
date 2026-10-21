@@ -14,6 +14,7 @@ pub enum RailTool {
     Search,
     Collections,
     Filters,
+    Presets,
     Duplicates,
     History,
     // Right rail: working on the selected photo.
@@ -31,6 +32,7 @@ impl RailTool {
                 RailTool::Search,
                 RailTool::Collections,
                 RailTool::Filters,
+                RailTool::Presets,
                 RailTool::Duplicates,
                 RailTool::History,
             ],
@@ -44,6 +46,7 @@ impl RailTool {
             RailTool::Search => "Search",
             RailTool::Collections => "Collections",
             RailTool::Filters => "Filters",
+            RailTool::Presets => "Presets",
             RailTool::Duplicates => "Duplicates",
             RailTool::Info => "Info",
             RailTool::Adjust => "Adjust",

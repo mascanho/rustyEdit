@@ -8,6 +8,9 @@ use gpui::{
 
 use crate::workspace::Workspace;
 
+/// Space around the photo in the Develop viewer.
+const PHOTO_PADDING: f32 = 20.0;
+
 impl Workspace {
     pub(super) fn render_develop_viewer(
         &self,
@@ -18,7 +21,9 @@ impl Workspace {
         let zoom = &self.develop_ui.zoom;
         zoom.pixel_ratio.set(window.scale_factor());
 
+        let comparison = self.ba_replacement(zoom.scale.is_none());
         let content = match (self.develop_image_source(), zoom.scale) {
+            _ if comparison.is_some() => comparison.unwrap(),
             (None, _) => div()
                 .text_color(theme.text_muted)
                 .child("Loading…")
@@ -53,19 +58,60 @@ impl Workspace {
             .flex()
             .items_center()
             .justify_center()
-            .bg(theme.background)
-            // Records the viewer's bounds, for zooming around the pointer.
+            .bg(self.viewer_bg())
+            // The photo area, inset so the picture has breathing room. Its
+            // bounds are what zooming and the retouch / gradient overlays
+            // measure against, so everything photo-related lives inside it.
             .child(
-                canvas(move |b, _, _| bounds.set(b), |_, _, _, _| {})
+                div()
                     .absolute()
-                    .size_full(),
+                    .inset(px(PHOTO_PADDING))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    // Records the photo area's bounds, for zooming around the
+                    // pointer.
+                    .child(
+                        canvas(move |b, _, _| bounds.set(b), |_, _, _, _| {})
+                            .absolute()
+                            .size_full(),
+                    )
+                    .child(content)
+                    .children(self.render_grid_overlay())
+                    .children(self.render_retouch_overlay(cx))
+                    .children(self.render_gradient_overlay(cx))
+                    .children(self.develop_split_overlay(cx)),
             )
-            .child(content)
-            .children(self.render_retouch_overlay(cx))
-            .children(self.render_gradient_overlay(cx))
             .child(self.render_zoom_badge(cx))
+            .children(self.ba_pill(true, cx))
             .children(self.render_info_overlay(cx))
             .into_any_element()
+    }
+
+    /// The split comparison over the Develop photo.
+    fn develop_split_overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let zoom = &self.develop_ui.zoom;
+        let (w, h) = self.develop_image_size()?;
+        let photo = zoom.photo_rect((w, h))?;
+        self.ba_split_overlay(photo, zoom.viewer_bounds.get(), cx)
+    }
+
+    /// The composition guide, when one is chosen.
+    fn render_grid_overlay(&self) -> Option<AnyElement> {
+        let ui = &self.develop_ui;
+        if ui.grid_overlay == super::grid_overlay::GridOverlay::Off {
+            return None;
+        }
+        let (w, h) = self.develop_image_size()?;
+        let photo = ui.zoom.photo_rect((w, h))?;
+        let clip = ui.zoom.viewer_bounds.get();
+        let lines = ui.grid_overlay.lines(w / h.max(1.0), ui.grid_orientation);
+        Some(super::grid_overlay::overlay_canvas(
+            lines,
+            photo,
+            clip,
+            gpui::white().opacity(0.8),
+        ))
     }
 
     /// The live preview once one has been rendered, and the photo's own
@@ -115,6 +161,8 @@ impl Workspace {
         zoom.apply_anchor();
 
         let panning = zoom.pan.is_some();
+        let viewer = zoom.viewer_bounds.get().size;
+        let (viewer_w, viewer_h) = (f32::from(viewer.width), f32::from(viewer.height));
         div()
             .id("develop-zoom")
             .size_full()
@@ -137,8 +185,11 @@ impl Workspace {
             )
             .child(
                 div()
-                    .min_w_full()
-                    .min_h_full()
+                    // As wide and tall as the photo (or the viewer, if
+                    // larger), so a centred photo can be scrolled to its
+                    // left and top edges too, not only its right and bottom.
+                    .min_w(px(w.max(viewer_w)))
+                    .min_h(px(h.max(viewer_h)))
                     .flex()
                     .items_center()
                     .justify_center()

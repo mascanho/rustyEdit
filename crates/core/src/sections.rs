@@ -105,7 +105,7 @@ impl DevelopSection {
         order
     }
 
-    fn bit(&self) -> u16 {
+    pub fn bit(&self) -> u16 {
         1 << (*self as u16)
     }
 
@@ -121,8 +121,20 @@ impl DevelopSection {
         reset == *settings
     }
 
+    /// The sections a preset's "look" is made of; geometry, retouching and
+    /// local masks belong to the photo, not the look.
+    pub const LOOK: [DevelopSection; 7] = [
+        DevelopSection::Basic,
+        DevelopSection::ToneCurve,
+        DevelopSection::Color,
+        DevelopSection::ColorMixer,
+        DevelopSection::ColorGrading,
+        DevelopSection::Detail,
+        DevelopSection::Effects,
+    ];
+
     /// Copies this section's settings from `from` into `to`.
-    fn copy(&self, from: &DevelopSettings, to: &mut DevelopSettings) {
+    pub fn copy(&self, from: &DevelopSettings, to: &mut DevelopSettings) {
         match self {
             DevelopSection::Crop => to.crop = from.crop,
             DevelopSection::Retouch => to.spots = from.spots,

@@ -23,7 +23,7 @@ impl LocalAdjustments {
                 .gradients
                 .as_slice()
                 .iter()
-                .filter(|g| !g.adjust.is_neutral())
+                .filter(|g| g.is_visible())
                 .map(|g| g.on_display(settings))
                 .collect(),
             width: width as f32,

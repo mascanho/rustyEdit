@@ -13,6 +13,7 @@ mod curves;
 mod develop;
 mod duplicates;
 mod export;
+mod fuji_recipe;
 mod filters;
 mod flag;
 mod gradients;
@@ -49,10 +50,16 @@ pub use filters::{FilterSet, FocalBand, IsoBand};
 pub use flag::Flag;
 pub use gradients::{Gradient, GradientKind, Gradients, LocalAdjust, LocalProp, MAX_GRADIENTS};
 pub use grading::{ColorGrading, Grade, GradeProp, ToneZone};
-pub use histogram::{luma8, Clipping, Histogram, HistogramChannel, TonalZone};
+pub use histogram::{
+    luma8, Clipping, Histogram, HistogramChannel, ScopeMode, Scopes, TonalZone, VECTOR_SIZE,
+    WAVE_COLS, WAVE_ROWS,
+};
 pub use history::HistoryEntry;
 pub use mixer::{band_weight, BandAdjust, ColorBand, ColorMixer, MixerProp};
-pub use presets::{builtin_presets, DevelopPreset, Presets};
+pub use fuji_recipe::{
+    DynamicRange, FilmSimulation, FujiRecipe, GrainEffect, MonoFilter, Strength, WhiteBalance,
+};
+pub use presets::{builtin_presets, DevelopPreset, Presets, PRESET_CATEGORIES};
 pub use rail::RailTool;
 pub use rating::Rating;
 pub use retouch::{to_display, to_source, Spot, SpotKind, Spots, MAX_SPOTS};

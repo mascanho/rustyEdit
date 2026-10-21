@@ -57,6 +57,14 @@ pub enum TextTarget {
     Rename,
     /// Naming a new Develop preset from the current look.
     PresetName,
+    /// Live: every keystroke filters the Presets panel.
+    PresetSearch,
+    /// Renaming a saved preset.
+    PresetRename,
+    /// Fujifilm recipe modal text fields.
+    RecipeName,
+    RecipeIso,
+    RecipeExposure,
     /// Naming a new snapshot of the selected photo.
     SnapshotName,
 }
@@ -149,6 +157,7 @@ pub struct Workspace {
     pub(crate) metadata_loading: HashSet<u64>,
     // Export module state (see `export.rs`).
     pub(crate) export_options: ExportOptions,
+    pub(crate) ba: crate::before_after::BaState,
     pub(crate) export_run: Option<crate::export::ExportRun>,
     /// Photos (by id) the user took out of the export queue.
     pub(crate) export_excluded: HashSet<u64>,
@@ -279,6 +288,7 @@ impl Workspace {
             metadata_cache: HashMap::new(),
             metadata_loading: HashSet::new(),
             export_options: ExportOptions::default(),
+            ba: Default::default(),
             export_run: None,
             export_excluded: HashSet::new(),
             export_message: None,
@@ -461,7 +471,7 @@ impl Workspace {
         // back to the (correct) source image while the new preview is
         // generated, instead of briefly showing the old photo.
         self.reset_develop_preview();
-        if self.mode == Mode::Develop {
+        if self.mode == Mode::Develop || self.ba_active() {
             self.load_source_image(cx);
         }
         if let Some(pos) = self.catalog.visible_position(self.catalog.selected) {
@@ -479,7 +489,12 @@ impl Workspace {
     }
 
     pub fn go_library(&mut self, _: &GoLibrary, _window: &mut Window, cx: &mut Context<Self>) {
-        // Escape first dismisses an open context menu.
+        // Escape first closes the recipe modal, then a context menu.
+        if self.develop_ui.preset_ui.recipe.is_some() {
+            self.close_recipe_modal(cx);
+            return;
+        }
+        // Then an open context menu.
         if self.context_menu.take().is_some() || self.card_info.take().is_some() {
             cx.notify();
             return;
@@ -891,6 +906,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::go_library))
             .on_action(cx.listener(Self::go_develop))
             .on_action(cx.listener(Self::cycle_filter))
+            .on_action(cx.listener(Self::toggle_before_after))
             .on_action(cx.listener(Self::toggle_zoom))
             .on_action(cx.listener(Self::import_folder_action))
             .on_action(cx.listener(Self::open_settings_action))
@@ -926,6 +942,9 @@ impl Render for Workspace {
             })
             .when(self.settings_open, |el| {
                 el.child(self.render_settings_modal(cx))
+            })
+            .when(self.develop_ui.preset_ui.recipe.is_some(), |el| {
+                el.child(self.render_recipe_modal(cx))
             })
     }
 }

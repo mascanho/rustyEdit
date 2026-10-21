@@ -36,7 +36,10 @@ impl Workspace {
         let compute = cx.background_executor().spawn(async move {
             image::open(&thumbnail)
                 .ok()
-                .map(|image| Histogram::from_rgb8(image.to_rgb8().as_raw()))
+                .map(|image| {
+                    let rgb = image.to_rgb8();
+                    Histogram::from_rgb8_sized(rgb.as_raw(), rgb.width() as usize)
+                })
         });
 
         cx.spawn(async move |this, cx| {

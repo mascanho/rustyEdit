@@ -41,7 +41,6 @@ impl Workspace {
     pub(super) fn develop_tools_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         // The Navigator isn't here: it's pinned above these, always shown.
         let mut sections = vec![
-            self.disclosure("develop-presets", "Presets", self.presets_section(cx), cx),
             self.disclosure(
                 "develop-snapshots",
                 "Snapshots",
@@ -109,7 +108,11 @@ impl Workspace {
                 cx.notify();
             }),
             navigator,
-            Some(self.develop_tools_footer(cx)),
+            Some(if self.active_rail_tool(side) == Some(RailTool::Presets) {
+                self.presets_footer(cx)
+            } else {
+                self.develop_tools_footer(cx)
+            }),
             content,
         )
         .into_any_element();
@@ -149,7 +152,6 @@ pub(super) fn list_row(
         .gap_2()
         .h(px(24.0))
         .px_2()
-        .rounded_md()
         .cursor_pointer()
         .text_size(px(11.5))
         .when(active, |el| {
@@ -211,7 +213,6 @@ pub(super) fn add_row(
         .gap_1()
         .h(px(24.0))
         .px_2()
-        .rounded_md()
         .cursor_pointer()
         .text_size(px(11.0))
         .text_color(theme.accent)
@@ -230,7 +231,6 @@ pub(super) fn name_field(theme: &Theme, draft: &str, placeholder: &str) -> AnyEl
         .items_center()
         .h(px(26.0))
         .px_2()
-        .rounded_md()
         .bg(theme.background)
         .border_1()
         .border_color(theme.accent)

@@ -28,7 +28,10 @@ pub use maintenance::{
     build_backup, move_to_trash, optimize_catalog, read_backup, restore_backup, write_backup,
     BackupSidecar, CatalogBackup, OptimizeReport,
 };
-pub use preset_store::{load as load_presets, save as save_presets};
+pub use preset_store::{
+    export_to as export_presets, import_from as import_presets, load as load_presets,
+    save as save_presets,
+};
 pub use metadata::{read_metadata, read_photo_meta, MetaGroup, Metadata};
 pub use scan::scan_folder;
 pub use settings_store::{load as load_settings, save as save_settings, settings_path};

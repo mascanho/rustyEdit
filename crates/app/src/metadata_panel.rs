@@ -102,7 +102,6 @@ impl Workspace {
             .items_center()
             .min_h(px(26.0))
             .px_2()
-            .rounded_md()
             .when(editing, |el| {
                 el.bg(theme.background)
                     .border_1()

@@ -16,7 +16,7 @@ use gpui::{
     div, hsla, prelude::*, px, AnyElement, Bounds, ClickEvent, Context, Hsla, MouseButton,
     MouseDownEvent, MouseMoveEvent, Pixels, Point,
 };
-use rustyedit_core::{Clipping, Histogram, HistogramChannel, TonalZone};
+use rustyedit_core::{Clipping, Histogram, HistogramChannel, ScopeMode, TonalZone};
 use rustyedit_ui::{HistogramProps, Icon, Theme};
 
 use crate::workspace::{Mode, Workspace};
@@ -25,6 +25,8 @@ use crate::workspace::{Mode, Workspace};
 #[derive(Default)]
 pub(crate) struct HistogramUi {
     pub(crate) channel: HistogramChannel,
+    /// Histogram, waveform, RGB parade or vectorscope.
+    pub(crate) mode: ScopeMode,
     pub(crate) log_scale: bool,
     /// The level under the pointer, as a fraction of the range.
     hover: Option<f32>,
@@ -48,7 +50,8 @@ impl Workspace {
         let theme = self.theme;
         let ui = &self.histogram_ui;
         let (histogram, source) = self.current_histogram();
-        let editable = self.mode == Mode::Develop;
+        // Only the histogram graph can be dragged to adjust tones.
+        let editable = self.mode == Mode::Develop && ui.mode == ScopeMode::Histogram;
         let zone = ui
             .drag
             .map(|drag| drag.zone)
@@ -59,19 +62,28 @@ impl Workspace {
             .relative()
             .w_full()
             .when(editable, |el| el.cursor_ew_resize())
-            .child(rustyedit_ui::histogram_view(
-                &theme,
-                HistogramProps {
-                    histogram: histogram.clone(),
-                    channel: ui.channel,
-                    log_scale: ui.log_scale,
-                    hover: ui.hover,
-                    zone,
-                    bounds: Some(ui.bounds.clone()),
-                },
-            ))
+            .child(if ui.mode == ScopeMode::Histogram {
+                rustyedit_ui::histogram_view(
+                    &theme,
+                    HistogramProps {
+                        histogram: histogram.clone(),
+                        channel: ui.channel,
+                        log_scale: ui.log_scale,
+                        hover: ui.hover,
+                        zone,
+                        bounds: Some(ui.bounds.clone()),
+                    },
+                )
+                .into_any_element()
+            } else {
+                rustyedit_ui::scope_view(&theme, histogram.clone(), ui.mode, ui.channel)
+                    .into_any_element()
+            })
             .children(histogram.as_ref().map(|h| self.clipping_badges(h, cx)))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _w, cx| {
+                if this.histogram_ui.mode != ScopeMode::Histogram {
+                    return;
+                }
                 let level = this.histogram_level(event.position);
                 if this.histogram_ui.hover != level {
                     this.histogram_ui.hover = level;
@@ -104,10 +116,57 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// Channel tabs on the left, the log toggle on the right.
+    /// The view switcher, then (where they apply) the channel tabs on the
+    /// left and the log toggle on the right.
     fn histogram_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
         let current = self.histogram_ui.channel;
+        let mode = self.histogram_ui.mode;
+
+        let modes = ScopeMode::ALL.iter().map(|&option| {
+            let active = option == mode;
+            div()
+                .id(("histogram-mode", option as usize))
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .h(px(20.0))
+                .cursor_pointer()
+                .text_size(px(10.0))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .when(active, |el| {
+                    el.bg(theme.accent_muted).text_color(theme.text)
+                })
+                .when(!active, |el| {
+                    el.text_color(theme.text_faint)
+                        .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                })
+                .child(match option {
+                    ScopeMode::Histogram => "Histogram",
+                    ScopeMode::Waveform => "Wave",
+                    ScopeMode::Parade => "Parade",
+                    ScopeMode::Vectorscope => "Vector",
+                })
+                .tooltip(rustyedit_ui::tip(
+                    format!("{}: {}", option.label(), option.description()),
+                    &theme,
+                ))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                    this.histogram_ui.mode = option;
+                    this.histogram_ui.hover = None;
+                    cx.notify();
+                }))
+        });
+        let mode_row = div()
+            .flex()
+            .flex_row()
+            .gap_0p5()
+            .p_0p5()
+            .bg(theme.background)
+            .children(modes);
+
+        let has_channels = matches!(mode, ScopeMode::Histogram | ScopeMode::Waveform);
         let tabs = HistogramChannel::ALL.iter().map(|&channel| {
             let active = channel == current;
             div()
@@ -118,7 +177,6 @@ impl Workspace {
                 .min_w(px(22.0))
                 .h(px(18.0))
                 .px_1()
-                .rounded_sm()
                 .cursor_pointer()
                 .text_size(px(10.0))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
@@ -138,7 +196,7 @@ impl Workspace {
         });
 
         let log = self.histogram_ui.log_scale;
-        div()
+        let channel_row = div()
             .flex()
             .flex_row()
             .items_center()
@@ -149,41 +207,48 @@ impl Workspace {
                     .flex_row()
                     .gap_0p5()
                     .p_0p5()
-                    .rounded_md()
                     .bg(theme.background)
                     .children(tabs),
             )
-            .child(
-                div()
-                    .id("histogram-log")
-                    .h(px(18.0))
-                    .px_1p5()
-                    .flex()
-                    .items_center()
-                    .rounded_sm()
-                    .border_1()
-                    .cursor_pointer()
-                    .text_size(px(10.0))
-                    .when(log, |el| {
-                        el.border_color(theme.accent)
-                            .text_color(theme.accent)
-                            .bg(theme.accent.opacity(0.1))
-                    })
-                    .when(!log, |el| {
-                        el.border_color(theme.border_subtle)
-                            .text_color(theme.text_faint)
-                            .hover(|el| el.text_color(theme.text))
-                    })
-                    .child("Log")
-                    .tooltip(rustyedit_ui::tip(
-                        "Logarithmic scale: shows sparse tones next to a tall peak",
-                        &theme,
-                    ))
-                    .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
-                        this.histogram_ui.log_scale = !this.histogram_ui.log_scale;
-                        cx.notify();
-                    })),
-            )
+            .when(mode == ScopeMode::Histogram, |el| {
+                el.child(
+                    div()
+                        .id("histogram-log")
+                        .h(px(18.0))
+                        .px_1p5()
+                        .flex()
+                        .items_center()
+                        .border_1()
+                        .cursor_pointer()
+                        .text_size(px(10.0))
+                        .when(log, |el| {
+                            el.border_color(theme.accent)
+                                .text_color(theme.accent)
+                                .bg(theme.accent.opacity(0.1))
+                        })
+                        .when(!log, |el| {
+                            el.border_color(theme.border_subtle)
+                                .text_color(theme.text_faint)
+                                .hover(|el| el.text_color(theme.text))
+                        })
+                        .child("Log")
+                        .tooltip(rustyedit_ui::tip(
+                            "Logarithmic scale: shows sparse tones next to a tall peak",
+                            &theme,
+                        ))
+                        .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                            this.histogram_ui.log_scale = !this.histogram_ui.log_scale;
+                            cx.notify();
+                        })),
+                )
+            });
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(mode_row)
+            .when(has_channels, |el| el.child(channel_row))
             .into_any_element()
     }
 
@@ -236,7 +301,6 @@ impl Workspace {
                 "clip-highlights"
             })
             .p(px(2.0))
-            .rounded_sm()
             .cursor_pointer()
             .when(showing, |el| {
                 el.bg(theme.surface_elevated)

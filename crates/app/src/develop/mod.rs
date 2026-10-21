@@ -25,10 +25,12 @@ mod color_mixer;
 mod crop;
 mod curve_editor;
 mod gradients;
+mod grid_overlay;
 mod history;
 mod navigator;
 mod presets;
 mod preview;
+mod recipe_modal;
 mod retouch;
 mod sections;
 mod snapshots;
@@ -66,6 +68,16 @@ pub(crate) struct DevelopUi {
     pub(crate) navigator_dragging: bool,
     /// The user's saved presets (the built-in ones aren't stored).
     pub(crate) presets: Presets,
+    /// The Presets panel's filter, strength and other view state.
+    pub(crate) preset_ui: presets::PresetUi,
+    /// The tool strip's View dropdown is open.
+    pub(crate) view_menu_open: bool,
+    /// The composition guide over the photo, its mirrored variant (0-3),
+    /// and whether its dropdown is open.
+    pub(crate) grid_overlay: grid_overlay::GridOverlay,
+    pub(crate) grid_orientation: u8,
+    pub(crate) grid_menu_open: bool,
+    pub(crate) ba_menu_open: bool,
     /// The tone curve channel being edited.
     pub(crate) curve_channel: CurveChannel,
     /// Index of the curve point being dragged.
@@ -89,6 +101,12 @@ impl DevelopUi {
             navigator_bounds: Rc::new(Cell::new(Bounds::default())),
             navigator_dragging: false,
             presets: rustyedit_io::load_presets(),
+            preset_ui: presets::PresetUi::default(),
+            view_menu_open: false,
+            grid_overlay: grid_overlay::GridOverlay::Off,
+            grid_orientation: 0,
+            grid_menu_open: false,
+            ba_menu_open: false,
             curve_channel: CurveChannel::default(),
             curve_drag: None,
             curve_bounds: Rc::new(Cell::new(Bounds::default())),

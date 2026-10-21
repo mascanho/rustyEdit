@@ -22,6 +22,7 @@ mod histogram;
 mod histogram_panel;
 mod history_panel;
 mod import;
+mod before_after;
 mod info_overlay;
 mod keywords;
 mod library;
@@ -49,7 +50,7 @@ use actions::{
     FocusSearch, GoDevelop, GoExport, GoLibrary, ImportFolder, LabelBlue, LabelGreen, LabelRed,
     LabelYellow, NextImage, OpenSettings, OptimizeCatalog, PrevImage, Quit, Rating0, Rating1,
     Rating2, Rating3, Rating4, Rating5, Redo, RenamePhoto, RestoreCatalog, RestoreRemoved,
-    RevealInFinder, RotateLeft, RotateRight, SelectAll, StackSelected, SyncFolders, ToggleInfo,
+    RevealInFinder, RotateLeft, RotateRight, SelectAll, StackSelected, SyncFolders, ToggleBeforeAfter, ToggleInfo,
     ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
 };
 use actions::{
@@ -94,6 +95,7 @@ fn main() {
             KeyBinding::new("8", LabelGreen, Some(KEY_CONTEXT)),
             KeyBinding::new("9", LabelBlue, Some(KEY_CONTEXT)),
             KeyBinding::new("g", GoLibrary, Some(KEY_CONTEXT)),
+            KeyBinding::new("\\", ToggleBeforeAfter, Some(KEY_CONTEXT)),
             KeyBinding::new("l", GoLibrary, Some(KEY_CONTEXT)),
             KeyBinding::new("d", GoDevelop, Some(KEY_CONTEXT)),
             KeyBinding::new("e", GoExport, Some(KEY_CONTEXT)),

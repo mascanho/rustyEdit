@@ -203,6 +203,7 @@ impl Workspace {
             Some((tool, _)) => tool.label().to_string(),
             None => title,
         };
+        let takeover_tool = takeover.as_ref().map(|(tool, _)| *tool);
         let taken_over = takeover.is_some();
         if let Some((_, content)) = takeover {
             children = content;
@@ -217,7 +218,11 @@ impl Workspace {
             });
         }
 
-        let footer = self.library_dock_footer(panels, cx);
+        let footer = if takeover_tool == Some(rustyedit_core::RailTool::Presets) {
+            Some(self.presets_footer(cx))
+        } else {
+            self.library_dock_footer(panels, cx)
+        };
         let (id, panel_side, collapsed) = match side {
             DockSide::Left => (
                 "library-dock-left",
@@ -537,8 +542,15 @@ impl Workspace {
             .and_then(|scale| self.render_zoomed_loupe(scale, window, cx));
         let zoomed_in = zoomed.is_some();
 
+        let comparison = self.ba_replacement(!zoomed_in);
+        let split = if zoomed_in {
+            None
+        } else {
+            self.loupe_split_overlay(cx)
+        };
         let content: AnyElement = match self.catalog.selected_asset() {
             _ if zoomed.is_some() => zoomed.unwrap(),
+            Some(_) if comparison.is_some() => comparison.unwrap(),
             Some(asset) => img(self.loupe_source(asset))
                 .object_fit(ObjectFit::Contain)
                 .size_full()
@@ -575,6 +587,9 @@ impl Workspace {
             .when(!zoomed_in, |el| el.p_4())
             .bg(self.loupe_bg())
             .child(content)
+            .children(split)
+            .children(self.ba_pill(true, cx))
+            .when(!self.ba_active(), |el| el.child(self.ba_start_button(cx)))
             .children(self.render_info_overlay(cx))
             .on_click(cx.listener(|this, event: &ClickEvent, _window, cx| {
                 if event.click_count() >= 2 {
@@ -582,6 +597,28 @@ impl Workspace {
                 }
             }))
             .into_any_element()
+    }
+
+    /// The split comparison over the loupe photo, which is fitted inside the
+    /// loupe's padded area.
+    fn loupe_split_overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let area = self.loupe_bounds.get();
+        let (iw, ih) = self.live_preview.size()?;
+        let pad = 16.0;
+        let (aw, ah) = (
+            (f32::from(area.size.width) - pad * 2.0).max(1.0),
+            (f32::from(area.size.height) - pad * 2.0).max(1.0),
+        );
+        let fit = (aw / iw).min(ah / ih);
+        let (w, h) = (iw * fit, ih * fit);
+        let photo = gpui::Bounds::new(
+            gpui::point(
+                area.origin.x + gpui::px(pad + (aw - w) / 2.0),
+                area.origin.y + gpui::px(pad + (ah - h) / 2.0),
+            ),
+            gpui::size(gpui::px(w), gpui::px(h)),
+        );
+        self.ba_split_overlay(photo, area, cx)
     }
 
     /// Width a dock currently occupies (0 when the layout has none).

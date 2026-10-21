@@ -38,7 +38,6 @@ fn section_header(theme: &Theme, title: SharedString, chevron: Option<bool>) -> 
         .gap_2()
         .h(px(SECTION_HEADER_HEIGHT))
         .px_2()
-        .rounded_md()
         .text_size(px(12.0))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .when(open, |el| {
@@ -76,18 +75,15 @@ pub fn section(
         .flex()
         .flex_col()
         .w_full()
-        .pt_2()
         .child(section_header(&theme, title.into(), None))
         .child(
             div()
                 .flex()
                 .flex_col()
                 .gap_2()
-                .mt_1()
-                .mb_2()
-                .px_1p5()
+                .mb_px()
+                .px_2()
                 .py_2()
-                .rounded_md()
                 .bg(theme.background.opacity(0.45))
                 .children(children),
         )
@@ -143,7 +139,6 @@ pub fn disclosure_section_with(
         .flex()
         .flex_col()
         .w_full()
-        .pt_2()
         .child(
             section_header(&theme, title.into(), Some(expanded))
                 .id(id)
@@ -172,11 +167,9 @@ pub fn disclosure_section_with(
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .mt_1()
-                    .mb_2()
-                    .px_1p5()
+                    .mb_px()
+                    .px_2()
                     .py_2()
-                    .rounded_md()
                     .bg(theme.background.opacity(0.45))
                     .when(dimmed, |el| el.opacity(0.45))
                     .children(children),
@@ -217,7 +210,7 @@ pub fn side_panel(
         .children(pinned.map(|pinned| {
             div()
                 .flex_shrink_0()
-                .px_3()
+                .px_1()
                 .pt_2()
                 .pb_2()
                 .border_b_1()
@@ -238,7 +231,6 @@ pub fn side_panel(
                         .min_w(px(0.0))
                         .overflow_y_scroll()
                         .track_scroll(scroll)
-                        .px_1()
                         .children(children),
                 )
                 .child(vertical_scrollbar(scrollbar_id, scroll.clone(), &theme)),
@@ -297,7 +289,6 @@ pub fn collapsible_panel_pinned(
         .items_center()
         .justify_center()
         .size(px(PANEL_HEADER_HEIGHT - 4.0))
-        .rounded_md()
         .cursor_pointer()
         .hover(|el| el.bg(theme.surface_elevated))
         .child(icon(chevron, 14.0, theme.text_muted))
@@ -358,7 +349,7 @@ pub fn collapsible_panel_pinned(
         .children(pinned.map(|pinned| {
             div()
                 .flex_shrink_0()
-                .px_3()
+                .px_1()
                 .py_2()
                 .border_b_1()
                 .border_color(theme.border_subtle)
@@ -380,7 +371,6 @@ pub fn collapsible_panel_pinned(
                         .min_w(px(0.0))
                         .overflow_y_scroll()
                         .track_scroll(scroll)
-                        .px_3()
                         .children(children),
                 )
                 .child(vertical_scrollbar(scrollbar_id, scroll.clone(), &theme)),
@@ -398,7 +388,7 @@ pub fn panel_footer(theme: &Theme, rows: Vec<Vec<AnyElement>>) -> AnyElement {
         .flex_col()
         .flex_shrink_0()
         .gap_1p5()
-        .px_3()
+        .px_1()
         .py_2()
         .bg(theme.background)
         .border_t_1()
@@ -428,7 +418,6 @@ pub fn footer_button(
         .items_center()
         .justify_center()
         .h(px(26.0))
-        .rounded_md()
         .border_1()
         .border_color(theme.border)
         .bg(theme.surface_elevated.opacity(0.5))

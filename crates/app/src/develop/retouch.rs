@@ -187,7 +187,7 @@ impl Workspace {
             .flex()
             .items_center()
             .justify_center()
-            .h(px(26.0))
+            .h(px(30.0))
             .rounded_md()
             .border_1()
             .cursor_pointer()
@@ -202,7 +202,21 @@ impl Workspace {
                     .text_color(theme.text_muted)
                     .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
             })
-            .child(kind.label())
+            .child(rustyedit_ui::icon(
+                match kind {
+                    SpotKind::Heal => rustyedit_ui::Icon::Heal,
+                    SpotKind::Clone => rustyedit_ui::Icon::Clone,
+                },
+                16.0,
+                if active { theme.text } else { theme.text_muted },
+            ))
+            .tooltip(rustyedit_ui::tip(
+                match kind {
+                    SpotKind::Heal => "Heal spots (Q)",
+                    SpotKind::Clone => "Clone spots",
+                },
+                &theme,
+            ))
             .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                 this.toggle_photo_tool(kind.into(), cx);
             }))

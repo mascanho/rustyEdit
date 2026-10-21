@@ -20,6 +20,14 @@ pub enum Icon {
     History,
     Info,
     Adjust,
+    /// An eye: view options.
+    View,
+    /// A 3x3 grid: composition guides.
+    Grid,
+    /// A photo split in two: before / after.
+    BeforeAfter,
+    /// Stacked cards: saved looks.
+    Presets,
     Tag,
     /// Filled corner triangles: the histogram's clipping warnings.
     ClipShadows,
@@ -200,6 +208,31 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
                 pen.line(&[(2.0, y), (14.0, y)]);
                 pen.dot(knob, y, 1.8);
             }
+        }
+        Icon::BeforeAfter => {
+            pen.shape(&[(2.0, 3.0), (14.0, 3.0), (14.0, 13.0), (2.0, 13.0)]);
+            pen.line(&[(8.0, 1.5), (8.0, 14.5)]);
+            // The "after" half is filled in.
+            pen.solid(&[(8.0, 3.0), (14.0, 3.0), (14.0, 13.0), (8.0, 13.0)]);
+        }
+        Icon::Grid => {
+            pen.shape(&[(2.0, 2.0), (14.0, 2.0), (14.0, 14.0), (2.0, 14.0)]);
+            pen.line(&[(6.0, 2.0), (6.0, 14.0)]);
+            pen.line(&[(10.0, 2.0), (10.0, 14.0)]);
+            pen.line(&[(2.0, 6.0), (14.0, 6.0)]);
+            pen.line(&[(2.0, 10.0), (14.0, 10.0)]);
+        }
+        Icon::View => {
+            // An eye: almond outline with a pupil.
+            pen.line(&[(1.0, 8.0), (4.0, 4.6), (8.0, 3.2), (12.0, 4.6), (15.0, 8.0)]);
+            pen.line(&[(1.0, 8.0), (4.0, 11.4), (8.0, 12.8), (12.0, 11.4), (15.0, 8.0)]);
+            pen.dot(8.0, 8.0, 2.2);
+        }
+        Icon::Presets => {
+            // Two cards, one offset behind the other, with a spark.
+            pen.shape(&[(5.0, 2.0), (14.0, 2.0), (14.0, 10.0), (5.0, 10.0)]);
+            pen.shape(&[(2.0, 5.0), (11.0, 5.0), (11.0, 14.0), (2.0, 14.0)]);
+            pen.dot(6.5, 9.5, 1.2);
         }
         Icon::Tag => {
             pen.shape(&[(2.0, 2.0), (8.5, 2.0), (14.0, 7.5), (7.5, 14.0), (2.0, 8.5)]);

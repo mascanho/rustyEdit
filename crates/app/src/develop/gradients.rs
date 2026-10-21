@@ -17,7 +17,7 @@ use rustyedit_core::{
 };
 use rustyedit_ui::{SliderSpec, SliderTrack, Theme};
 
-use super::{adjustments::wheel, tools::list_row};
+use super::adjustments::wheel;
 use crate::workspace::Workspace;
 
 /// How close (in screen pixels) the pointer must be to grab a handle.
@@ -115,7 +115,7 @@ impl Workspace {
             .flex()
             .items_center()
             .justify_center()
-            .h(px(26.0))
+            .h(px(30.0))
             .rounded_md()
             .border_1()
             .cursor_pointer()
@@ -130,19 +130,37 @@ impl Workspace {
                     .text_color(theme.text_muted)
                     .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
             })
-            .child(kind.label())
+            .child(rustyedit_ui::icon(
+                match kind {
+                    GradientKind::Linear => rustyedit_ui::Icon::LinearGradient,
+                    GradientKind::Radial => rustyedit_ui::Icon::RadialGradient,
+                },
+                16.0,
+                if active { theme.text } else { theme.text_muted },
+            ))
+            .tooltip(rustyedit_ui::tip(
+                match kind {
+                    GradientKind::Linear => "Linear gradient (M)",
+                    GradientKind::Radial => "Radial gradient (Shift+M)",
+                },
+                &theme,
+            ))
             .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                 this.toggle_photo_tool(kind.into(), cx);
             }))
             .into_any_element()
     }
 
+    /// The gradients as layers, front-most first. Each row has an eye to
+    /// show or hide it, its kind, name and opacity, and (on hover) buttons
+    /// to reorder, duplicate and delete it. The topmost layer is applied last.
     fn gradient_list(&self, develop: &DevelopSettings, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let theme = self.theme;
         let gradients = develop.gradients.as_slice();
         if gradients.is_empty() {
             return Vec::new();
         }
+        let count = gradients.len();
         let mut rows = vec![div()
             .flex()
             .flex_row()
@@ -150,7 +168,7 @@ impl Workspace {
             .pt_1()
             .text_size(px(10.0))
             .text_color(theme.text_faint)
-            .child(format!("{} of {MAX_GRADIENTS} gradients", gradients.len()))
+            .child(format!("LAYERS \u{00B7} {count} of {MAX_GRADIENTS}"))
             .child(
                 div()
                     .id("gradients-clear")
@@ -163,24 +181,192 @@ impl Workspace {
                     })),
             )
             .into_any_element()];
-        for (ix, gradient) in gradients.iter().enumerate() {
-            rows.push(list_row(
-                ("gradient", ix),
-                &theme,
-                format!("{} {}", gradient.kind.label(), ix + 1),
-                gradient.invert.then(|| "inverted".to_string()),
-                self.develop_ui.gradients.selected == Some(ix),
-                cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                    this.develop_ui.gradients.selected = Some(ix);
-                    cx.notify();
-                }),
-                Some(Box::new(cx.listener(
-                    move |this, _: &ClickEvent, _w, cx| {
-                        this.remove_gradient(ix, cx);
-                    },
-                ))),
-            ));
-        }
+
+        let layers: Vec<AnyElement> = gradients
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(ix, gradient)| {
+                let selected = self.develop_ui.gradients.selected == Some(ix);
+                let hidden = gradient.hidden;
+                let group = SharedString::from(format!("gradient-layer-{ix}"));
+                let action = |id: &'static str,
+                              glyph: &'static str,
+                              tip: &'static str,
+                              danger: bool,
+                              on_click: Box<dyn Fn(&mut Workspace, &mut Context<Workspace>)>,
+                              cx: &mut Context<Self>|
+                 -> AnyElement {
+                    let entity = cx.entity();
+                    div()
+                        .id((id, ix))
+                        .flex_shrink_0()
+                        .px_1()
+                        .text_size(px(10.5))
+                        .text_color(theme.text_faint)
+                        .cursor_pointer()
+                        .hover(|el| el.text_color(if danger { theme.danger } else { theme.text }))
+                        .tooltip(rustyedit_ui::tip(tip, &theme))
+                        .child(glyph)
+                        .on_click(
+                            move |_: &ClickEvent, _w: &mut gpui::Window, cx: &mut gpui::App| {
+                                cx.stop_propagation();
+                                entity.update(cx, |this, cx| on_click(this, cx));
+                            },
+                        )
+                        .into_any_element()
+                };
+
+                let eye = {
+                    let entity = cx.entity();
+                    div()
+                        .id(("gradient-eye", ix))
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .size(px(20.0))
+                        .cursor_pointer()
+                        .tooltip(rustyedit_ui::tip(
+                            if hidden { "Show layer" } else { "Hide layer" },
+                            &theme,
+                        ))
+                        .child(rustyedit_ui::icon(
+                            rustyedit_ui::Icon::View,
+                            14.0,
+                            if hidden {
+                                theme.text_faint.opacity(0.5)
+                            } else {
+                                theme.text_muted
+                            },
+                        ))
+                        .on_click(
+                            move |_: &ClickEvent, _w: &mut gpui::Window, cx: &mut gpui::App| {
+                                cx.stop_propagation();
+                                entity.update(cx, |this, cx| {
+                                    this.edit_gradient(ix, "Show or hide gradient", cx, |g| {
+                                        g.hidden = !g.hidden
+                                    });
+                                });
+                            },
+                        )
+                };
+
+                let mut note = Vec::new();
+                if gradient.opacity < 99.5 {
+                    note.push(format!("{:.0}%", gradient.opacity));
+                }
+                if gradient.invert {
+                    note.push("inverted".to_string());
+                }
+
+                div()
+                    .id(("gradient", ix))
+                    .group(group.clone())
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_1()
+                    .h(px(28.0))
+                    .px_1()
+                    .cursor_pointer()
+                    .text_size(px(11.5))
+                    .when(selected, |el| {
+                        el.bg(theme.accent_muted).text_color(theme.text)
+                    })
+                    .when(!selected, |el| {
+                        el.text_color(theme.text_muted)
+                            .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                    })
+                    .when(hidden, |el| el.opacity(0.55))
+                    .child(eye)
+                    .child(rustyedit_ui::icon(
+                        match gradient.kind {
+                            GradientKind::Linear => rustyedit_ui::Icon::LinearGradient,
+                            GradientKind::Radial => rustyedit_ui::Icon::RadialGradient,
+                        },
+                        14.0,
+                        if selected {
+                            theme.text
+                        } else {
+                            theme.text_muted
+                        },
+                    ))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(0.0))
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .child(format!("{} {}", gradient.kind.label(), ix + 1)),
+                    )
+                    .when(!note.is_empty(), |el| {
+                        el.child(
+                            div()
+                                .flex_shrink_0()
+                                .text_size(px(9.5))
+                                .text_color(theme.text_faint)
+                                .child(note.join(" \u{00B7} ")),
+                        )
+                    })
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .flex_shrink_0()
+                            .invisible()
+                            .group_hover(group.clone(), |s| s.visible())
+                            .child(action(
+                                "gradient-up",
+                                "\u{25B2}",
+                                "Bring forward",
+                                false,
+                                Box::new(move |this, cx| this.move_gradient(ix, 1, cx)),
+                                cx,
+                            ))
+                            .child(action(
+                                "gradient-down",
+                                "\u{25BC}",
+                                "Send back",
+                                false,
+                                Box::new(move |this, cx| this.move_gradient(ix, -1, cx)),
+                                cx,
+                            ))
+                            .child(action(
+                                "gradient-dup",
+                                "\u{29C9}",
+                                "Duplicate layer",
+                                false,
+                                Box::new(move |this, cx| this.duplicate_gradient(ix, cx)),
+                                cx,
+                            ))
+                            .child(action(
+                                "gradient-del",
+                                "\u{2715}",
+                                "Delete layer",
+                                true,
+                                Box::new(move |this, cx| this.remove_gradient(ix, cx)),
+                                cx,
+                            )),
+                    )
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                        this.develop_ui.gradients.selected = Some(ix);
+                        cx.notify();
+                    }))
+                    .into_any_element()
+            })
+            .collect();
+        rows.push(
+            div()
+                .flex()
+                .flex_col()
+                .bg(theme.background.opacity(0.45))
+                .border_1()
+                .border_color(theme.border_subtle)
+                .children(layers)
+                .into_any_element(),
+        );
         rows
     }
 
@@ -215,6 +401,33 @@ impl Workspace {
             ))
             .child(invert)
             .into_any_element()];
+
+        {
+            let entity = cx.entity();
+            rows.push(
+                rustyedit_ui::labeled_slider(
+                    SharedString::from(format!("gradient-{index}-opacity")),
+                    "Layer opacity",
+                    gradient.opacity,
+                    SliderSpec {
+                        min: 0.0,
+                        max: 100.0,
+                        default: 100.0,
+                        signed: false,
+                        track: SliderTrack::Accent,
+                    },
+                    &theme,
+                    move |value, _w, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.edit_gradient(index, "Gradient opacity", cx, |g| {
+                                g.opacity = value.clamp(0.0, 100.0)
+                            });
+                        });
+                    },
+                )
+                .into_any_element(),
+            );
+        }
 
         if gradient.kind == GradientKind::Radial {
             let entity = cx.entity();
@@ -302,6 +515,40 @@ impl Workspace {
                 edit(gradient);
             }
         });
+    }
+
+    /// Moves a layer towards the front (`1`) or back (`-1`); the selection
+    /// follows it.
+    fn move_gradient(&mut self, index: usize, delta: i32, cx: &mut Context<Self>) {
+        let mut moved_to = None;
+        self.edit_gradients("Reorder gradient layers", cx, |d| {
+            moved_to = d.gradients.move_by(index, delta);
+        });
+        if let Some(to) = moved_to {
+            let ui = &mut self.develop_ui.gradients;
+            ui.selected = match ui.selected {
+                Some(s) if s == index => Some(to),
+                Some(s) if s == to => Some(index),
+                other => other,
+            };
+        }
+    }
+
+    /// Copies a layer in front of itself and selects the copy.
+    fn duplicate_gradient(&mut self, index: usize, cx: &mut Context<Self>) {
+        let mut copy = None;
+        self.edit_gradients("Duplicate gradient layer", cx, |d| {
+            copy = d.gradients.duplicate(index);
+        });
+        match copy {
+            Some(ix) => self.develop_ui.gradients.selected = Some(ix),
+            None => {
+                self.status_message = Some(
+                    format!("A photo can have at most {MAX_GRADIENTS} gradient layers.").into(),
+                )
+            }
+        }
+        cx.notify();
     }
 
     fn remove_gradient(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -454,6 +701,7 @@ impl Workspace {
             feather: 0.5,
             invert: false,
             adjust,
+            ..Gradient::default()
         };
         let mut added = None;
         self.edit_gradients(&format!("Add {} gradient", kind.label()), cx, |d| {

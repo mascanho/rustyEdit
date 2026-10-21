@@ -27,6 +27,7 @@ actions!(
         GoDevelop,
         GoExport,
         ToggleInfo,
+        ToggleBeforeAfter,
         Undo,
         FocusSearch,
         CycleBackground,

@@ -402,7 +402,7 @@ impl Default for LayoutSettings {
             preset: LayoutPreset::Classic,
             filmstrip_position: FilmstripPosition::Bottom,
             navigator_width: 260,
-            inspector_width: 260,
+            inspector_width: 300,
             filmstrip_height: 80,
         }
     }
@@ -673,6 +673,8 @@ pub static FILMSTRIP_STYLE_CARDS: [CardOption; 6] = [
 #[serde(default)]
 pub struct DevelopPreferences {
     pub preview_quality: PreviewQuality,
+    /// What Develop shows the photo against.
+    pub viewer_background: LoupeBackground,
     /// Open Develop's tools column (Navigator, Presets, Snapshots, History)
     /// expanded instead of collapsed.
     pub tools_expanded_on_startup: bool,
@@ -685,6 +687,7 @@ impl Default for DevelopPreferences {
     fn default() -> Self {
         Self {
             preview_quality: PreviewQuality::default(),
+            viewer_background: LoupeBackground::Theme,
             tools_expanded_on_startup: true,
             section_order: Vec::new(),
         }

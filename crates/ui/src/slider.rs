@@ -331,7 +331,6 @@ pub fn reset_button(
         .items_center()
         .justify_center()
         .size(px(16.0))
-        .rounded_sm()
         .when(!visible, |el| el.invisible())
         .cursor_pointer()
         .hover(|el| el.bg(theme.surface_elevated))
