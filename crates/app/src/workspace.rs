@@ -232,7 +232,7 @@ impl Workspace {
             .detach();
         let mut this = Self {
             focus_handle: cx.focus_handle(),
-            theme: Theme::dark(),
+            theme: Theme::from_appearance(&settings.appearance),
             mode: Mode::Library,
             catalog: Catalog::default(),
             thumbnail_cache: None,

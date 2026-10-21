@@ -20,6 +20,117 @@ pub struct Settings {
     pub filmstrip: FilmstripSettings,
     pub develop: DevelopPreferences,
     pub grid: GridSettings,
+    pub appearance: AppearanceSettings,
+}
+
+// --- Appearance -------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppearanceSettings {
+    pub theme: AppTheme,
+    pub accent: AccentColor,
+    /// How strongly panels, controls and text stand apart, 0-100.
+    /// 50 is the standard look.
+    pub contrast: u8,
+}
+
+impl Default for AppearanceSettings {
+    fn default() -> Self {
+        Self {
+            theme: AppTheme::Dark,
+            accent: AccentColor::Blue,
+            contrast: 50,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum AppTheme {
+    #[default]
+    Dark,
+    Midnight,
+    Graphite,
+    Light,
+}
+
+impl AppTheme {
+    pub const ALL: [AppTheme; 4] = [
+        AppTheme::Dark,
+        AppTheme::Midnight,
+        AppTheme::Graphite,
+        AppTheme::Light,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            AppTheme::Dark => "Dark",
+            AppTheme::Midnight => "Midnight",
+            AppTheme::Graphite => "Graphite",
+            AppTheme::Light => "Light",
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        Self::ALL.iter().position(|t| t == self).unwrap_or(0)
+    }
+
+    pub fn from_index(ix: usize) -> Self {
+        Self::ALL.get(ix).copied().unwrap_or_default()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum AccentColor {
+    #[default]
+    Blue,
+    Teal,
+    Green,
+    Orange,
+    Pink,
+    Purple,
+}
+
+impl AccentColor {
+    pub const ALL: [AccentColor; 6] = [
+        AccentColor::Blue,
+        AccentColor::Teal,
+        AccentColor::Green,
+        AccentColor::Orange,
+        AccentColor::Pink,
+        AccentColor::Purple,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            AccentColor::Blue => "Blue",
+            AccentColor::Teal => "Teal",
+            AccentColor::Green => "Green",
+            AccentColor::Orange => "Orange",
+            AccentColor::Pink => "Pink",
+            AccentColor::Purple => "Purple",
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        Self::ALL.iter().position(|a| a == self).unwrap_or(0)
+    }
+
+    pub fn from_index(ix: usize) -> Self {
+        Self::ALL.get(ix).copied().unwrap_or_default()
+    }
+
+    /// Hue in degrees.
+    pub fn hue(&self) -> f32 {
+        match self {
+            AccentColor::Blue => 205.0,
+            AccentColor::Teal => 175.0,
+            AccentColor::Green => 142.0,
+            AccentColor::Orange => 28.0,
+            AccentColor::Pink => 330.0,
+            AccentColor::Purple => 265.0,
+        }
+    }
 }
 
 // --- Grid -----------------------------------------------------------------------
@@ -671,6 +782,50 @@ pub enum CardPreview {
 }
 
 pub static SETTINGS_PAGES: &[SettingsPage] = &[
+    SettingsPage {
+        title: "Appearance",
+        sections: &[
+            SettingsSection {
+                title: "Theme",
+                items: &[
+                    SettingItem {
+                        label: "Colour theme",
+                        description: "The overall look of the app.",
+                        control: SettingControl::Choice {
+                            options: &["Dark", "Midnight", "Graphite", "Light"],
+                            get: |s| s.appearance.theme.index(),
+                            set: |s, ix| s.appearance.theme = AppTheme::from_index(ix),
+                        },
+                    },
+                    SettingItem {
+                        label: "Accent colour",
+                        description: "Highlights, selections and active controls.",
+                        control: SettingControl::Choice {
+                            options: &["Blue", "Teal", "Green", "Orange", "Pink", "Purple"],
+                            get: |s| s.appearance.accent.index(),
+                            set: |s, ix| s.appearance.accent = AccentColor::from_index(ix),
+                        },
+                    },
+                ],
+            },
+            SettingsSection {
+                title: "Contrast",
+                items: &[SettingItem {
+                    label: "Interface contrast",
+                    description: "How strongly panels, controls and text stand apart. \
+                                  50 is the standard look.",
+                    control: SettingControl::Stepper {
+                        min: 0,
+                        max: 100,
+                        step: 5,
+                        unit: "",
+                        get: |s| s.appearance.contrast as i64,
+                        set: |s, v| s.appearance.contrast = v.clamp(0, 100) as u8,
+                    },
+                }],
+            },
+        ],
+    },
     SettingsPage {
         title: "Library",
         sections: &[SettingsSection {

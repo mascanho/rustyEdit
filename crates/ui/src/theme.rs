@@ -1,5 +1,5 @@
 use gpui::{hsla, Hsla};
-use rustyedit_core::ColorLabel;
+use rustyedit_core::{settings::{AppTheme, AppearanceSettings}, ColorLabel};
 
 /// A single, fixed dark theme in the spirit of Lightroom Classic's and
 /// Zed's chrome: near-black surfaces, a muted accent, and restrained text
@@ -77,6 +77,55 @@ impl Theme {
             ColorLabel::Blue => Some(self.label_blue),
             ColorLabel::Purple => Some(self.label_purple),
         }
+    }
+}
+
+impl Theme {
+    /// The palette for the user's appearance settings. `contrast` (0-100,
+    /// 50 = standard) scales how far apart the surface layers, borders and
+    /// text sit; the theme picks the base lightness and hue.
+    pub fn from_appearance(a: &AppearanceSettings) -> Self {
+        let mut t = Self::dark();
+        let f = a.contrast.min(100) as f32 / 50.0; // 0.0 ..= 2.0, 1.0 standard
+
+        // (hue, saturation, background lightness, light theme?)
+        let (hue, sat, bg, light) = match a.theme {
+            AppTheme::Dark => (220.0, 0.08, 0.09, false),
+            AppTheme::Midnight => (228.0, 0.22, 0.06, false),
+            AppTheme::Graphite => (0.0, 0.0, 0.12, false),
+            AppTheme::Light => (220.0, 0.10, 0.95, true),
+        };
+        let dir = if light { -1.0 } else { 1.0 };
+        let layer = |step: f32| (bg + dir * step * f).clamp(0.0, 1.0);
+        let h = hue / 360.0;
+
+        t.background = hsla(h, sat, bg, 1.0);
+        t.surface = hsla(h, sat, layer(0.045), 1.0);
+        t.surface_elevated = hsla(h, sat, layer(0.095), 1.0);
+        t.border_subtle = hsla(h, sat, layer(0.115), 1.0);
+        t.border = hsla(h, sat, layer(0.185), 1.0);
+
+        // Text runs from near-white (or near-black) at full contrast to
+        // closer to the background at low contrast.
+        let text_l = if light { 0.10 } else { 0.94 };
+        let mix = |toward_bg: f32| {
+            let l = text_l + (bg - text_l) * toward_bg / f.max(0.5);
+            l.clamp(0.0, 1.0)
+        };
+        t.text = hsla(0.0, 0.0, mix(0.04), 1.0);
+        t.text_muted = hsla(h, sat * 0.6, mix(0.30), 1.0);
+        t.text_faint = hsla(h, sat * 0.6, mix(0.52), 1.0);
+
+        let accent_h = a.accent.hue() / 360.0;
+        let accent_l = if light { 0.45 } else { 0.62 };
+        t.accent = hsla(accent_h, 0.85, accent_l, 1.0);
+        t.accent_muted = hsla(
+            accent_h,
+            if light { 0.55 } else { 0.45 },
+            if light { 0.80 } else { 0.30 },
+            1.0,
+        );
+        t
     }
 }
 

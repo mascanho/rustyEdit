@@ -42,8 +42,7 @@ fn section_header(theme: &Theme, title: SharedString, chevron: Option<bool>) -> 
         .text_size(px(12.0))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .when(open, |el| {
-            el.bg(theme.surface_elevated.opacity(0.55))
-                .text_color(theme.text)
+            el.bg(theme.surface_elevated).text_color(theme.text)
         })
         .when(!open, |el| el.text_color(theme.text_muted))
         .when_some(chevron, |el, expanded| {
@@ -84,9 +83,12 @@ pub fn section(
                 .flex()
                 .flex_col()
                 .gap_2()
-                .px_1()
-                .pt_2()
-                .pb_3()
+                .mt_1()
+                .mb_2()
+                .px_1p5()
+                .py_2()
+                .rounded_md()
+                .bg(theme.background.opacity(0.45))
                 .children(children),
         )
 }
@@ -170,9 +172,12 @@ pub fn disclosure_section_with(
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .px_1()
-                    .pt_2()
-                    .pb_3()
+                    .mt_1()
+                    .mb_2()
+                    .px_1p5()
+                    .py_2()
+                    .rounded_md()
+                    .bg(theme.background.opacity(0.45))
                     .when(dimmed, |el| el.opacity(0.45))
                     .children(children),
             )
@@ -206,7 +211,7 @@ pub fn side_panel(
         .h_full()
         .flex_shrink_0()
         .bg(theme.surface)
-        .border_color(theme.border_subtle)
+        .border_color(theme.border)
         .when(side == PanelSide::Left, |el| el.border_r_1())
         .when(side == PanelSide::Right, |el| el.border_l_1())
         .children(pinned.map(|pinned| {
@@ -233,7 +238,7 @@ pub fn side_panel(
                         .min_w(px(0.0))
                         .overflow_y_scroll()
                         .track_scroll(scroll)
-                        .px_3()
+                        .px_1()
                         .children(children),
                 )
                 .child(vertical_scrollbar(scrollbar_id, scroll.clone(), &theme)),

@@ -47,6 +47,9 @@ impl Workspace {
         if let Err(err) = rustyedit_io::save_settings(&self.settings) {
             self.status_message = Some(format!("Couldn't save settings: {err}").into());
         }
+        if self.settings.appearance != previous.appearance {
+            self.theme = rustyedit_ui::Theme::from_appearance(&self.settings.appearance);
+        }
         if self.settings.develop.preview_quality != previous.develop.preview_quality
             && self.source_image.is_some()
         {
