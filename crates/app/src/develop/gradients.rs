@@ -192,7 +192,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let theme = self.theme;
-        let invert = rustyedit_ui::toggle_switch(
+        let invert = rustyedit_ui::mini_toggle_switch(
             ("gradient-invert", index),
             gradient.invert,
             &theme,

@@ -33,7 +33,7 @@ pub fn chrome_icon_button(
         .h(px(24.0))
         .px_2()
         .rounded_md()
-        .text_sm()
+        .text_xs()
         .cursor_pointer()
         .when(selected, |el| {
             el.bg(theme.accent_muted).text_color(theme.text)

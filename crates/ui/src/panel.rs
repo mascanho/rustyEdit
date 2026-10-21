@@ -395,7 +395,7 @@ pub fn panel_footer(theme: &Theme, rows: Vec<Vec<AnyElement>>) -> AnyElement {
         .gap_1p5()
         .px_3()
         .py_2()
-        .bg(theme.surface)
+        .bg(theme.background)
         .border_t_1()
         .border_color(theme.border_subtle)
         .children(

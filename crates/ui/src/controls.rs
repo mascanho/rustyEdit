@@ -43,14 +43,14 @@ pub fn mini_toggle_switch(
         .flex_row()
         .items_center()
         .flex_shrink_0()
-        .w(px(26.0))
-        .h(px(14.0))
-        .p(px(2.0))
+        .w(px(20.0))
+        .h(px(12.0))
+        .p(px(1.5))
         .rounded_full()
         .cursor_pointer()
         .bg(if on { theme.accent } else { theme.border })
         .when(on, |el| el.justify_end())
-        .child(div().size(px(10.0)).rounded_full().bg(theme.text))
+        .child(div().size(px(8.0)).rounded_full().bg(theme.text))
         .on_click(on_click)
 }
 

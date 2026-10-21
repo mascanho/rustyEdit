@@ -692,15 +692,25 @@ impl Workspace {
                 cx.listener(Self::click_go_export),
             )
             .into_any_element(),
-            rustyedit_ui::chrome_icon_button(
-                "settings",
-                "\u{2699}",
-                Some("Settings (\u{2318},)".into()),
-                self.settings_open,
-                &theme,
-                cx.listener(Self::click_settings),
-            )
-            .into_any_element(),
+            {
+                let selected = self.settings_open;
+                div()
+                    .id("settings")
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .h(gpui::px(24.0))
+                    .px_2()
+                    .rounded_md()
+                    .text_xl()
+                    .cursor_pointer()
+                    .when(selected, |el| el.bg(theme.accent_muted).text_color(theme.text))
+                    .when(!selected, |el| el.text_color(theme.text_muted).hover(|el| el.bg(theme.surface_elevated).text_color(theme.text)))
+                    .child("\u{2699}")
+                    .tooltip(rustyedit_ui::tip("Settings (\u{2318},)", &theme))
+                    .on_click(cx.listener(Self::click_settings))
+                    .into_any_element()
+            }
         ];
 
         rustyedit_ui::title_bar(&theme, "RustyEdit", left, right).into_any_element()
