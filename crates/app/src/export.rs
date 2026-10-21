@@ -30,6 +30,20 @@ use crate::workspace::Workspace;
 
 /// Most tiles drawn in the preview / run grid; the totals still count all.
 const MAX_TILES: usize = 160;
+/// Smallest and largest tile width, and the gap between tiles.
+const TILE_MIN: f32 = 150.0;
+const TILE_GAP: f32 = 16.0;
+
+/// A tile width that makes whole tiles fill `avail` exactly, row after row.
+fn tile_width(avail: f32) -> (f32, usize) {
+    let cols = ((avail + TILE_GAP) / (TILE_MIN + TILE_GAP))
+        .floor()
+        .max(1.0);
+    (
+        ((avail - TILE_GAP * (cols - 1.0)) / cols).floor(),
+        cols as usize,
+    )
+}
 
 /// Where one photo of a running export has got to.
 #[derive(Debug, Clone, PartialEq)]
@@ -45,6 +59,7 @@ pub(crate) enum ItemStatus {
 
 /// What a tile needs to draw one photo of the export.
 struct Tile {
+    id: u64,
     thumbnail: Option<PathBuf>,
     /// File name the photo will be written as.
     name: String,
@@ -93,9 +108,11 @@ impl Workspace {
                 .collect(),
         };
         indices.retain(|&ix| {
-            assets
-                .get(ix)
-                .is_some_and(|a| !a.missing && !(skip_rejected && a.flag == Flag::Rejected))
+            assets.get(ix).is_some_and(|a| {
+                !a.missing
+                    && !(skip_rejected && a.flag == Flag::Rejected)
+                    && !self.export_excluded.contains(&a.id)
+            })
         });
         indices
     }
@@ -255,7 +272,11 @@ impl Workspace {
 
     // --- UI ------------------------------------------------------------------
 
-    pub(crate) fn render_export(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_export(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = self.theme;
         let options = self.export_options.clone();
         let entity = cx.entity();
@@ -449,17 +470,14 @@ impl Workspace {
             .into_any_element();
 
         let sections: Vec<AnyElement> = vec![
-            rustyedit_ui::section(&theme, "Photos", vec![scope_row, skip_rejected])
-                .into_any_element(),
-            rustyedit_ui::section(&theme, "Format", format_children).into_any_element(),
-            rustyedit_ui::section(&theme, "Size", vec![size_row]).into_any_element(),
-            rustyedit_ui::section(&theme, "Output sharpening", vec![sharpen_row])
-                .into_any_element(),
-            rustyedit_ui::section(&theme, "File naming", vec![naming_row]).into_any_element(),
-            rustyedit_ui::section(&theme, "Subfolders", vec![subfolder_row]).into_any_element(),
-            rustyedit_ui::section(&theme, "If a file exists", vec![conflict_row])
-                .into_any_element(),
-            rustyedit_ui::section(&theme, "Destination", vec![destination_row, open_when_done])
+            export_section(&theme, "Photos", vec![scope_row, skip_rejected]).into_any_element(),
+            export_section(&theme, "Format", format_children).into_any_element(),
+            export_section(&theme, "Size", vec![size_row]).into_any_element(),
+            export_section(&theme, "Output sharpening", vec![sharpen_row]).into_any_element(),
+            export_section(&theme, "File naming", vec![naming_row]).into_any_element(),
+            export_section(&theme, "Subfolders", vec![subfolder_row]).into_any_element(),
+            export_section(&theme, "If a file exists", vec![conflict_row]).into_any_element(),
+            export_section(&theme, "Destination", vec![destination_row, open_when_done])
                 .into_any_element(),
         ];
 
@@ -490,7 +508,7 @@ impl Workspace {
         } else if ready {
             footer_button
                 .bg(theme.accent)
-                .text_color(theme.background)
+                .text_color(gpui::white())
                 .cursor_pointer()
                 .hover(|el| el.opacity(0.9))
                 .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.start_export(cx)))
@@ -523,11 +541,54 @@ impl Workspace {
         .into_any_element();
 
         // --- Centre ---------------------------------------------------------
+        // Width left for tiles: the window minus the sidebar, page padding
+        // (24 + 24) and room for the scrollbar.
+        let avail = (f32::from(window.viewport_size().width)
+            - self.settings.layout.inspector_width as f32
+            - 64.0)
+            .max(TILE_MIN);
+        let (tile_w, cols) = tile_width(avail);
+
+        // `top` is pinned above the photos, `bottom` (run progress) below them;
+        // `body` scrolls between.
+        let mut top: Vec<AnyElement> = Vec::new();
+        let mut bottom: Vec<AnyElement> = Vec::new();
         let mut body: Vec<AnyElement> = Vec::new();
         if let Some(run) = &self.export_run {
-            body.push(self.run_card(run, cx));
+            bottom.push(self.run_card(run, cx));
             let statuses = run.status.lock().unwrap().clone();
-            body.push(tile_grid(&theme, &run.tiles, Some(&statuses)));
+            // Only a window of tiles is drawn; slide it down with the
+            // export so the photos being worked on are always on show.
+            let total = statuses.len();
+            let active = statuses
+                .iter()
+                .position(|s| matches!(s, ItemStatus::Pending | ItemStatus::Working))
+                .unwrap_or(total);
+            let start = active
+                .saturating_sub(cols)
+                .min(total.saturating_sub(MAX_TILES));
+            let start = start - start % cols;
+            let end = (start + MAX_TILES).min(total);
+            if total > MAX_TILES {
+                body.push(
+                    div()
+                        .text_xs()
+                        .text_color(theme.text_faint)
+                        .child(format!(
+                            "Showing photos {}\u{2013}{end} of {total}",
+                            start + 1
+                        ))
+                        .into_any_element(),
+                );
+            }
+            body.push(tile_grid(
+                &theme,
+                &run.tiles[start..end],
+                Some(&statuses[start..end]),
+                tile_w,
+                start,
+                None,
+            ));
         } else {
             let tiles: Vec<Tile> = selected_indices
                 .iter()
@@ -535,9 +596,10 @@ impl Workspace {
                 .take(MAX_TILES)
                 .map(|(n, &ix)| preview_tile(&self.catalog.assets[ix], n, &options))
                 .collect();
-            body.push(self.preview_card(&options, count, &destination_text));
+            top.push(self.preview_card(&options, count, &destination_text, cx));
+            bottom.push(self.queue_bar(count, cx));
             if let Some(message) = &self.export_message {
-                body.push(
+                top.push(
                     div()
                         .text_sm()
                         .text_color(theme.danger)
@@ -557,7 +619,7 @@ impl Workspace {
                         .into_any_element(),
                 );
             } else {
-                body.push(tile_grid(&theme, &tiles, None));
+                body.push(tile_grid(&theme, &tiles, None, tile_w, 0, Some(&entity)));
                 if count > tiles.len() {
                     body.push(
                         div()
@@ -570,72 +632,54 @@ impl Workspace {
             }
         }
 
+        let has_top = !top.is_empty();
+        let top_bar = div()
+            .flex()
+            .flex_col()
+            .flex_shrink_0()
+            .gap_2()
+            .px_4()
+            .py_2()
+            .bg(theme.surface)
+            .border_b_1()
+            .border_color(theme.border)
+            .children(top);
+
         let center = div()
-            .id("export-page")
             .flex()
             .flex_col()
             .flex_1()
             .min_w(px(0.0))
             .min_h(px(0.0))
-            .overflow_y_scroll()
             .bg(theme.background)
-            .items_center()
-            .px_6()
-            .py_6()
+            .when(has_top, |el| el.child(top_bar))
             .child(
                 div()
+                    .id("export-page")
                     .flex()
                     .flex_col()
+                    .flex_1()
+                    .min_h(px(0.0))
+                    .overflow_y_scroll()
                     .gap_4()
-                    .w_full()
-                    .max_w(px(980.0))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .justify_between()
-                            .pb_3()
-                            .border_b_1()
-                            .border_color(theme.border_subtle)
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_1()
-                                    .child(
-                                        div()
-                                            .text_size(px(22.0))
-                                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                                            .text_color(theme.text)
-                                            .child("Export"),
-                                    )
-                                    .child(div().text_sm().text_color(theme.text_faint).child(
-                                        if self.export_run.is_some() {
-                                            "Progress and results"
-                                        } else {
-                                            "Review what will be written, then export"
-                                        },
-                                    )),
-                            )
-                            .child(
-                                div()
-                                    .px_3()
-                                    .py_1()
-                                    .rounded_full()
-                                    .bg(theme.accent_muted)
-                                    .text_xs()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.text)
-                                    .child(if self.export_run.is_some() {
-                                        "RESULTS"
-                                    } else {
-                                        "PREVIEW"
-                                    }),
-                            ),
-                    )
+                    .px_6()
+                    .py_4()
                     .children(body),
             )
+            .when(!bottom.is_empty(), |el| {
+                el.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_shrink_0()
+                        .px_4()
+                        .py_2()
+                        .bg(theme.surface)
+                        .border_t_1()
+                        .border_color(theme.border)
+                        .children(bottom),
+                )
+            })
             .into_any_element();
 
         let main = div()
@@ -649,74 +693,157 @@ impl Workspace {
     }
 
     /// The summary above the preview grid: what will be written and where.
-    fn preview_card(&self, options: &ExportOptions, count: usize, destination: &str) -> AnyElement {
+    fn preview_card(
+        &self,
+        options: &ExportOptions,
+        count: usize,
+        destination: &str,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = self.theme;
-        let size = match options.size.0 {
-            Some(edge) => format!("max {edge} px"),
-            None => "Original size".into(),
-        };
-        let format = if options.format.is_lossy() {
-            format!(
-                "{} \u{b7} quality {}",
-                options.format.label(),
-                options.quality
-            )
-        } else {
-            options.format.label().to_string()
-        };
-        let folders = if options.subfolder == ExportSubfolder::None {
-            "None".to_string()
-        } else {
-            format!("By {}", options.subfolder.label().to_lowercase())
-        };
+        let mut pills = vec![pill(
+            &theme,
+            if options.format.is_lossy() {
+                format!("{} {}", options.format.label(), options.quality)
+            } else {
+                options.format.label().to_string()
+            },
+        )];
+        pills.push(pill(&theme, options.size.label()));
+        if options.sharpen != ExportSharpen::Off {
+            pills.push(pill(&theme, format!("Sharpen {}", options.sharpen.label())));
+        }
+        pills.push(pill(&theme, options.naming.label().to_string()));
+        if options.subfolder != ExportSubfolder::None {
+            pills.push(pill(
+                &theme,
+                format!("By {}", options.subfolder.label().to_lowercase()),
+            ));
+        }
+        if options.conflict != ExportConflict::Rename {
+            pills.push(pill(
+                &theme,
+                format!("{} existing", options.conflict.label()),
+            ));
+        }
         div()
             .flex()
-            .flex_col()
-            .gap_3()
-            .p_4()
-            .rounded_xl()
-            .bg(theme.surface)
-            .border_1()
-            .border_color(theme.border_subtle)
-            .border_t_2()
-            .border_color(theme.accent)
+            .flex_row()
+            .flex_wrap()
+            .items_center()
+            .gap_x_3()
+            .gap_y_2()
             .child(
                 div()
                     .flex()
                     .flex_row()
                     .items_baseline()
-                    .gap_2()
+                    .gap_1()
                     .child(
                         div()
-                            .text_size(px(28.0))
+                            .text_size(px(18.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.text)
                             .child(count.to_string()),
                     )
-                    .child(div().text_sm().text_color(theme.text_muted).child(format!(
-                        "of {} photos will be exported",
-                        self.catalog.assets.len()
-                    ))),
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.text_faint)
+                            .child(format!("of {} photos", self.catalog.assets.len())),
+                    ),
+            )
+            .child(div().w(px(1.0)).h(px(14.0)).bg(theme.border))
+            .children(pills)
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(80.0))
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_xs()
+                    .text_color(theme.text_faint)
+                    .text_right()
+                    .child(destination.to_string()),
             )
             .child(
                 div()
+                    .id("export-folder-icon")
                     .flex()
-                    .flex_row()
-                    .flex_wrap()
-                    .gap_x_6()
-                    .gap_y_2()
-                    .child(stat(&theme, "Format", format))
-                    .child(stat(&theme, "Size", size))
-                    .child(stat(&theme, "Sharpen", options.sharpen.label().to_string()))
-                    .child(stat(&theme, "Naming", options.naming.label().to_string()))
-                    .child(stat(&theme, "Subfolders", folders))
-                    .child(stat(
+                    .flex_shrink_0()
+                    .items_center()
+                    .justify_center()
+                    .size(px(28.0))
+                    .rounded_md()
+                    .cursor_pointer()
+                    .border_1()
+                    .when(options.destination.is_some(), |el| {
+                        el.border_color(theme.border).bg(theme.background)
+                    })
+                    .when(options.destination.is_none(), |el| {
+                        el.border_color(theme.accent).bg(theme.accent_muted)
+                    })
+                    .hover(|el| el.bg(theme.surface_elevated))
+                    .tooltip(rustyedit_ui::tip(
+                        format!("Export folder: {destination}"),
                         &theme,
-                        "If exists",
-                        options.conflict.label().to_string(),
+                    ))
+                    .child(rustyedit_ui::icon(
+                        rustyedit_ui::Icon::Folder,
+                        16.0,
+                        if options.destination.is_some() {
+                            theme.text_muted
+                        } else {
+                            theme.text
+                        },
+                    ))
+                    .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                        this.choose_export_destination(cx)
+                    })),
+            )
+            .into_any_element()
+    }
+
+    /// Bottom bar while previewing: how many photos are queued, and a way to
+    /// bring back any that were removed.
+    fn queue_bar(&self, count: usize, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let removed = self.export_excluded.len();
+        div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_3()
+            .h(px(28.0))
+            .child(
+                div()
+                    .text_sm()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme.text)
+                    .child(format!(
+                        "{count} photo{} in the queue",
+                        if count == 1 { "" } else { "s" }
                     )),
             )
-            .child(stat(&theme, "Destination", destination.to_string()))
+            .child(
+                div()
+                    .flex_1()
+                    .text_xs()
+                    .text_color(theme.text_faint)
+                    .child("Hover a photo and click \u{2715} to remove it from the export."),
+            )
+            .when(removed > 0, |el| {
+                el.child(rustyedit_ui::chrome_button(
+                    "export-restore",
+                    format!("Restore {removed} removed"),
+                    false,
+                    &theme,
+                    cx.listener(|this, _: &ClickEvent, _w, cx| {
+                        this.export_excluded.clear();
+                        cx.notify();
+                    }),
+                ))
+            })
             .into_any_element()
     }
 
@@ -856,65 +983,97 @@ impl Workspace {
 
         div()
             .flex()
-            .flex_col()
-            .gap_3()
-            .p_4()
-            .rounded_xl()
-            .bg(theme.surface)
-            .border_1()
-            .border_color(theme.border_subtle)
+            .flex_row()
+            .flex_wrap()
+            .items_center()
+            .gap_x_4()
+            .gap_y_2()
             .child(
                 div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
-                    .child(
-                        div()
-                            .text_lg()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(colour)
-                            .child(headline),
-                    )
-                    .child(
-                        div()
-                            .text_lg()
-                            .text_color(theme.text_muted)
-                            .child(format!("{}%", (fraction * 100.0).round() as u32)),
-                    ),
+                    .text_sm()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(colour)
+                    .child(headline),
             )
             .child(
                 div()
-                    .w_full()
-                    .h(px(8.0))
+                    .flex_1()
+                    .min_w(px(120.0))
+                    .h(px(5.0))
                     .rounded_full()
                     .bg(theme.border)
                     .child(fill),
             )
             .child(
                 div()
-                    .flex()
-                    .flex_row()
-                    .flex_wrap()
-                    .gap_x_6()
-                    .gap_y_2()
-                    .child(counter(&theme, "Done", done, theme.pick))
-                    .child(counter(&theme, "Failed", failed, theme.danger))
-                    .child(counter(&theme, "Skipped", skipped, theme.star))
-                    .when(running, |el| {
-                        el.child(counter(&theme, "Working", working, theme.accent))
-                    })
-                    .child(stat(&theme, "Time", fmt_secs(elapsed as u64)))
-                    .when_some(eta, |el, eta| {
-                        el.child(stat(&theme, "Remaining", fmt_secs(eta)))
-                    })
-                    .child(stat(&theme, "Written", fmt_bytes(bytes))),
+                    .text_sm()
+                    .text_color(theme.text_muted)
+                    .child(format!("{}%", (fraction * 100.0).round() as u32)),
+            )
+            .child(dot_count(&theme, done, "done", theme.pick))
+            .when(failed > 0, |el| {
+                el.child(dot_count(&theme, failed, "failed", theme.danger))
+            })
+            .when(skipped > 0, |el| {
+                el.child(dot_count(&theme, skipped, "skipped", theme.star))
+            })
+            .when(running && working > 0, |el| {
+                el.child(dot_count(&theme, working, "working", theme.accent))
+            })
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme.text_faint)
+                    .child(match eta {
+                        Some(eta) => format!(
+                            "{} \u{b7} {} left \u{b7} {}",
+                            fmt_secs(elapsed as u64),
+                            fmt_secs(eta),
+                            fmt_bytes(bytes)
+                        ),
+                        None => format!("{} \u{b7} {}", fmt_secs(elapsed as u64), fmt_bytes(bytes)),
+                    }),
             )
             .when(!buttons.is_empty(), |el| {
-                el.child(div().flex().flex_row().gap_2().children(buttons))
+                el.child(div().flex().flex_row().gap_1().children(buttons))
             })
             .into_any_element()
     }
+}
+
+/// A coloured dot and "12 done" style count.
+fn dot_count(theme: &Theme, value: usize, label: &'static str, colour: gpui::Hsla) -> AnyElement {
+    div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap_1()
+        .child(div().size(px(6.0)).rounded_full().bg(colour))
+        .child(
+            div()
+                .text_xs()
+                .text_color(theme.text_muted)
+                .child(format!("{value} {label}")),
+        )
+        .into_any_element()
+}
+
+/// A small rounded tag for one setting.
+fn pill(theme: &Theme, text: String) -> AnyElement {
+    div()
+        .flex_shrink_0()
+        .px_2()
+        .h(px(20.0))
+        .flex()
+        .items_center()
+        .rounded_full()
+        .bg(theme.background)
+        .border_1()
+        .border_color(theme.border)
+        .text_xs()
+        .text_color(theme.text_muted)
+        .child(text)
+        .into_any_element()
 }
 
 // --- UI helpers ---------------------------------------------------------------
@@ -929,25 +1088,59 @@ fn option_row<T: Copy + PartialEq + 'static>(
     label: impl Fn(T) -> String,
     apply: fn(&mut ExportOptions, T),
 ) -> AnyElement {
+    let theme = *theme;
     div()
         .flex()
         .flex_row()
         .flex_wrap()
         .gap_1()
+        .p_1()
+        .rounded_lg()
+        .bg(theme.background)
+        .border_1()
+        .border_color(theme.border_subtle)
         .children(values.iter().enumerate().map(|(i, &value)| {
             let entity = entity.clone();
-            rustyedit_ui::chrome_button(
-                SharedString::from(format!("{id}-{i}")),
-                label(value),
-                value == current,
-                theme,
-                move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
+            let selected = value == current;
+            div()
+                .id(SharedString::from(format!("{id}-{i}")))
+                .flex()
+                .items_center()
+                .justify_center()
+                .h(px(24.0))
+                .px_2p5()
+                .rounded_md()
+                .text_xs()
+                .cursor_pointer()
+                .border_1()
+                .when(selected, |el| {
+                    el.bg(theme.accent_muted)
+                        .border_color(theme.accent)
+                        .text_color(theme.text)
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                })
+                .when(!selected, |el| {
+                    el.border_color(theme.background)
+                        .text_color(theme.text_muted)
+                        .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                })
+                .child(label(value))
+                .on_click(move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
                     entity.update(cx, |this, cx| this.update_export(cx, |o| apply(o, value)));
-                },
-            )
-            .into_any_element()
+                })
+                .into_any_element()
         }))
         .into_any_element()
+}
+
+/// A titled group in the left panel, built from the same section header the
+/// other modules use so the panels match.
+fn export_section(
+    theme: &Theme,
+    title: &'static str,
+    children: Vec<AnyElement>,
+) -> impl IntoElement {
+    rustyedit_ui::section(theme, title, children)
 }
 
 fn toggle_row(
@@ -985,66 +1178,45 @@ fn labelled(theme: &Theme, label: &'static str, control: AnyElement) -> AnyEleme
         .into_any_element()
 }
 
-/// A small caption over a value.
-fn stat(theme: &Theme, label: &'static str, value: String) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .min_w(px(0.0))
-        .child(div().text_xs().text_color(theme.text_faint).child(label))
-        .child(
-            div()
-                .overflow_hidden()
-                .text_sm()
-                .text_color(theme.text)
-                .child(value),
-        )
-        .into_any_element()
-}
-
-fn counter(theme: &Theme, label: &'static str, value: usize, colour: gpui::Hsla) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .child(div().text_xs().text_color(theme.text_faint).child(label))
-        .child(
-            div()
-                .text_sm()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(if value > 0 { colour } else { theme.text_muted })
-                .child(value.to_string()),
-        )
-        .into_any_element()
-}
-
 /// The photos as a wrapping grid of tiles. With `statuses`, each tile shows
 /// its export state: dimmed while waiting, a sweeping shimmer while working,
 /// a green tick when done, a red cross (and the reason) when it failed.
-fn tile_grid(theme: &Theme, tiles: &[Tile], statuses: Option<&[ItemStatus]>) -> AnyElement {
+fn tile_grid(
+    theme: &Theme,
+    tiles: &[Tile],
+    statuses: Option<&[ItemStatus]>,
+    tile_w: f32,
+    offset: usize,
+    remove: Option<&Entity<Workspace>>,
+) -> AnyElement {
     div()
         .flex()
         .flex_row()
         .flex_wrap()
-        .justify_center()
-        .gap_4()
-        .p_4()
-        .rounded_xl()
-        .bg(theme.surface)
-        .border_1()
-        .border_color(theme.border_subtle)
-        .children(
-            tiles
-                .iter()
-                .enumerate()
-                .take(MAX_TILES)
-                .map(|(i, tile)| tile_view(theme, i, tile, statuses.and_then(|s| s.get(i)))),
-        )
+        .gap(px(TILE_GAP))
+        .children(tiles.iter().enumerate().take(MAX_TILES).map(|(i, tile)| {
+            tile_view(
+                theme,
+                offset + i,
+                tile,
+                statuses.and_then(|s| s.get(i)),
+                tile_w,
+                remove,
+            )
+        }))
         .into_any_element()
 }
 
-fn tile_view(theme: &Theme, ix: usize, tile: &Tile, status: Option<&ItemStatus>) -> AnyElement {
-    const W: f32 = 148.0;
-    const H: f32 = 111.0;
+fn tile_view(
+    theme: &Theme,
+    ix: usize,
+    tile: &Tile,
+    status: Option<&ItemStatus>,
+    tile_w: f32,
+    remove: Option<&Entity<Workspace>>,
+) -> AnyElement {
+    let w = tile_w;
+    let h = (tile_w * 0.75).floor();
 
     let border = match status {
         Some(ItemStatus::Done(_)) => theme.pick,
@@ -1068,10 +1240,10 @@ fn tile_view(theme: &Theme, ix: usize, tile: &Tile, status: Option<&ItemStatus>)
         .id(("export-tile", ix))
         .relative()
         .overflow_hidden()
-        .w(px(W))
-        .h(px(H))
+        .w(px(w))
+        .h(px(h))
         .rounded_lg()
-        .bg(theme.surface)
+        .bg(theme.background)
         .border_2()
         .border_color(border)
         .hover(|el| el.border_color(theme.text_muted))
@@ -1137,6 +1309,40 @@ fn tile_view(theme: &Theme, ix: usize, tile: &Tile, status: Option<&ItemStatus>)
         _ => {}
     }
 
+    // Before an export starts, a hovered tile offers to leave the queue.
+    let group = SharedString::from(format!("export-tile-group-{ix}"));
+    if let Some(entity) = remove {
+        let entity = entity.clone();
+        let id = tile.id;
+        let hover_group = group.clone();
+        frame = frame.child(
+            div()
+                .id(("export-tile-remove", ix))
+                .absolute()
+                .top(px(4.0))
+                .left(px(4.0))
+                .size(px(22.0))
+                .rounded_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .bg(hsla(0.0, 0.0, 0.0, 0.72))
+                .text_color(gpui::white())
+                .text_size(px(12.0))
+                .opacity(0.0)
+                .group_hover(hover_group, |el| el.opacity(1.0))
+                .hover(|el| el.bg(theme.danger))
+                .child("\u{2715}")
+                .on_click(move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
+                    entity.update(cx, |this, cx| {
+                        this.export_excluded.insert(id);
+                        cx.notify();
+                    });
+                }),
+        );
+    }
+
     let caption = match status {
         Some(ItemStatus::Failed(reason)) => div()
             .text_xs()
@@ -1159,10 +1365,11 @@ fn tile_view(theme: &Theme, ix: usize, tile: &Tile, status: Option<&ItemStatus>)
     };
 
     div()
+        .group(group)
         .flex()
         .flex_col()
         .gap_1()
-        .w(px(W))
+        .w(px(w))
         .child(frame)
         .child(
             div()
@@ -1189,6 +1396,7 @@ fn preview_tile(asset: &Asset, index: usize, options: &ExportOptions) -> Tile {
         format!("{w} \u{d7} {h}")
     };
     Tile {
+        id: asset.id,
         thumbnail: asset.thumbnail_path.clone(),
         name,
         dims,

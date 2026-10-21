@@ -199,7 +199,7 @@ impl Workspace {
                 film_frame(
                     asset_ix,
                     &self.catalog.assets[asset_ix],
-                    asset_ix == selected,
+                    asset_ix == selected || self.in_selection(asset_ix),
                     &theme,
                     &look,
                     prefs,
@@ -212,8 +212,11 @@ impl Workspace {
                     gpui::MouseButton::Right,
                     Self::right_click_listener(entity.clone(), asset_ix),
                 )
-                .on_click(move |_, _window, cx| {
-                    entity.update(cx, |this, cx| this.select_asset(asset_ix, cx));
+                .on_click(move |event: &gpui::ClickEvent, _window, cx| {
+                    // Shift-click selects a range, ⌘-click toggles one.
+                    entity.update(cx, |this, cx| {
+                        this.click_select(asset_ix, event.modifiers(), cx)
+                    });
                 })
                 .into_any_element()
             })

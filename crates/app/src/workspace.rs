@@ -150,6 +150,8 @@ pub struct Workspace {
     // Export module state (see `export.rs`).
     pub(crate) export_options: ExportOptions,
     pub(crate) export_run: Option<crate::export::ExportRun>,
+    /// Photos (by id) the user took out of the export queue.
+    pub(crate) export_excluded: HashSet<u64>,
     pub(crate) export_message: Option<SharedString>,
     /// Active tool on each side's icon rail (see `rail.rs`).
     pub(crate) left_rail_tool: Option<RailTool>,
@@ -278,6 +280,7 @@ impl Workspace {
             metadata_loading: HashSet::new(),
             export_options: ExportOptions::default(),
             export_run: None,
+            export_excluded: HashSet::new(),
             export_message: None,
             left_rail_tool: None,
             right_rail_tool: None,
@@ -901,7 +904,7 @@ impl Render for Workspace {
             .child(match self.mode {
                 Mode::Library => self.render_library(window, cx),
                 Mode::Develop => self.render_develop(window, cx),
-                Mode::Export => self.render_export(cx),
+                Mode::Export => self.render_export(window, cx),
             })
             .child(self.render_status_bar(cx))
             .child(self.wheel_zoom_hook(cx))
