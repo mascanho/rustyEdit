@@ -482,6 +482,104 @@ impl Workspace {
                 .into_any_element(),
             );
         }
+
+        // Colour grading for the layer: a tint per tonal range.
+        rows.push(
+            div()
+                .pt_2()
+                .text_size(px(10.0))
+                .font_weight(gpui::FontWeight::BOLD)
+                .text_color(theme.text_faint)
+                .child("COLOUR GRADING")
+                .into_any_element(),
+        );
+        for zone in rustyedit_core::ToneZone::ALL {
+            let grade = *gradient.adjust.grading.zone(zone);
+            let (entity_h, entity_s) = (cx.entity(), cx.entity());
+            rows.push(
+                div()
+                    .text_size(px(10.5))
+                    .text_color(theme.text_muted)
+                    .child(zone.label())
+                    .into_any_element(),
+            );
+            rows.push(
+                rustyedit_ui::labeled_slider(
+                    SharedString::from(format!("gradient-{index}-{}-hue", zone.label())),
+                    "Hue",
+                    grade.hue,
+                    SliderSpec {
+                        min: 0.0,
+                        max: 360.0,
+                        default: 0.0,
+                        signed: false,
+                        track: SliderTrack::Hue,
+                    },
+                    &theme,
+                    move |value, _w, cx| {
+                        entity_h.update(cx, |this, cx| {
+                            this.edit_gradient(index, "Gradient grading hue", cx, |g| {
+                                g.adjust.grading.zone_mut(zone).hue = value.clamp(0.0, 360.0)
+                            });
+                        });
+                    },
+                )
+                .into_any_element(),
+            );
+            rows.push(
+                rustyedit_ui::labeled_slider(
+                    SharedString::from(format!("gradient-{index}-{}-sat", zone.label())),
+                    "Saturation",
+                    grade.saturation,
+                    SliderSpec {
+                        min: 0.0,
+                        max: 100.0,
+                        default: 0.0,
+                        signed: false,
+                        track: SliderTrack::Gradient(
+                            gpui::hsla(0.0, 0.0, 0.5, 1.0),
+                            wheel(grade.hue, 0.8, 0.5),
+                        ),
+                    },
+                    &theme,
+                    move |value, _w, cx| {
+                        entity_s.update(cx, |this, cx| {
+                            this.edit_gradient(index, "Gradient grading saturation", cx, |g| {
+                                g.adjust.grading.zone_mut(zone).saturation =
+                                    value.clamp(0.0, 100.0)
+                            });
+                        });
+                    },
+                )
+                .into_any_element(),
+            );
+        }
+        {
+            let entity = cx.entity();
+            rows.push(
+                rustyedit_ui::labeled_slider(
+                    SharedString::from(format!("gradient-{index}-grade-balance")),
+                    "Balance",
+                    gradient.adjust.grading.balance,
+                    SliderSpec {
+                        min: -100.0,
+                        max: 100.0,
+                        default: 0.0,
+                        signed: true,
+                        track: SliderTrack::Accent,
+                    },
+                    &theme,
+                    move |value, _w, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.edit_gradient(index, "Gradient grading balance", cx, |g| {
+                                g.adjust.grading.balance = value.clamp(-100.0, 100.0)
+                            });
+                        });
+                    },
+                )
+                .into_any_element(),
+            );
+        }
         rows
     }
 
@@ -983,7 +1081,6 @@ fn local_track(prop: LocalProp) -> SliderTrack {
             SliderTrack::Gradient(wheel(215.0, 0.6, 0.55), wheel(48.0, 0.8, 0.55))
         }
         LocalProp::Tint => SliderTrack::Gradient(wheel(120.0, 0.5, 0.5), wheel(300.0, 0.5, 0.55)),
-        LocalProp::TintHue => SliderTrack::Hue,
         _ => SliderTrack::Accent,
     }
 }

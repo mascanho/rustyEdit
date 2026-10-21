@@ -203,7 +203,9 @@ impl Workspace {
             Some((tool, _)) => tool.label().to_string(),
             None => title,
         };
-        let takeover_tool = takeover.as_ref().map(|(tool, _)| *tool);
+        let presets_tab = takeover
+            .as_ref()
+            .is_some_and(|(tool, _)| *tool == rustyedit_core::RailTool::Presets);
         let taken_over = takeover.is_some();
         if let Some((_, content)) = takeover {
             children = content;
@@ -218,9 +220,7 @@ impl Workspace {
             });
         }
 
-        let extra_row = (takeover_tool == Some(rustyedit_core::RailTool::Presets))
-            .then(|| self.presets_footer_row(cx));
-        let footer = self.library_dock_footer(panels, extra_row, cx);
+        let footer = self.library_dock_footer(panels, cx);
         let (id, panel_side, collapsed) = match side {
             DockSide::Left => (
                 "library-dock-left",
@@ -253,7 +253,7 @@ impl Workspace {
                     }
                     cx.notify();
                 }),
-                None,
+                presets_tab.then(|| self.presets_pinned(cx)),
                 footer,
                 children,
             )

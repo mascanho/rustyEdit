@@ -17,31 +17,21 @@ impl Workspace {
     pub(crate) fn library_dock_footer(
         &self,
         panels: &[PanelKind],
-        extra_row: Option<Vec<AnyElement>>,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        // A tool's own row (Presets) goes above the dock's usual rows.
-        let rows: Vec<_> = extra_row
-            .into_iter()
-            .chain(panels.iter().map(|panel| match panel {
+        let rows: Vec<_> = panels
+            .iter()
+            .map(|panel| match panel {
                 PanelKind::Navigator => self.import_export_row(cx),
                 PanelKind::Inspector => self.copy_paste_row(cx),
-            }))
+            })
             .collect();
         (!rows.is_empty()).then(|| rustyedit_ui::panel_footer(&self.theme, rows))
     }
 
     /// The footer of Develop's tools column.
-    pub(crate) fn develop_tools_footer(
-        &self,
-        extra_row: Option<Vec<AnyElement>>,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let rows = extra_row
-            .into_iter()
-            .chain([self.copy_paste_row(cx)])
-            .collect();
-        rustyedit_ui::panel_footer(&self.theme, rows)
+    pub(crate) fn develop_tools_footer(&self, cx: &mut Context<Self>) -> AnyElement {
+        rustyedit_ui::panel_footer(&self.theme, vec![self.copy_paste_row(cx)])
     }
 
     /// The footer of Develop's editing panel; with the tools stacked in the

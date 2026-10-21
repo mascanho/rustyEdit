@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{retouch::to_display, DevelopSettings};
+use crate::{grading::ColorGrading, retouch::to_display, DevelopSettings};
 
 /// Most gradients a photo can have.
 pub const MAX_GRADIENTS: usize = 8;
@@ -46,14 +46,10 @@ pub enum LocalProp {
     Dehaze,
     Clarity,
     Sharpening,
-    /// How strongly the layer tints its area (0..=100).
-    TintAmount,
-    /// The tint's hue (0..=360 degrees).
-    TintHue,
 }
 
 impl LocalProp {
-    pub const ALL: [LocalProp; 12] = [
+    pub const ALL: [LocalProp; 10] = [
         LocalProp::Exposure,
         LocalProp::Contrast,
         LocalProp::Highlights,
@@ -64,17 +60,11 @@ impl LocalProp {
         LocalProp::Dehaze,
         LocalProp::Clarity,
         LocalProp::Sharpening,
-        LocalProp::TintAmount,
-        LocalProp::TintHue,
     ];
 
     /// The `(min, max)` the slider spans.
     pub fn range(&self) -> (f32, f32) {
-        match self {
-            LocalProp::TintAmount => (0.0, 100.0),
-            LocalProp::TintHue => (0.0, 360.0),
-            _ => (-100.0, 100.0),
-        }
+        (-100.0, 100.0)
     }
 
     pub fn label(&self) -> &'static str {
@@ -89,13 +79,11 @@ impl LocalProp {
             LocalProp::Dehaze => "Dehaze",
             LocalProp::Clarity => "Clarity",
             LocalProp::Sharpening => "Sharpening",
-            LocalProp::TintAmount => "Colour tint",
-            LocalProp::TintHue => "Tint hue",
         }
     }
 }
 
-/// Each -100..=100 (the tint 0..=360 / 0..=100), 0 meaning no change.
+/// Each -100..=100, 0 meaning no change; plus the layer's colour grading.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LocalAdjust {
@@ -110,10 +98,9 @@ pub struct LocalAdjust {
     pub clarity: f32,
     /// Local sharpening; negative values soften.
     pub sharpening: f32,
-    /// 0..=100: how strongly the layer tints its area.
-    pub tint_amount: f32,
-    /// 0..=360: the colour of that tint.
-    pub tint_hue: f32,
+    /// Colour grading of the layer's area: a tint for the shadows,
+    /// midtones and highlights.
+    pub grading: ColorGrading,
 }
 
 impl LocalAdjust {
@@ -129,8 +116,6 @@ impl LocalAdjust {
             LocalProp::Dehaze => self.dehaze,
             LocalProp::Clarity => self.clarity,
             LocalProp::Sharpening => self.sharpening,
-            LocalProp::TintAmount => self.tint_amount,
-            LocalProp::TintHue => self.tint_hue,
         }
     }
 
@@ -148,17 +133,17 @@ impl LocalAdjust {
             LocalProp::Dehaze => self.dehaze = v,
             LocalProp::Clarity => self.clarity = v,
             LocalProp::Sharpening => self.sharpening = v,
-            LocalProp::TintAmount => self.tint_amount = v,
-            LocalProp::TintHue => self.tint_hue = v,
         }
     }
 
-    /// Whether the layer changes nothing. The tint's hue alone does not.
+    /// Whether the layer changes nothing. A grading hue with no saturation
+    /// does not.
     pub fn is_neutral(&self) -> bool {
-        Self {
-            tint_hue: 0.0,
-            ..*self
-        } == Self::default()
+        let mut plain = *self;
+        if !plain.grading.is_active() {
+            plain.grading = ColorGrading::default();
+        }
+        plain == Self::default()
     }
 }
 
@@ -417,6 +402,15 @@ mod tests {
         assert_eq!(layers.as_slice()[1], layers.as_slice()[0]);
         while layers.duplicate(0).is_some() {}
         assert_eq!(layers.len(), MAX_GRADIENTS);
+    }
+
+    #[test]
+    fn a_layer_with_only_a_grading_hue_is_neutral() {
+        let mut layer = Gradient::default();
+        layer.adjust.grading.shadows.hue = 200.0;
+        assert!(!layer.is_visible());
+        layer.adjust.grading.shadows.saturation = 30.0;
+        assert!(layer.is_visible());
     }
 
     #[test]

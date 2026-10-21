@@ -1,5 +1,5 @@
 //! The Presets rail tool: built-in and saved looks, searchable and
-//! filterable by category or favourites, applied at any strength to any
+//! applied at any strength to any
 //! mix of sections, with saving, updating, renaming, duplicating, reordering
 //! and importing / exporting of the user's own.
 
@@ -15,20 +15,8 @@ use rustyedit_ui::{SliderSpec, SliderTrack, Theme};
 use super::{tools::name_field, HistoryNote};
 use crate::workspace::{TextTarget, Workspace};
 
-/// Which presets the panel lists.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum PresetFilter {
-    #[default]
-    All,
-    Favorites,
-    BuiltIn,
-    Mine,
-    Category(usize),
-}
-
 /// View state of the Presets panel.
 pub(crate) struct PresetUi {
-    pub(crate) filter: PresetFilter,
     /// 0-100: how strongly a clicked preset is applied.
     pub(crate) amount: f32,
     /// Bit per [`DevelopSection::LOOK`] entry: which parts of a look are
@@ -36,7 +24,6 @@ pub(crate) struct PresetUi {
     pub(crate) scope: u16,
     /// Category a newly saved preset is filed under.
     pub(crate) new_category: usize,
-    pub(crate) search: String,
     /// The saved preset being renamed.
     pub(crate) renaming: Option<usize>,
     /// List alphabetically instead of in saved order.
@@ -51,11 +38,9 @@ pub(crate) struct PresetUi {
 impl Default for PresetUi {
     fn default() -> Self {
         Self {
-            filter: PresetFilter::All,
             amount: 100.0,
             scope: (1 << DevelopSection::LOOK.len()) - 1,
             new_category: PRESET_CATEGORIES.len() - 1,
-            search: String::new(),
             renaming: None,
             sort_az: false,
             popup_open: false,
@@ -96,205 +81,204 @@ const SCOPE_LABELS: [&str; 7] = [
 ];
 
 impl Workspace {
-    pub(crate) fn presets_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    /// The Presets tab's pinned controls, which stay put while the list
+    /// scrolls: save the current look (the main action), then icon buttons
+    /// for Fujifilm recipe, import, export, reset and options, and the
+    /// strength slider.
+    pub(crate) fn presets_pinned(&self, cx: &mut Context<Self>) -> AnyElement {
+        use rustyedit_ui::Icon;
         let theme = self.theme;
         let ui = &self.develop_ui.preset_ui;
-        let store = &self.develop_ui.presets;
-        let current = self.catalog.selected_asset().map(|a| a.develop);
-        let query = self
-            .draft_for(TextTarget::PresetSearch)
-            .unwrap_or(&ui.search)
-            .to_lowercase();
+        let has_photo = self.catalog.selected_asset().is_some();
+        let popup_open = ui.popup_open;
 
-        // Everything, with favourites resolved.
-        let mut entries: Vec<(Entry, bool)> = builtin_presets()
-            .into_iter()
-            .map(|p| {
-                let fav = store.is_builtin_favorite(&p.name);
-                (Entry::BuiltIn(p), fav)
-            })
-            .chain(store.user.iter().cloned().enumerate().map(|(i, p)| {
-                let fav = p.favorite;
-                (Entry::Saved(i, p), fav)
-            }))
-            .collect();
-        let total = entries.len();
-        entries.retain(|(entry, fav)| {
-            let p = entry.preset();
-            let matches_filter = match ui.filter {
-                PresetFilter::All => true,
-                PresetFilter::Favorites => *fav,
-                PresetFilter::BuiltIn => matches!(entry, Entry::BuiltIn(_)),
-                PresetFilter::Mine => matches!(entry, Entry::Saved(..)),
-                PresetFilter::Category(i) => PRESET_CATEGORIES
-                    .get(i)
-                    .is_some_and(|c| *c == p.category_label()),
-            };
-            matches_filter
-                && (query.is_empty()
-                    || p.name.to_lowercase().contains(&query)
-                    || p.category_label().to_lowercase().contains(&query))
-        });
-        let shown = entries.len();
-        if ui.sort_az {
-            entries.sort_by_key(|(e, _)| e.preset().name.to_lowercase());
-        }
-
-        let mut out: Vec<AnyElement> = Vec::new();
-        let mut popup: Vec<AnyElement> = Vec::new();
-
-        // Search
-        let editing = self.draft_for(TextTarget::PresetSearch);
-        let shown_query = editing.unwrap_or(&ui.search).to_string();
-        popup.push(
-            div()
-                .id("preset-search")
+        // The main action: save the photo's look as a preset.
+        let save = match self.draft_for(TextTarget::PresetName) {
+            Some(draft) => div()
+                .flex_1()
+                .min_w(px(0.0))
+                .child(name_field(&theme, draft, "Preset name, then \u{23CE}"))
+                .into_any_element(),
+            None => div()
+                .id("preset-save")
+                .flex_1()
+                .min_w(px(0.0))
                 .flex()
                 .flex_row()
                 .items_center()
+                .justify_center()
+                .gap_1p5()
                 .h(px(28.0))
-                .px_2()
-                .bg(theme.background)
                 .border_1()
-                .border_color(if editing.is_some() {
-                    theme.accent
-                } else {
-                    theme.border_subtle
+                .border_color(theme.accent)
+                .bg(theme.accent_muted)
+                .text_size(px(11.5))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(theme.text)
+                .when(has_photo, |el| {
+                    el.cursor_pointer()
+                        .hover(|el| el.bg(theme.accent.opacity(0.35)))
                 })
-                .text_sm()
-                .cursor_text()
-                .child(
-                    div()
-                        .flex_1()
-                        .text_color(if shown_query.is_empty() {
-                            theme.text_faint
-                        } else {
-                            theme.text
-                        })
-                        .child(if shown_query.is_empty() && editing.is_none() {
-                            "Search presets\u{2026}".to_string()
-                        } else {
-                            shown_query.clone()
-                        }),
-                )
-                .when(editing.is_some(), |el| {
-                    el.child(div().w(px(1.0)).h(px(14.0)).bg(theme.accent))
-                })
-                .when(!shown_query.is_empty(), |el| {
-                    el.child(
-                        div()
-                            .id("preset-search-clear")
-                            .ml_1()
-                            .px_1()
-                            .text_xs()
-                            .text_color(theme.text_muted)
-                            .cursor_pointer()
-                            .hover(|el| el.text_color(theme.text))
-                            .child("\u{2715}")
-                            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
-                                this.text_draft = None;
-                                this.develop_ui.preset_ui.search.clear();
-                                cx.stop_propagation();
-                                cx.notify();
-                            })),
-                    )
-                })
-                .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                    this.begin_text_draft(TextTarget::PresetSearch, window, cx)
+                .when(!has_photo, |el| el.opacity(0.45))
+                .tooltip(rustyedit_ui::tip(
+                    "Save the selected photo's look as a preset",
+                    &theme,
+                ))
+                .child(rustyedit_ui::icon(Icon::SaveLook, 15.0, theme.text))
+                .child("Save look")
+                .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                    if this.catalog.selected_asset().is_some() {
+                        this.begin_text_draft(TextTarget::PresetName, window, cx);
+                    }
                 }))
                 .into_any_element(),
-        );
-
-        // Filter chips
-        let mut chips: Vec<AnyElement> = Vec::new();
-        let mut chip = |id: String, label: String, active: bool, filter: PresetFilter| {
-            chips.push(
-                rustyedit_ui::chrome_button(
-                    SharedString::from(id),
-                    label,
-                    active,
-                    &theme,
-                    cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                        this.develop_ui.preset_ui.filter = filter;
-                        cx.notify();
-                    }),
-                )
-                .into_any_element(),
-            );
         };
-        let fav_count =
-            store.user.iter().filter(|p| p.favorite).count() + store.builtin_favorites.len();
-        chip(
-            "preset-f-all".into(),
-            "All".into(),
-            ui.filter == PresetFilter::All,
-            PresetFilter::All,
-        );
-        chip(
-            "preset-f-fav".into(),
-            format!("\u{2605} {fav_count}"),
-            ui.filter == PresetFilter::Favorites,
-            PresetFilter::Favorites,
-        );
-        chip(
-            "preset-f-builtin".into(),
-            "Built-in".into(),
-            ui.filter == PresetFilter::BuiltIn,
-            PresetFilter::BuiltIn,
-        );
-        chip(
-            "preset-f-mine".into(),
-            format!("Mine {}", store.user.len()),
-            ui.filter == PresetFilter::Mine,
-            PresetFilter::Mine,
-        );
-        for (i, name) in PRESET_CATEGORIES.iter().enumerate() {
-            chip(
-                format!("preset-f-cat-{i}"),
-                (*name).to_string(),
-                ui.filter == PresetFilter::Category(i),
-                PresetFilter::Category(i),
-            );
-        }
-        out.push(
+
+        // A square icon button with a tooltip.
+        let tool = |id: &'static str,
+                    icon: Icon,
+                    tip: &'static str,
+                    active: bool,
+                    enabled: bool,
+                    on_click: Box<dyn Fn(&mut Workspace, &mut Window, &mut Context<Workspace>)>,
+                    cx: &mut Context<Self>|
+         -> gpui::Stateful<gpui::Div> {
+            let entity = cx.entity();
             div()
+                .id(id)
                 .flex()
-                .flex_row()
-                .flex_wrap()
-                .gap_1()
-                .pt_2()
-                .children(chips)
-                .into_any_element(),
-        );
-
-        // Strength
-        let entity = cx.entity();
-        out.push(
-            div()
-                .pt_3()
-                .child(rustyedit_ui::labeled_slider(
-                    "preset-strength",
-                    "Strength",
-                    ui.amount,
-                    SliderSpec {
-                        min: 0.0,
-                        max: 100.0,
-                        default: 100.0,
-                        signed: false,
-                        track: SliderTrack::Accent,
-                    },
-                    &theme,
-                    move |value, _w: &mut Window, cx: &mut App| {
-                        entity.update(cx, |this, cx| {
-                            this.develop_ui.preset_ui.amount = value.clamp(0.0, 100.0);
-                            cx.notify();
-                        });
-                    },
+                .flex_shrink_0()
+                .items_center()
+                .justify_center()
+                .size(px(28.0))
+                .border_1()
+                .when(active, |el| {
+                    el.bg(theme.accent_muted).border_color(theme.accent)
+                })
+                .when(!active, |el| {
+                    el.bg(theme.background).border_color(theme.border_subtle)
+                })
+                .when(enabled, |el| {
+                    el.cursor_pointer()
+                        .hover(|el| el.bg(theme.surface_elevated).border_color(theme.border))
+                })
+                .when(!enabled, |el| el.opacity(0.4))
+                .tooltip(rustyedit_ui::tip(tip, &theme))
+                .child(rustyedit_ui::icon(
+                    icon,
+                    15.0,
+                    if active { theme.text } else { theme.text_muted },
                 ))
-                .into_any_element(),
+                .on_click(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                    if enabled {
+                        entity.update(cx, |this, cx| on_click(this, window, cx));
+                    }
+                })
+        };
+
+        let recipe = tool(
+            "preset-fuji-recipe",
+            Icon::Film,
+            "Fujifilm recipe\u{2026}",
+            false,
+            true,
+            Box::new(|this, _, cx| this.open_recipe_modal(cx)),
+            cx,
+        );
+        let import = tool(
+            "preset-import",
+            Icon::Download,
+            "Import presets from a file",
+            false,
+            true,
+            Box::new(|this, _, cx| this.import_presets(cx)),
+            cx,
+        );
+        let export = tool(
+            "preset-export",
+            Icon::Upload,
+            "Export your presets to a file",
+            false,
+            true,
+            Box::new(|this, _, cx| this.export_presets(cx)),
+            cx,
+        );
+        let reset = tool(
+            "preset-neutral",
+            Icon::Reset,
+            "Reset look: clear the tone, colour and detail edits of the selected photos",
+            false,
+            has_photo,
+            Box::new(|this, _, cx| {
+                this.apply_neutral_look(&DevelopSettings::default(), "Reset look", cx)
+            }),
+            cx,
+        );
+        let options = tool(
+            "preset-popup-button",
+            Icon::Adjust,
+            "Options: what a preset applies and saves, and the list order",
+            popup_open,
+            true,
+            Box::new(|this, _, cx| {
+                let ui = &mut this.develop_ui.preset_ui;
+                ui.popup_open = !ui.popup_open;
+                cx.notify();
+            }),
+            cx,
         );
 
-        // Which parts of a look to apply / save
+        // Strength: how strongly a clicked preset is applied.
+        let entity = cx.entity();
+        let strength = rustyedit_ui::labeled_slider(
+            "preset-strength",
+            "Strength",
+            ui.amount,
+            SliderSpec {
+                min: 0.0,
+                max: 100.0,
+                default: 100.0,
+                signed: false,
+                track: SliderTrack::Accent,
+            },
+            &theme,
+            move |value, _w: &mut Window, cx: &mut App| {
+                entity.update(cx, |this, cx| {
+                    this.develop_ui.preset_ui.amount = value.clamp(0.0, 100.0);
+                    cx.notify();
+                });
+            },
+        );
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .px_1()
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_1()
+                    .child(save)
+                    .child(recipe)
+                    .child(import)
+                    .child(export)
+                    .child(reset)
+                    .child(div().relative().child(options).when(popup_open, |el| {
+                        el.child(deferred(self.presets_options_popup(cx)).with_priority(1))
+                    })),
+            )
+            .child(strength)
+            .into_any_element()
+    }
+
+    /// The Options pop-up: which parts of a look presets apply and save,
+    /// the category new presets are filed under, and the list order.
+    fn presets_options_popup(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let ui = &self.develop_ui.preset_ui;
         let scope_chips: Vec<AnyElement> = SCOPE_LABELS
             .iter()
             .enumerate()
@@ -312,200 +296,11 @@ impl Workspace {
                 .into_any_element()
             })
             .collect();
-        let scope_block = Some(
-            div()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .pt_2()
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .justify_between()
-                        .items_center()
-                        .child(small_caption(&theme, "APPLY & SAVE"))
-                        .child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .gap_1()
-                                .child(rustyedit_ui::chrome_button(
-                                    "preset-scope-all",
-                                    "All",
-                                    false,
-                                    &theme,
-                                    cx.listener(|this, _: &ClickEvent, _w, cx| {
-                                        this.develop_ui.preset_ui.scope =
-                                            (1 << DevelopSection::LOOK.len()) - 1;
-                                        cx.notify();
-                                    }),
-                                ))
-                                .child(rustyedit_ui::chrome_button(
-                                    "preset-scope-none",
-                                    "None",
-                                    false,
-                                    &theme,
-                                    cx.listener(|this, _: &ClickEvent, _w, cx| {
-                                        this.develop_ui.preset_ui.scope = 0;
-                                        cx.notify();
-                                    }),
-                                )),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .flex_wrap()
-                        .gap_1()
-                        .children(scope_chips),
-                )
-                .into_any_element(),
-        );
 
-        // Save the current look
-        let save = match self.draft_for(TextTarget::PresetName) {
-            Some(draft) => name_field(&theme, draft, "Preset name, then \u{23CE}"),
-            None => div()
-                .id("preset-save")
-                .flex()
-                .flex_row()
-                .items_center()
-                .justify_center()
-                .gap_1p5()
-                .h(px(28.0))
-                .border_1()
-                .border_color(theme.accent.opacity(0.5))
-                .bg(theme.accent.opacity(0.08))
-                .text_size(px(11.5))
-                .text_color(theme.accent)
-                .cursor_pointer()
-                .hover(|el| el.bg(theme.accent.opacity(0.16)).border_color(theme.accent))
-                .child(div().text_size(px(13.0)).child("+"))
-                .child("Save current look")
-                .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                    this.begin_text_draft(TextTarget::PresetName, window, cx);
-                }))
-                .into_any_element(),
-        };
-        out.push(
-            div()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .pt_3()
-                .child(save)
-                .child(div().child(rustyedit_ui::chrome_button(
-                    "preset-fuji-recipe",
-                    "Fujifilm recipe\u{2026}",
-                    false,
-                    &theme,
-                    cx.listener(|this, _: &ClickEvent, _w, cx| this.open_recipe_modal(cx)),
-                )))
-                .into_any_element(),
-        );
-
-        popup.extend(scope_block);
-        popup.push(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .justify_between()
-                .pt_2()
-                .child(small_caption(&theme, "SAVE NEW PRESETS IN"))
-                .child(rustyedit_ui::chrome_button(
-                    "preset-new-category",
-                    format!("{} \u{25B8}", PRESET_CATEGORIES[ui.new_category]),
-                    false,
-                    &theme,
-                    cx.listener(|this, _: &ClickEvent, _w, cx| {
-                        let ui = &mut this.develop_ui.preset_ui;
-                        ui.new_category = (ui.new_category + 1) % PRESET_CATEGORIES.len();
-                        cx.notify();
-                    }),
-                ))
-                .into_any_element(),
-        );
-
-        // Sort
-        popup.push(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .justify_between()
-                .pt_2()
-                .child(small_caption(&theme, "LIST ORDER"))
-                .child(rustyedit_ui::chrome_button(
-                    "preset-sort",
-                    if ui.sort_az {
-                        "A\u{2013}Z"
-                    } else {
-                        "Saved order"
-                    },
-                    false,
-                    &theme,
-                    cx.listener(|this, _: &ClickEvent, _w, cx| {
-                        let ui = &mut this.develop_ui.preset_ui;
-                        ui.sort_az = !ui.sort_az;
-                        cx.notify();
-                    }),
-                ))
-                .into_any_element(),
-        );
-
-        // Header: the title and count, and the button that opens the
-        // search & options pop-up.
-        let searching = !ui.search.is_empty();
-        let popup_open = ui.popup_open;
-        let popup_button = div()
-            .id("preset-popup-button")
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap_1()
-            .h(px(22.0))
-            .px_2()
-            .cursor_pointer()
-            .text_size(px(10.5))
-            .when(popup_open || searching, |el| {
-                el.bg(theme.accent_muted).text_color(theme.text)
-            })
-            .when(!(popup_open || searching), |el| {
-                el.bg(theme.surface_elevated)
-                    .text_color(theme.text_muted)
-                    .hover(|el| el.text_color(theme.text))
-            })
-            .child(rustyedit_ui::icon(
-                rustyedit_ui::Icon::Search,
-                12.0,
-                if popup_open || searching {
-                    theme.text
-                } else {
-                    theme.text_muted
-                },
-            ))
-            .child("Search & options")
-            .child(rustyedit_ui::icon(
-                rustyedit_ui::Icon::ChevronDown,
-                10.0,
-                theme.text_faint,
-            ))
-            .tooltip(rustyedit_ui::tip(
-                "Search presets, choose what to apply and save, list order",
-                &theme,
-            ))
-            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
-                let ui = &mut this.develop_ui.preset_ui;
-                ui.popup_open = !ui.popup_open;
-                cx.notify();
-            }));
-        let popup_el = div()
+        div()
             .id("preset-popup")
             .absolute()
-            .top(px(26.0))
+            .top(px(32.0))
             .right_0()
             .w(px(280.0))
             .flex()
@@ -522,46 +317,121 @@ impl Workspace {
                 this.develop_ui.preset_ui.popup_open = false;
                 cx.notify();
             }))
-            .child(small_caption(&theme, "SEARCH"))
-            .children(popup);
-        out.insert(
-            0,
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .justify_between()
-                .pt_3()
-                .pb_1()
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_baseline()
-                        .gap_2()
-                        .child(
-                            div()
-                                .text_size(px(10.0))
-                                .font_weight(gpui::FontWeight::BOLD)
-                                .text_color(theme.accent)
-                                .child("PRESETS"),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(10.0))
-                                .text_color(theme.text_faint)
-                                .child(if shown == total {
-                                    format!("{total}")
-                                } else {
-                                    format!("{shown} of {total}")
+            .child(small_caption(&theme, "OPTIONS"))
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .justify_between()
+                    .items_center()
+                    .pt_1()
+                    .child(small_caption(&theme, "APPLY & SAVE"))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .gap_1()
+                            .child(rustyedit_ui::chrome_button(
+                                "preset-scope-all",
+                                "All",
+                                false,
+                                &theme,
+                                cx.listener(|this, _: &ClickEvent, _w, cx| {
+                                    this.develop_ui.preset_ui.scope =
+                                        (1 << DevelopSection::LOOK.len()) - 1;
+                                    cx.notify();
                                 }),
-                        ),
-                )
-                .child(div().relative().child(popup_button).when(popup_open, |el| {
-                    el.child(deferred(popup_el).with_priority(1))
-                }))
-                .into_any_element(),
-        );
+                            ))
+                            .child(rustyedit_ui::chrome_button(
+                                "preset-scope-none",
+                                "None",
+                                false,
+                                &theme,
+                                cx.listener(|this, _: &ClickEvent, _w, cx| {
+                                    this.develop_ui.preset_ui.scope = 0;
+                                    cx.notify();
+                                }),
+                            )),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .flex_wrap()
+                    .gap_1()
+                    .children(scope_chips),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .pt_2()
+                    .child(small_caption(&theme, "SAVE NEW PRESETS IN"))
+                    .child(rustyedit_ui::chrome_button(
+                        "preset-new-category",
+                        format!("{} \u{25B8}", PRESET_CATEGORIES[ui.new_category]),
+                        false,
+                        &theme,
+                        cx.listener(|this, _: &ClickEvent, _w, cx| {
+                            let ui = &mut this.develop_ui.preset_ui;
+                            ui.new_category = (ui.new_category + 1) % PRESET_CATEGORIES.len();
+                            cx.notify();
+                        }),
+                    )),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .pt_2()
+                    .child(small_caption(&theme, "LIST ORDER"))
+                    .child(rustyedit_ui::chrome_button(
+                        "preset-sort",
+                        if ui.sort_az {
+                            "A\u{2013}Z"
+                        } else {
+                            "Saved order"
+                        },
+                        false,
+                        &theme,
+                        cx.listener(|this, _: &ClickEvent, _w, cx| {
+                            let ui = &mut this.develop_ui.preset_ui;
+                            ui.sort_az = !ui.sort_az;
+                            cx.notify();
+                        }),
+                    )),
+            )
+            .into_any_element()
+    }
+
+    pub(crate) fn presets_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let theme = self.theme;
+        let ui = &self.develop_ui.preset_ui;
+        let store = &self.develop_ui.presets;
+        let current = self.catalog.selected_asset().map(|a| a.develop);
+
+        // Everything, with favourites resolved.
+        let mut entries: Vec<(Entry, bool)> = builtin_presets()
+            .into_iter()
+            .map(|p| {
+                let fav = store.is_builtin_favorite(&p.name);
+                (Entry::BuiltIn(p), fav)
+            })
+            .chain(store.user.iter().cloned().enumerate().map(|(i, p)| {
+                let fav = p.favorite;
+                (Entry::Saved(i, p), fav)
+            }))
+            .collect();
+        if ui.sort_az {
+            entries.sort_by_key(|(e, _)| e.preset().name.to_lowercase());
+        }
+
+        let mut out: Vec<AnyElement> = Vec::new();
 
         if current.is_none() {
             out.push(
@@ -576,7 +446,7 @@ impl Workspace {
 
         // The list: favourites first when browsing everything, then by category.
         let mut groups: Vec<(String, Vec<(Entry, bool)>)> = Vec::new();
-        if ui.filter == PresetFilter::All {
+        {
             let favs: Vec<_> = entries.iter().filter(|(_, f)| *f).cloned().collect();
             if !favs.is_empty() {
                 groups.push(("\u{2605} Favorites".to_string(), favs));
@@ -598,11 +468,7 @@ impl Workspace {
                     .pt_3()
                     .text_size(px(11.0))
                     .text_color(theme.text_faint)
-                    .child(if ui.filter == PresetFilter::Favorites {
-                        "Star a preset to keep it here."
-                    } else {
-                        "No presets match."
-                    })
+                    .child("No presets.")
                     .into_any_element(),
             );
         }
@@ -683,41 +549,6 @@ impl Workspace {
             .px_3()
             .children(out)
             .into_any_element()]
-    }
-
-    /// The Presets tab's own footer row: Import, Export and Reset look. It
-    /// sits above the footer every dock already has.
-    pub(crate) fn presets_footer_row(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let theme = self.theme;
-        let has_photo = self.catalog.selected_asset().is_some();
-        vec![
-            rustyedit_ui::footer_button(
-                "preset-import",
-                "Import\u{2026}",
-                "Add presets from a file",
-                true,
-                &theme,
-                cx.listener(|this, _: &ClickEvent, _w, cx| this.import_presets(cx)),
-            ),
-            rustyedit_ui::footer_button(
-                "preset-export",
-                "Export\u{2026}",
-                "Save your presets to a file",
-                true,
-                &theme,
-                cx.listener(|this, _: &ClickEvent, _w, cx| this.export_presets(cx)),
-            ),
-            rustyedit_ui::footer_button(
-                "preset-neutral",
-                "Reset look",
-                "Clear the tone, colour and detail edits of the selected photos",
-                has_photo,
-                &theme,
-                cx.listener(|this, _: &ClickEvent, _w, cx| {
-                    this.apply_neutral_look(&DevelopSettings::default(), "Reset look", cx)
-                }),
-            ),
-        ]
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1018,7 +849,6 @@ impl Workspace {
             .develop_ui
             .presets
             .save_in(&name, category, &develop, &sections);
-        self.develop_ui.preset_ui.filter = PresetFilter::Mine;
         self.persist_presets(format!("Saved preset \u{201C}{name}\u{201D}"));
         cx.notify();
     }
@@ -1092,7 +922,6 @@ impl Workspace {
                 match result {
                     Ok(list) => {
                         let added = this.develop_ui.presets.import(list);
-                        this.develop_ui.preset_ui.filter = PresetFilter::Mine;
                         this.persist_presets(format!(
                             "Imported {added} preset{}",
                             if added == 1 { "" } else { "s" }

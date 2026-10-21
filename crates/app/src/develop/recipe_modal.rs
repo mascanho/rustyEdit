@@ -13,7 +13,7 @@ use rustyedit_core::{
 };
 use rustyedit_ui::Theme;
 
-use super::{presets::PresetFilter, tools::name_field};
+use super::tools::name_field;
 use crate::workspace::{TextTarget, Workspace};
 
 const MODAL_WIDTH: f32 = 860.0;
@@ -81,7 +81,6 @@ impl Workspace {
         };
         let preset = recipe.to_preset();
         self.develop_ui.presets.upsert(preset.clone());
-        self.develop_ui.preset_ui.filter = PresetFilter::Mine;
         self.persist_presets(format!("Added preset \u{201C}{}\u{201D}", preset.name));
         if apply {
             self.apply_preset_blend(&preset, 1.0, &DevelopSection::LOOK, cx);

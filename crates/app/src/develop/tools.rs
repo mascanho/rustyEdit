@@ -92,6 +92,20 @@ impl Workspace {
         };
         let navigator =
             (!collapsed).then(|| self.render_navigator(super::navigator::MAX_HEIGHT, cx));
+        // The Presets tab pins its controls under the Navigator.
+        let navigator = if !collapsed && self.active_rail_tool(side) == Some(RailTool::Presets) {
+            Some(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .children(navigator)
+                    .child(self.presets_pinned(cx))
+                    .into_any_element(),
+            )
+        } else {
+            navigator
+        };
         let dock = rustyedit_ui::collapsible_panel_pinned(
             "develop-tools",
             &self.theme,
@@ -108,11 +122,7 @@ impl Workspace {
                 cx.notify();
             }),
             navigator,
-            Some({
-                let extra_row = (self.active_rail_tool(side) == Some(RailTool::Presets))
-                    .then(|| self.presets_footer_row(cx));
-                self.develop_tools_footer(extra_row, cx)
-            }),
+            Some(self.develop_tools_footer(cx)),
             content,
         )
         .into_any_element();

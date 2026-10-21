@@ -494,11 +494,6 @@ impl Workspace {
                 }
             }
         }
-        if target == TextTarget::PresetSearch {
-            if let Some((_, text)) = &self.text_draft {
-                self.develop_ui.preset_ui.search = text.clone();
-            }
-        }
         if target == TextTarget::Search {
             if let Some((_, text)) = &self.text_draft {
                 let query = text.clone();
@@ -530,8 +525,6 @@ impl Workspace {
             TextTarget::RecipeName | TextTarget::RecipeIso | TextTarget::RecipeExposure => {
                 self.commit_recipe_text(target, text, cx)
             }
-            // Search filters live as you type; Enter just ends editing.
-            TextTarget::PresetSearch => {}
             TextTarget::SnapshotName => self.take_snapshot(text, cx),
             TextTarget::Title
             | TextTarget::Caption

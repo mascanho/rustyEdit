@@ -24,6 +24,14 @@ pub enum Icon {
     View,
     /// A 3x3 grid: composition guides.
     Grid,
+    /// An arrow down into a tray: import.
+    Download,
+    /// An arrow up out of a tray: export.
+    Upload,
+    /// A film frame: film recipes.
+    Film,
+    /// A bookmark with a plus: save the current look.
+    SaveLook,
     /// A photo split in two: before / after.
     BeforeAfter,
     /// Stacked cards: saved looks.
@@ -214,6 +222,30 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
             pen.line(&[(8.0, 1.5), (8.0, 14.5)]);
             // The "after" half is filled in.
             pen.solid(&[(8.0, 3.0), (14.0, 3.0), (14.0, 13.0), (8.0, 13.0)]);
+        }
+        Icon::Download => {
+            pen.line(&[(8.0, 2.0), (8.0, 10.0)]);
+            pen.line(&[(4.5, 6.8), (8.0, 10.2), (11.5, 6.8)]);
+            pen.line(&[(2.5, 10.5), (2.5, 13.5), (13.5, 13.5), (13.5, 10.5)]);
+        }
+        Icon::Upload => {
+            pen.line(&[(8.0, 10.0), (8.0, 2.0)]);
+            pen.line(&[(4.5, 5.2), (8.0, 1.8), (11.5, 5.2)]);
+            pen.line(&[(2.5, 10.5), (2.5, 13.5), (13.5, 13.5), (13.5, 10.5)]);
+        }
+        Icon::Film => {
+            pen.shape(&[(2.0, 3.0), (14.0, 3.0), (14.0, 13.0), (2.0, 13.0)]);
+            pen.line(&[(5.0, 3.0), (5.0, 13.0)]);
+            pen.line(&[(11.0, 3.0), (11.0, 13.0)]);
+            for y in [5.5, 8.0, 10.5] {
+                pen.dot(3.5, y, 0.7);
+                pen.dot(12.5, y, 0.7);
+            }
+        }
+        Icon::SaveLook => {
+            pen.shape(&[(4.0, 2.0), (12.0, 2.0), (12.0, 14.0), (8.0, 11.0), (4.0, 14.0)]);
+            pen.line(&[(8.0, 4.0), (8.0, 8.0)]);
+            pen.line(&[(6.0, 6.0), (10.0, 6.0)]);
         }
         Icon::Grid => {
             pen.shape(&[(2.0, 2.0), (14.0, 2.0), (14.0, 14.0), (2.0, 14.0)]);

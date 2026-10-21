@@ -57,8 +57,6 @@ pub enum TextTarget {
     Rename,
     /// Naming a new Develop preset from the current look.
     PresetName,
-    /// Live: every keystroke filters the Presets panel.
-    PresetSearch,
     /// Renaming a saved preset.
     PresetRename,
     /// Fujifilm recipe modal text fields.

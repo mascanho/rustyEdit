@@ -4,7 +4,7 @@
 use image::{imageops, RgbImage};
 use rustyedit_core::{DevelopSettings, Gradient, LocalAdjust};
 
-use super::{effects::Dehaze, luma};
+use super::{effects::Dehaze, grading::Grading, luma};
 
 pub(crate) struct LocalAdjustments {
     /// Gradients as drawn on the rendered (rotated) image.
@@ -15,6 +15,8 @@ pub(crate) struct LocalAdjustments {
     /// sharpening); only made when some layer uses them.
     wide: Option<RgbImage>,
     narrow: Option<RgbImage>,
+    /// Each layer's colour grading, in the same order as `gradients`.
+    gradings: Vec<Option<Grading>>,
 }
 
 impl LocalAdjustments {
@@ -42,18 +44,23 @@ impl LocalAdjustments {
             .iter()
             .any(|g| g.adjust.sharpening != 0.0)
             .then(|| imageops::blur(image, (1.2 * scale).max(0.8)));
+        let gradings = gradients
+            .iter()
+            .map(|g| Grading::new(&g.adjust.grading))
+            .collect();
         Some(Self {
             gradients,
             width: width as f32,
             height: height as f32,
             wide,
             narrow,
+            gradings,
         })
     }
 
     pub(crate) fn apply(&self, mut rgb: [f32; 3], x: u32, y: u32) -> [f32; 3] {
         let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
-        for gradient in &self.gradients {
+        for (gradient, grading) in self.gradients.iter().zip(&self.gradings) {
             let mask = gradient.mask_at(px, py, self.width, self.height);
             if mask > 0.001 {
                 let blur = |image: &Option<RgbImage>| {
@@ -73,6 +80,7 @@ impl LocalAdjustments {
                     mask,
                     blur(&self.wide),
                     blur(&self.narrow),
+                    grading.as_ref(),
                 );
             }
         }
@@ -88,6 +96,7 @@ fn adjust(
     strength: f32,
     wide_blur: Option<[f32; 3]>,
     narrow_blur: Option<[f32; 3]>,
+    grading: Option<&Grading>,
 ) -> [f32; 3] {
     let amount = |value: f32| value / 100.0 * strength;
     let mut c = rgb;
@@ -134,30 +143,14 @@ fn adjust(
             c[i] += (c[i] - blur[i]) * k;
         }
     }
-    // A colour tint that keeps the brightness.
-    if adjust.tint_amount > 0.0 {
-        let tint = hue_rgb(adjust.tint_hue);
-        let l = luma(tint);
-        let k = adjust.tint_amount / 100.0 * 0.4 * strength;
+    // Colour grading, faded in with the mask.
+    if let Some(grading) = grading {
+        let graded = grading.apply(c.map(|v| v.clamp(0.0, 1.0)));
         for i in 0..3 {
-            c[i] += (tint[i] - l) * k;
+            c[i] += (graded[i] - c[i]) * strength;
         }
     }
     c
-}
-
-/// A fully saturated colour of `hue` degrees.
-fn hue_rgb(hue: f32) -> [f32; 3] {
-    let h = hue.rem_euclid(360.0) / 60.0;
-    let x = 1.0 - (h % 2.0 - 1.0).abs();
-    match h as u32 {
-        0 => [1.0, x, 0.0],
-        1 => [x, 1.0, 0.0],
-        2 => [0.0, 1.0, x],
-        3 => [0.0, x, 1.0],
-        4 => [x, 0.0, 1.0],
-        _ => [1.0, 0.0, x],
-    }
 }
 
 #[cfg(test)]
@@ -185,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn a_layer_can_add_local_clarity_sharpening_and_a_tint() {
+    fn a_layer_can_add_local_clarity_sharpening_and_grading() {
         let image = RgbImage::from_pixel(64, 64, image::Rgb([128, 128, 128]));
         let mut settings = DevelopSettings::default();
         settings.gradients.push(Gradient {
@@ -196,8 +189,12 @@ mod tests {
             adjust: LocalAdjust {
                 clarity: 100.0,
                 sharpening: 100.0,
-                tint_amount: 100.0,
-                tint_hue: 0.0,
+                grading: {
+                    let mut grading = rustyedit_core::ColorGrading::default();
+                    grading.midtones.hue = 0.0;
+                    grading.midtones.saturation = 100.0;
+                    grading
+                },
                 ..Default::default()
             },
             ..Default::default()
@@ -214,7 +211,7 @@ mod tests {
             &image,
         )
         .unwrap();
-        // ...and a red tint raises red relative to blue.
+        // ...and a red midtone grade raises red relative to blue.
         assert!(bright[0] - bright[2] > flat.apply([0.5; 3], 32, 32)[0] - 0.5);
         let tinted = flat.apply([0.5; 3], 32, 32);
         assert!(tinted[0] > tinted[2]);
