@@ -6,7 +6,9 @@ use gpui::{
     canvas, div, point, prelude::*, px, AnyElement, Bounds, ClickEvent, Context, Hsla, MouseButton,
     MouseDownEvent, PathBuilder, Pixels, Point, Window,
 };
-use rustyedit_core::{CurveChannel, HistogramChannel, ToneCurve, ToneCurves};
+use rustyedit_core::{
+    Adjustment, CurveChannel, CurvePreset, HistogramChannel, ParametricCurve, ToneCurve, ToneCurves,
+};
 use rustyedit_ui::Theme;
 
 use super::adjustments::wheel;
@@ -28,22 +30,158 @@ impl Workspace {
         let channel = self.develop_ui.curve_channel;
         let side = (self.settings.layout.inspector_width as f32 - PANEL_PADDING).min(MAX_SIDE);
 
-        vec![div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .py_1()
-            .child(self.curve_toolbar(&develop.curves, channel, cx))
-            .child(self.curve_graph(develop.curves, channel, side, cx))
-            .child(
+        let mode_row = self.curve_mode_row(cx);
+        if self.develop_ui.curve_parametric {
+            let mut rows = vec![mode_row, self.parametric_graph(develop.parametric, side)];
+            rows.extend(self.adjustment_sliders(&Adjustment::PARAMETRIC, cx));
+            rows.push(
                 div()
                     .text_size(px(9.5))
                     .text_color(self.theme.text_faint)
-                    .child(
-                    "Click to add a point \u{00B7} drag to move \u{00B7} double-click to remove",
-                ),
-            )
-            .into_any_element()]
+                    .child("Lift or lower a band of tones. These apply before the point curve.")
+                    .into_any_element(),
+            );
+            return rows;
+        }
+
+        vec![
+            mode_row,
+            div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .py_1()
+                .child(self.curve_toolbar(&develop.curves, channel, cx))
+                .child(self.curve_graph(develop.curves, channel, side, cx))
+                .child(self.curve_presets(channel, cx))
+                .child(
+                    div()
+                        .text_size(px(9.5))
+                        .text_color(self.theme.text_faint)
+                        .child(
+                            "Click to add a point \u{00B7} drag to move \u{00B7} double-click to remove",
+                        ),
+                )
+                .into_any_element(),
+        ]
+    }
+
+    /// Point curve or parametric sliders.
+    fn curve_mode_row(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let parametric = self.develop_ui.curve_parametric;
+        let tab = |id: &'static str, label: &'static str, active: bool, to: bool| {
+            div()
+                .id(id)
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .h(px(22.0))
+                .cursor_pointer()
+                .text_size(px(10.5))
+                .when(active, |el| {
+                    el.bg(theme.accent_muted).text_color(theme.text)
+                })
+                .when(!active, |el| {
+                    el.text_color(theme.text_muted)
+                        .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                })
+                .child(label)
+                .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                    this.develop_ui.curve_parametric = to;
+                    this.develop_ui.curve_drag = None;
+                    cx.notify();
+                }))
+        };
+        div()
+            .flex()
+            .flex_row()
+            .gap_0p5()
+            .p_0p5()
+            .bg(theme.background)
+            .child(tab("curve-mode-point", "Point curve", !parametric, false))
+            .child(tab("curve-mode-parametric", "Parametric", parametric, true))
+            .into_any_element()
+    }
+
+    /// Ready-made shapes for the channel being edited.
+    fn curve_presets(&self, channel: CurveChannel, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .gap_1()
+            .children(CurvePreset::ALL.iter().map(|&preset| {
+                div()
+                    .id(("curve-preset", preset as usize))
+                    .flex()
+                    .items_center()
+                    .h(px(20.0))
+                    .px_1p5()
+                    .cursor_pointer()
+                    .border_1()
+                    .border_color(theme.border_subtle)
+                    .bg(theme.background)
+                    .text_size(px(10.0))
+                    .text_color(theme.text_muted)
+                    .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                    .child(preset.label())
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                        this.edit_curve(channel, cx, |curve| *curve = preset.curve());
+                    }))
+            }))
+            .into_any_element()
+    }
+
+    /// A read-only plot of the parametric curve with its four bands.
+    fn parametric_graph(&self, curve: ParametricCurve, side: f32) -> AnyElement {
+        let theme = self.theme;
+        let plot = canvas(
+            |_, _, _| {},
+            move |b, _, window, _| {
+                let (w, h) = (f32::from(b.size.width), f32::from(b.size.height));
+                // Band dividers at the quarter points.
+                for i in 1..4 {
+                    let x = b.origin.x + px(w * i as f32 / 4.0);
+                    let mut line = PathBuilder::stroke(px(1.0));
+                    line.move_to(point(x, b.origin.y));
+                    line.line_to(point(x, b.origin.y + px(h)));
+                    if let Ok(path) = line.build() {
+                        window.paint_path(path, theme.border_subtle);
+                    }
+                }
+                paint_curve(window, b, &ToneCurve::default(), theme.border, 1.0);
+                let at = |x: f32| {
+                    point(
+                        b.origin.x + px(x * w),
+                        b.origin.y + px((1.0 - curve.evaluate(x)) * h),
+                    )
+                };
+                let mut path = PathBuilder::stroke(px(1.75));
+                path.move_to(at(0.0));
+                for i in 1..=SAMPLES {
+                    path.line_to(at(i as f32 / SAMPLES as f32));
+                }
+                if let Ok(path) = path.build() {
+                    window.paint_path(path, theme.accent);
+                }
+            },
+        )
+        .absolute()
+        .size_full();
+
+        div()
+            .relative()
+            .w(px(side))
+            .h(px(side))
+            .mx_auto()
+            .bg(theme.background)
+            .border_1()
+            .border_color(theme.border_subtle)
+            .child(plot)
+            .into_any_element()
     }
 
     /// Channel tabs, and a reset for the channel shown when it's edited.

@@ -24,6 +24,7 @@ mod color_grading;
 mod color_mixer;
 mod crop;
 mod curve_editor;
+mod detail;
 mod gradients;
 mod grid_overlay;
 mod history;
@@ -80,6 +81,9 @@ pub(crate) struct DevelopUi {
     pub(crate) ba_menu_open: bool,
     /// The tone curve channel being edited.
     pub(crate) curve_channel: CurveChannel,
+    /// The Tone Curve section shows the parametric sliders instead of the
+    /// point editor.
+    pub(crate) curve_parametric: bool,
     /// Index of the curve point being dragged.
     pub(crate) curve_drag: Option<usize>,
     /// Where the curve graph was painted, for mapping the pointer onto it.
@@ -108,6 +112,7 @@ impl DevelopUi {
             grid_menu_open: false,
             ba_menu_open: false,
             curve_channel: CurveChannel::default(),
+            curve_parametric: false,
             curve_drag: None,
             curve_bounds: Rc::new(Cell::new(Bounds::default())),
             mixer_prop: MixerProp::default(),
@@ -235,10 +240,8 @@ impl Workspace {
             ),
             S::ColorMixer => ("develop-mixer", self.color_mixer_section(cx)),
             S::ColorGrading => ("develop-grading", self.color_grading_section(cx)),
-            S::Detail => (
-                "develop-detail",
-                self.adjustment_sliders(&Adjustment::DETAIL, cx),
-            ),
+            S::Detail => ("develop-detail", self.detail_section(cx)),
+            S::Lens => ("develop-lens", self.lens_section(cx)),
             S::Effects => (
                 "develop-effects",
                 self.adjustment_sliders(&Adjustment::EFFECTS, cx),

@@ -1,6 +1,7 @@
 //! Gradient masks: each gradient's local adjustments, scaled by how
 //! strongly its mask covers the pixel.
 
+use image::{imageops, RgbImage};
 use rustyedit_core::{DevelopSettings, Gradient, LocalAdjust};
 
 use super::{effects::Dehaze, luma};
@@ -10,24 +11,43 @@ pub(crate) struct LocalAdjustments {
     gradients: Vec<Gradient>,
     width: f32,
     height: f32,
+    /// The photo blurred wide (for local clarity) and narrow (for local
+    /// sharpening); only made when some layer uses them.
+    wide: Option<RgbImage>,
+    narrow: Option<RgbImage>,
 }
 
 impl LocalAdjustments {
     /// `None` when no gradient changes anything.
-    pub(crate) fn new(settings: &DevelopSettings, width: u32, height: u32) -> Option<Self> {
+    pub(crate) fn new(settings: &DevelopSettings, image: &RgbImage) -> Option<Self> {
         if !settings.gradients.is_active() {
             return None;
         }
+        let (width, height) = image.dimensions();
+        let gradients: Vec<Gradient> = settings
+            .gradients
+            .as_slice()
+            .iter()
+            .filter(|g| g.is_visible())
+            .map(|g| g.on_display(settings))
+            .collect();
+        // Blur radii follow the photo's size, so a layer looks the same on
+        // a preview as on the full-size export.
+        let scale = width.max(height) as f32 / 2048.0;
+        let wide = gradients
+            .iter()
+            .any(|g| g.adjust.clarity != 0.0)
+            .then(|| imageops::blur(image, (10.0 * scale).max(4.0)));
+        let narrow = gradients
+            .iter()
+            .any(|g| g.adjust.sharpening != 0.0)
+            .then(|| imageops::blur(image, (1.2 * scale).max(0.8)));
         Some(Self {
-            gradients: settings
-                .gradients
-                .as_slice()
-                .iter()
-                .filter(|g| g.is_visible())
-                .map(|g| g.on_display(settings))
-                .collect(),
+            gradients,
             width: width as f32,
             height: height as f32,
+            wide,
+            narrow,
         })
     }
 
@@ -36,7 +56,24 @@ impl LocalAdjustments {
         for gradient in &self.gradients {
             let mask = gradient.mask_at(px, py, self.width, self.height);
             if mask > 0.001 {
-                rgb = adjust(rgb, &gradient.adjust, mask);
+                let blur = |image: &Option<RgbImage>| {
+                    image.as_ref().map(|image| {
+                        let p =
+                            image.get_pixel(x.min(image.width() - 1), y.min(image.height() - 1));
+                        [
+                            p[0] as f32 / 255.0,
+                            p[1] as f32 / 255.0,
+                            p[2] as f32 / 255.0,
+                        ]
+                    })
+                };
+                rgb = adjust(
+                    rgb,
+                    &gradient.adjust,
+                    mask,
+                    blur(&self.wide),
+                    blur(&self.narrow),
+                );
             }
         }
         rgb
@@ -45,7 +82,13 @@ impl LocalAdjustments {
 
 /// `adjust` applied at `strength` (0..=1), using the same responses as the
 /// global sliders of the same names.
-fn adjust(rgb: [f32; 3], adjust: &LocalAdjust, strength: f32) -> [f32; 3] {
+fn adjust(
+    rgb: [f32; 3],
+    adjust: &LocalAdjust,
+    strength: f32,
+    wide_blur: Option<[f32; 3]>,
+    narrow_blur: Option<[f32; 3]>,
+) -> [f32; 3] {
     let amount = |value: f32| value / 100.0 * strength;
     let mut c = rgb;
 
@@ -77,7 +120,44 @@ fn adjust(rgb: [f32; 3], adjust: &LocalAdjust, strength: f32) -> [f32; 3] {
     if let Some(dehaze) = Dehaze::new(adjust.dehaze * strength) {
         c = dehaze.apply(c.map(|v| v.clamp(0.0, 1.0)));
     }
+    // Local contrast and sharpness: push the pixel away from (or, when
+    // negative, towards) a blurred copy of the photo.
+    if let (true, Some(blur)) = (adjust.clarity != 0.0, wide_blur) {
+        let k = amount(adjust.clarity) * 0.9;
+        for i in 0..3 {
+            c[i] += (c[i] - blur[i]) * k;
+        }
+    }
+    if let (true, Some(blur)) = (adjust.sharpening != 0.0, narrow_blur) {
+        let k = amount(adjust.sharpening) * 1.6;
+        for i in 0..3 {
+            c[i] += (c[i] - blur[i]) * k;
+        }
+    }
+    // A colour tint that keeps the brightness.
+    if adjust.tint_amount > 0.0 {
+        let tint = hue_rgb(adjust.tint_hue);
+        let l = luma(tint);
+        let k = adjust.tint_amount / 100.0 * 0.4 * strength;
+        for i in 0..3 {
+            c[i] += (tint[i] - l) * k;
+        }
+    }
     c
+}
+
+/// A fully saturated colour of `hue` degrees.
+fn hue_rgb(hue: f32) -> [f32; 3] {
+    let h = hue.rem_euclid(360.0) / 60.0;
+    let x = 1.0 - (h % 2.0 - 1.0).abs();
+    match h as u32 {
+        0 => [1.0, x, 0.0],
+        1 => [x, 1.0, 0.0],
+        2 => [0.0, 1.0, x],
+        3 => [0.0, x, 1.0],
+        4 => [x, 0.0, 1.0],
+        _ => [1.0, 0.0, x],
+    }
 }
 
 #[cfg(test)]
@@ -98,9 +178,45 @@ mod tests {
             },
             ..Default::default()
         });
-        let local = LocalAdjustments::new(&settings, 100, 100).unwrap();
+        let local = LocalAdjustments::new(&settings, &RgbImage::new(100, 100)).unwrap();
         let grey = [0.5; 3];
         assert!(local.apply(grey, 50, 0)[0] < 0.2, "top is darkened");
         assert_eq!(local.apply(grey, 50, 90), grey, "bottom untouched");
+    }
+
+    #[test]
+    fn a_layer_can_add_local_clarity_sharpening_and_a_tint() {
+        let image = RgbImage::from_pixel(64, 64, image::Rgb([128, 128, 128]));
+        let mut settings = DevelopSettings::default();
+        settings.gradients.push(Gradient {
+            kind: GradientKind::Radial,
+            start: (0.5, 0.5),
+            radius: (0.5, 0.5),
+            feather: 0.0,
+            adjust: LocalAdjust {
+                clarity: 100.0,
+                sharpening: 100.0,
+                tint_amount: 100.0,
+                tint_hue: 0.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let local = LocalAdjustments::new(&settings, &image).unwrap();
+        assert!(local.wide.is_some() && local.narrow.is_some());
+        // A pixel brighter than its surroundings gets pushed brighter...
+        let bright = local.apply([0.9, 0.5, 0.5], 32, 32);
+        let flat = LocalAdjustments::new(
+            &DevelopSettings {
+                gradients: settings.gradients,
+                ..Default::default()
+            },
+            &image,
+        )
+        .unwrap();
+        // ...and a red tint raises red relative to blue.
+        assert!(bright[0] - bright[2] > flat.apply([0.5; 3], 32, 32)[0] - 0.5);
+        let tinted = flat.apply([0.5; 3], 32, 32);
+        assert!(tinted[0] > tinted[2]);
     }
 }

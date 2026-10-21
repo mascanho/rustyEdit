@@ -685,41 +685,39 @@ impl Workspace {
             .into_any_element()]
     }
 
-    /// The Presets tab's footer: Import, Export and Reset look.
-    pub(crate) fn presets_footer(&self, cx: &mut Context<Self>) -> AnyElement {
+    /// The Presets tab's own footer row: Import, Export and Reset look. It
+    /// sits above the footer every dock already has.
+    pub(crate) fn presets_footer_row(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let theme = self.theme;
         let has_photo = self.catalog.selected_asset().is_some();
-        rustyedit_ui::panel_footer(
-            &theme,
-            vec![vec![
-                rustyedit_ui::footer_button(
-                    "preset-import",
-                    "Import\u{2026}",
-                    "Add presets from a file",
-                    true,
-                    &theme,
-                    cx.listener(|this, _: &ClickEvent, _w, cx| this.import_presets(cx)),
-                ),
-                rustyedit_ui::footer_button(
-                    "preset-export",
-                    "Export\u{2026}",
-                    "Save your presets to a file",
-                    true,
-                    &theme,
-                    cx.listener(|this, _: &ClickEvent, _w, cx| this.export_presets(cx)),
-                ),
-                rustyedit_ui::footer_button(
-                    "preset-neutral",
-                    "Reset look",
-                    "Clear the tone, colour and detail edits of the selected photos",
-                    has_photo,
-                    &theme,
-                    cx.listener(|this, _: &ClickEvent, _w, cx| {
-                        this.apply_neutral_look(&DevelopSettings::default(), "Reset look", cx)
-                    }),
-                ),
-            ]],
-        )
+        vec![
+            rustyedit_ui::footer_button(
+                "preset-import",
+                "Import\u{2026}",
+                "Add presets from a file",
+                true,
+                &theme,
+                cx.listener(|this, _: &ClickEvent, _w, cx| this.import_presets(cx)),
+            ),
+            rustyedit_ui::footer_button(
+                "preset-export",
+                "Export\u{2026}",
+                "Save your presets to a file",
+                true,
+                &theme,
+                cx.listener(|this, _: &ClickEvent, _w, cx| this.export_presets(cx)),
+            ),
+            rustyedit_ui::footer_button(
+                "preset-neutral",
+                "Reset look",
+                "Clear the tone, colour and detail edits of the selected photos",
+                has_photo,
+                &theme,
+                cx.listener(|this, _: &ClickEvent, _w, cx| {
+                    this.apply_neutral_look(&DevelopSettings::default(), "Reset look", cx)
+                }),
+            ),
+        ]
     }
 
     #[allow(clippy::too_many_arguments)]

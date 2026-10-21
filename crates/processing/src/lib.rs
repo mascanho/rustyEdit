@@ -1,10 +1,12 @@
 //! The non-destructive edit pipeline: turns a decoded source image plus a
 //! `DevelopSettings` into a rendered preview, in three stages:
 //!
-//! 0. `retouch`: spot removal (heal / clone) on the original photo;
-//! 1. `geometry`: flips and rotation;
+//! 0. `retouch`: spot removal (heal / clone) on the original photo, then
+//!    `lens`: distortion, chromatic aberration and vignetting corrections;
+//! 1. `geometry`: flips and rotation, then `denoise`: noise reduction;
 //! 2. the base stage (`tone`, `color`, `detail`), on the GPU (`gpu`) when
-//!    one is available and the CPU otherwise;
+//!    one is available and the CPU otherwise (sharpening with a custom
+//!    radius or edge masking runs after it, in `sharpen`);
 //! 3. `finishing` (before the crop): tone curves, Color Mixer, Color
 //!    Grading, Dehaze and gradient masks, on the CPU across threads;
 //! 4. `crop`: straighten and crop;
@@ -14,11 +16,15 @@
 
 mod color;
 mod crop;
+mod denoise;
 mod detail;
 mod finishing;
 mod geometry;
 mod gpu;
+mod lens;
+mod parallel;
 mod retouch;
+mod sharpen;
 mod tone;
 
 pub use retouch::find_spot_source;
@@ -45,14 +51,43 @@ fn apply_with(source: &DynamicImage, settings: &DevelopSettings, allow_gpu: bool
         retouched = DynamicImage::ImageRgb8(rgb);
         &retouched
     };
+    let corrected;
+    let source = if lens::is_active(settings) {
+        corrected = DynamicImage::ImageRgb8(lens::correct(&source.to_rgb8(), settings));
+        &corrected
+    } else {
+        source
+    };
     let rotated = geometry::apply_geometry(source, settings);
     let mut buffer = rotated.to_rgb8();
 
-    if has_base_edits(settings) {
-        buffer = base_stage(buffer, settings, allow_gpu);
+    // Noise comes out first, before tone changes can amplify it.
+    denoise::reduce_noise(&mut buffer, settings.noise_luma, settings.noise_color);
+
+    // Sharpening with a custom radius or an edge mask isn't in the base
+    // stage; it runs right after it.
+    let custom_sharpen = settings.sharpening > 0.5
+        && (settings.sharpen_masking > 0.5 || (settings.sharpen_radius - 50.0).abs() > 0.5);
+    let base = DevelopSettings {
+        sharpening: if custom_sharpen {
+            0.0
+        } else {
+            settings.sharpening
+        },
+        ..*settings
+    };
+    if has_base_edits(&base) {
+        buffer = base_stage(buffer, &base, allow_gpu);
     }
-    let (width, height) = buffer.dimensions();
-    if let Some(finishing) = finishing::Finishing::before_crop(settings, width, height) {
+    if custom_sharpen {
+        sharpen::sharpen(
+            &mut buffer,
+            settings.sharpening,
+            settings.sharpen_radius,
+            settings.sharpen_masking,
+        );
+    }
+    if let Some(finishing) = finishing::Finishing::before_crop(settings, &buffer) {
         finishing.apply(&mut buffer);
     }
     let mut buffer = crop::straighten_and_crop(buffer, &settings.crop);

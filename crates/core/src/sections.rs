@@ -17,10 +17,11 @@ pub enum DevelopSection {
     Retouch,
     Gradients,
     Crop,
+    Lens,
 }
 
 impl DevelopSection {
-    pub const ALL: [DevelopSection; 10] = [
+    pub const ALL: [DevelopSection; 11] = [
         DevelopSection::Crop,
         DevelopSection::Retouch,
         DevelopSection::Gradients,
@@ -31,6 +32,7 @@ impl DevelopSection {
         DevelopSection::ColorGrading,
         DevelopSection::Detail,
         DevelopSection::Effects,
+        DevelopSection::Lens,
     ];
 
     pub fn label(&self) -> &'static str {
@@ -45,6 +47,7 @@ impl DevelopSection {
             DevelopSection::ColorGrading => "Color Grading",
             DevelopSection::Detail => "Detail",
             DevelopSection::Effects => "Effects",
+            DevelopSection::Lens => "Lens Corrections",
         }
     }
 
@@ -61,6 +64,7 @@ impl DevelopSection {
             DevelopSection::Crop => "crop",
             DevelopSection::Retouch => "retouch",
             DevelopSection::Gradients => "gradients",
+            DevelopSection::Lens => "lens",
         }
     }
 
@@ -147,7 +151,10 @@ impl DevelopSection {
                 to.whites = from.whites;
                 to.blacks = from.blacks;
             }
-            DevelopSection::ToneCurve => to.curves = from.curves,
+            DevelopSection::ToneCurve => {
+                to.curves = from.curves;
+                to.parametric = from.parametric;
+            }
             DevelopSection::Color => {
                 to.temperature = from.temperature;
                 to.tint = from.tint;
@@ -159,6 +166,15 @@ impl DevelopSection {
             DevelopSection::Detail => {
                 to.clarity = from.clarity;
                 to.sharpening = from.sharpening;
+                to.sharpen_radius = from.sharpen_radius;
+                to.sharpen_masking = from.sharpen_masking;
+                to.noise_luma = from.noise_luma;
+                to.noise_color = from.noise_color;
+            }
+            DevelopSection::Lens => {
+                to.lens_distortion = from.lens_distortion;
+                to.lens_vignetting = from.lens_vignetting;
+                to.lens_ca = from.lens_ca;
             }
             DevelopSection::Effects => {
                 to.dehaze = from.dehaze;

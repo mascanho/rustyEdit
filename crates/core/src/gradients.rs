@@ -44,10 +44,16 @@ pub enum LocalProp {
     Tint,
     Saturation,
     Dehaze,
+    Clarity,
+    Sharpening,
+    /// How strongly the layer tints its area (0..=100).
+    TintAmount,
+    /// The tint's hue (0..=360 degrees).
+    TintHue,
 }
 
 impl LocalProp {
-    pub const ALL: [LocalProp; 8] = [
+    pub const ALL: [LocalProp; 12] = [
         LocalProp::Exposure,
         LocalProp::Contrast,
         LocalProp::Highlights,
@@ -56,7 +62,20 @@ impl LocalProp {
         LocalProp::Tint,
         LocalProp::Saturation,
         LocalProp::Dehaze,
+        LocalProp::Clarity,
+        LocalProp::Sharpening,
+        LocalProp::TintAmount,
+        LocalProp::TintHue,
     ];
+
+    /// The `(min, max)` the slider spans.
+    pub fn range(&self) -> (f32, f32) {
+        match self {
+            LocalProp::TintAmount => (0.0, 100.0),
+            LocalProp::TintHue => (0.0, 360.0),
+            _ => (-100.0, 100.0),
+        }
+    }
 
     pub fn label(&self) -> &'static str {
         match self {
@@ -68,11 +87,15 @@ impl LocalProp {
             LocalProp::Tint => "Tint",
             LocalProp::Saturation => "Saturation",
             LocalProp::Dehaze => "Dehaze",
+            LocalProp::Clarity => "Clarity",
+            LocalProp::Sharpening => "Sharpening",
+            LocalProp::TintAmount => "Colour tint",
+            LocalProp::TintHue => "Tint hue",
         }
     }
 }
 
-/// Each -100..=100, 0 meaning no change.
+/// Each -100..=100 (the tint 0..=360 / 0..=100), 0 meaning no change.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LocalAdjust {
@@ -84,6 +107,13 @@ pub struct LocalAdjust {
     pub tint: f32,
     pub saturation: f32,
     pub dehaze: f32,
+    pub clarity: f32,
+    /// Local sharpening; negative values soften.
+    pub sharpening: f32,
+    /// 0..=100: how strongly the layer tints its area.
+    pub tint_amount: f32,
+    /// 0..=360: the colour of that tint.
+    pub tint_hue: f32,
 }
 
 impl LocalAdjust {
@@ -97,11 +127,16 @@ impl LocalAdjust {
             LocalProp::Tint => self.tint,
             LocalProp::Saturation => self.saturation,
             LocalProp::Dehaze => self.dehaze,
+            LocalProp::Clarity => self.clarity,
+            LocalProp::Sharpening => self.sharpening,
+            LocalProp::TintAmount => self.tint_amount,
+            LocalProp::TintHue => self.tint_hue,
         }
     }
 
     pub fn set(&mut self, prop: LocalProp, value: f32) {
-        let v = value.clamp(-100.0, 100.0);
+        let (min, max) = prop.range();
+        let v = value.clamp(min, max);
         match prop {
             LocalProp::Exposure => self.exposure = v,
             LocalProp::Contrast => self.contrast = v,
@@ -111,11 +146,19 @@ impl LocalAdjust {
             LocalProp::Tint => self.tint = v,
             LocalProp::Saturation => self.saturation = v,
             LocalProp::Dehaze => self.dehaze = v,
+            LocalProp::Clarity => self.clarity = v,
+            LocalProp::Sharpening => self.sharpening = v,
+            LocalProp::TintAmount => self.tint_amount = v,
+            LocalProp::TintHue => self.tint_hue = v,
         }
     }
 
+    /// Whether the layer changes nothing. The tint's hue alone does not.
     pub fn is_neutral(&self) -> bool {
-        *self == Self::default()
+        Self {
+            tint_hue: 0.0,
+            ..*self
+        } == Self::default()
     }
 }
 

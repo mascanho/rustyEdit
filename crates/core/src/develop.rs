@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     crop::Crop,
     curves::ToneCurves,
+    parametric::ParametricCurve,
     gradients::Gradients,
     retouch::Spots,
     grading::{ColorGrading, GradeProp, ToneZone},
@@ -39,6 +40,26 @@ pub struct DevelopSettings {
     // Detail
     pub clarity: f32,
     pub sharpening: f32,
+    /// 0..=100: the sharpening radius (50 is about one pixel).
+    pub sharpen_radius: f32,
+    /// 0..=100: how much sharpening is held back from flat areas, so only
+    /// edges are sharpened and noise isn't.
+    pub sharpen_masking: f32,
+    /// 0..=100: smoothing of brightness noise.
+    pub noise_luma: f32,
+    /// 0..=100: smoothing of colour noise.
+    pub noise_color: f32,
+
+    // Lens corrections
+    /// -100..=100: positive straightens barrel distortion (bulging
+    /// edges), negative pincushion.
+    pub lens_distortion: f32,
+    /// -100..=100: positive brightens the corners, correcting lens
+    /// vignetting.
+    pub lens_vignetting: f32,
+    /// -100..=100: shifts red and blue against green from the centre
+    /// outwards, removing lateral colour fringes.
+    pub lens_ca: f32,
 
     /// Spot removal (heal / clone), applied before everything else.
     pub spots: Spots,
@@ -47,6 +68,9 @@ pub struct DevelopSettings {
 
     // Tone curve, Color Mixer, Color Grading
     pub curves: ToneCurves,
+    /// Highlights / lights / darks / shadows sliders, applied before the
+    /// point curves.
+    pub parametric: ParametricCurve,
     pub mixer: ColorMixer,
     pub grading: ColorGrading,
 
@@ -89,9 +113,17 @@ impl Default for DevelopSettings {
             saturation: 0.0,
             clarity: 0.0,
             sharpening: 0.0,
+            sharpen_radius: 50.0,
+            sharpen_masking: 0.0,
+            noise_luma: 0.0,
+            noise_color: 0.0,
+            lens_distortion: 0.0,
+            lens_vignetting: 0.0,
+            lens_ca: 0.0,
             spots: Spots::default(),
             gradients: Gradients::default(),
             curves: ToneCurves::default(),
+            parametric: ParametricCurve::default(),
             mixer: ColorMixer::default(),
             grading: ColorGrading::default(),
             dehaze: 0.0,
@@ -148,6 +180,17 @@ pub enum Adjustment {
     Saturation,
     Clarity,
     Sharpening,
+    SharpenRadius,
+    SharpenMasking,
+    NoiseLuma,
+    NoiseColor,
+    LensDistortion,
+    LensVignetting,
+    LensCa,
+    CurveHighlights,
+    CurveLights,
+    CurveDarks,
+    CurveShadows,
     /// One colour range's hue, saturation or luminance in the Color Mixer.
     Mixer(ColorBand, MixerProp),
     /// One tonal range's tint in Color Grading.
@@ -178,7 +221,28 @@ impl Adjustment {
         Adjustment::Saturation,
     ];
 
-    pub const DETAIL: [Adjustment; 2] = [Adjustment::Clarity, Adjustment::Sharpening];
+    pub const DETAIL: [Adjustment; 6] = [
+        Adjustment::Clarity,
+        Adjustment::Sharpening,
+        Adjustment::SharpenRadius,
+        Adjustment::SharpenMasking,
+        Adjustment::NoiseLuma,
+        Adjustment::NoiseColor,
+    ];
+
+    pub const LENS: [Adjustment; 3] = [
+        Adjustment::LensDistortion,
+        Adjustment::LensVignetting,
+        Adjustment::LensCa,
+    ];
+
+    /// The parametric tone curve's sliders, top of the tonal range first.
+    pub const PARAMETRIC: [Adjustment; 4] = [
+        Adjustment::CurveHighlights,
+        Adjustment::CurveLights,
+        Adjustment::CurveDarks,
+        Adjustment::CurveShadows,
+    ];
 
     pub const EFFECTS: [Adjustment; 6] = [
         Adjustment::Dehaze,
@@ -203,6 +267,17 @@ impl Adjustment {
             Adjustment::Saturation => "Saturation",
             Adjustment::Clarity => "Clarity",
             Adjustment::Sharpening => "Sharpening",
+            Adjustment::SharpenRadius => "Radius",
+            Adjustment::SharpenMasking => "Masking",
+            Adjustment::NoiseLuma => "Luminance",
+            Adjustment::NoiseColor => "Colour",
+            Adjustment::LensDistortion => "Distortion",
+            Adjustment::LensVignetting => "Vignetting",
+            Adjustment::LensCa => "Chromatic aberration",
+            Adjustment::CurveHighlights => "Highlights",
+            Adjustment::CurveLights => "Lights",
+            Adjustment::CurveDarks => "Darks",
+            Adjustment::CurveShadows => "Shadows",
             // Shown under a Hue / Saturation / Luminance tab, so the
             // colour alone identifies the slider.
             Adjustment::Mixer(band, _) => band.label(),
@@ -227,6 +302,17 @@ impl Adjustment {
                 format!("{} saturation", zone.label())
             }
             Adjustment::GradingBalance => "Grading balance".to_string(),
+            Adjustment::SharpenRadius => "Sharpening radius".to_string(),
+            Adjustment::SharpenMasking => "Sharpening masking".to_string(),
+            Adjustment::NoiseLuma => "Luminance noise reduction".to_string(),
+            Adjustment::NoiseColor => "Colour noise reduction".to_string(),
+            Adjustment::LensDistortion => "Lens distortion".to_string(),
+            Adjustment::LensVignetting => "Lens vignetting".to_string(),
+            Adjustment::LensCa => "Chromatic aberration".to_string(),
+            Adjustment::CurveHighlights => "Curve highlights".to_string(),
+            Adjustment::CurveLights => "Curve lights".to_string(),
+            Adjustment::CurveDarks => "Curve darks".to_string(),
+            Adjustment::CurveShadows => "Curve shadows".to_string(),
             other => other.label().to_string(),
         }
     }
@@ -239,7 +325,11 @@ impl Adjustment {
             | Adjustment::VignetteMidpoint
             | Adjustment::VignetteFeather
             | Adjustment::Grain
-            | Adjustment::GrainSize => (0.0, 100.0),
+            | Adjustment::GrainSize
+            | Adjustment::SharpenRadius
+            | Adjustment::SharpenMasking
+            | Adjustment::NoiseLuma
+            | Adjustment::NoiseColor => (0.0, 100.0),
             _ => (-100.0, 100.0),
         }
     }
@@ -268,6 +358,17 @@ impl Adjustment {
             Adjustment::Saturation => settings.saturation,
             Adjustment::Clarity => settings.clarity,
             Adjustment::Sharpening => settings.sharpening,
+            Adjustment::SharpenRadius => settings.sharpen_radius,
+            Adjustment::SharpenMasking => settings.sharpen_masking,
+            Adjustment::NoiseLuma => settings.noise_luma,
+            Adjustment::NoiseColor => settings.noise_color,
+            Adjustment::LensDistortion => settings.lens_distortion,
+            Adjustment::LensVignetting => settings.lens_vignetting,
+            Adjustment::LensCa => settings.lens_ca,
+            Adjustment::CurveHighlights => settings.parametric.highlights,
+            Adjustment::CurveLights => settings.parametric.lights,
+            Adjustment::CurveDarks => settings.parametric.darks,
+            Adjustment::CurveShadows => settings.parametric.shadows,
             Adjustment::Mixer(band, prop) => settings.mixer[band.index()].get(*prop),
             Adjustment::Grade(zone, GradeProp::Hue) => settings.grading.zone(*zone).hue,
             Adjustment::Grade(zone, GradeProp::Saturation) => {
@@ -299,6 +400,17 @@ impl Adjustment {
             Adjustment::Saturation => settings.saturation = v,
             Adjustment::Clarity => settings.clarity = v,
             Adjustment::Sharpening => settings.sharpening = v,
+            Adjustment::SharpenRadius => settings.sharpen_radius = v,
+            Adjustment::SharpenMasking => settings.sharpen_masking = v,
+            Adjustment::NoiseLuma => settings.noise_luma = v,
+            Adjustment::NoiseColor => settings.noise_color = v,
+            Adjustment::LensDistortion => settings.lens_distortion = v,
+            Adjustment::LensVignetting => settings.lens_vignetting = v,
+            Adjustment::LensCa => settings.lens_ca = v,
+            Adjustment::CurveHighlights => settings.parametric.highlights = v,
+            Adjustment::CurveLights => settings.parametric.lights = v,
+            Adjustment::CurveDarks => settings.parametric.darks = v,
+            Adjustment::CurveShadows => settings.parametric.shadows = v,
             Adjustment::Mixer(band, prop) => settings.mixer[band.index()].set(*prop, v),
             Adjustment::Grade(zone, GradeProp::Hue) => settings.grading.zone_mut(*zone).hue = v,
             Adjustment::Grade(zone, GradeProp::Saturation) => {
@@ -337,6 +449,8 @@ mod tests {
             &Adjustment::BASIC[..],
             &Adjustment::COLOR[..],
             &Adjustment::DETAIL[..],
+            &Adjustment::LENS[..],
+            &Adjustment::PARAMETRIC[..],
             &Adjustment::EFFECTS[..],
         ]
         .concat();

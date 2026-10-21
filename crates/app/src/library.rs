@@ -218,11 +218,9 @@ impl Workspace {
             });
         }
 
-        let footer = if takeover_tool == Some(rustyedit_core::RailTool::Presets) {
-            Some(self.presets_footer(cx))
-        } else {
-            self.library_dock_footer(panels, cx)
-        };
+        let extra_row = (takeover_tool == Some(rustyedit_core::RailTool::Presets))
+            .then(|| self.presets_footer_row(cx));
+        let footer = self.library_dock_footer(panels, extra_row, cx);
         let (id, panel_side, collapsed) = match side {
             DockSide::Left => (
                 "library-dock-left",

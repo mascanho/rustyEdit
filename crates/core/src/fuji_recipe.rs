@@ -269,6 +269,12 @@ impl FujiRecipe {
         s.sharpening += 20.0 + self.sharpness as f32 * 6.0;
         s.clarity += self.clarity as f32 * 5.0;
 
+        // High ISO NR: -4 leaves the noise, +4 smooths it hard. Colour noise
+        // is cleaned a little less than brightness noise.
+        let nr = (self.high_iso_nr as f32 + 4.0) / 8.0;
+        s.noise_luma = nr * 50.0;
+        s.noise_color = nr * 40.0;
+
         self.apply_white_balance(&mut s);
         self.apply_grain(&mut s);
         self.apply_color_chrome(&mut s);
@@ -282,7 +288,8 @@ impl FujiRecipe {
         let mut notes = self.summary();
         notes.push_str(
             "\n\nApproximated from the recipe; the film simulation itself is \
-             Fujifilm's own colour science. High ISO NR isn't applied.",
+             Fujifilm's own colour science. ISO and exposure compensation are \
+             shooting settings and aren't applied.",
         );
         DevelopPreset {
             name: if self.name.trim().is_empty() {
@@ -545,6 +552,20 @@ mod tests {
         assert!(s.tint < 0.0);
         // Color Chrome Strong deepens colours.
         assert!(s.mixer[ColorBand::Red.index()].luminance < 0.0);
+        // High ISO NR -4 is the lightest noise reduction.
+        assert_eq!(s.noise_luma, 0.0);
+    }
+
+    #[test]
+    fn high_iso_nr_maps_to_noise_reduction() {
+        let strong = FujiRecipe {
+            high_iso_nr: 4,
+            ..FujiRecipe::default()
+        }
+        .to_settings();
+        let standard = FujiRecipe::default().to_settings();
+        assert!(strong.noise_luma > standard.noise_luma && standard.noise_luma > 0.0);
+        assert!(strong.noise_color > 0.0);
     }
 
     #[test]

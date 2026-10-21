@@ -458,16 +458,17 @@ impl Workspace {
 
         for prop in LocalProp::ALL {
             let entity = cx.entity();
+            let (min, max) = prop.range();
             rows.push(
                 rustyedit_ui::labeled_slider(
                     SharedString::from(format!("gradient-{index}-{}", prop.label())),
                     prop.label(),
                     gradient.adjust.get(prop),
                     SliderSpec {
-                        min: -100.0,
-                        max: 100.0,
+                        min,
+                        max,
                         default: 0.0,
-                        signed: true,
+                        signed: min < 0.0,
                         track: local_track(prop),
                     },
                     &theme,
@@ -982,6 +983,7 @@ fn local_track(prop: LocalProp) -> SliderTrack {
             SliderTrack::Gradient(wheel(215.0, 0.6, 0.55), wheel(48.0, 0.8, 0.55))
         }
         LocalProp::Tint => SliderTrack::Gradient(wheel(120.0, 0.5, 0.5), wheel(300.0, 0.5, 0.55)),
+        LocalProp::TintHue => SliderTrack::Hue,
         _ => SliderTrack::Accent,
     }
 }

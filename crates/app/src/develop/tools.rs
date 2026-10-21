@@ -108,10 +108,10 @@ impl Workspace {
                 cx.notify();
             }),
             navigator,
-            Some(if self.active_rail_tool(side) == Some(RailTool::Presets) {
-                self.presets_footer(cx)
-            } else {
-                self.develop_tools_footer(cx)
+            Some({
+                let extra_row = (self.active_rail_tool(side) == Some(RailTool::Presets))
+                    .then(|| self.presets_footer_row(cx));
+                self.develop_tools_footer(extra_row, cx)
             }),
             content,
         )

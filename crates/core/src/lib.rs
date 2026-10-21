@@ -21,6 +21,8 @@ mod grading;
 mod histogram;
 mod history;
 mod mixer;
+mod lens;
+mod parametric;
 mod presets;
 mod rail;
 mod rating;
@@ -36,7 +38,7 @@ pub use catalog_def::CatalogDef;
 pub use collections::{default_keyword_sets, KeywordSet, SmartCollection, SmartCollections};
 pub use color_label::ColorLabel;
 pub use crop::{rotate_about_centre, AspectLock, Crop, CropView, MAX_STRAIGHTEN};
-pub use curves::{CurveChannel, ToneCurve, ToneCurves, MAX_CURVE_POINTS};
+pub use curves::{CurveChannel, CurvePreset, ToneCurve, ToneCurves, MAX_CURVE_POINTS};
 pub use develop::{Adjustment, DevelopSettings};
 pub use duplicates::{
     find_duplicates, find_duplicates_in, hamming, DuplicateGroup, DuplicateKind, PhotoHash,
@@ -59,6 +61,8 @@ pub use mixer::{band_weight, BandAdjust, ColorBand, ColorMixer, MixerProp};
 pub use fuji_recipe::{
     DynamicRange, FilmSimulation, FujiRecipe, GrainEffect, MonoFilter, Strength, WhiteBalance,
 };
+pub use lens::{lens_profile, LensCorrection, LensProfile};
+pub use parametric::ParametricCurve;
 pub use presets::{builtin_presets, DevelopPreset, Presets, PRESET_CATEGORIES};
 pub use rail::RailTool;
 pub use rating::Rating;

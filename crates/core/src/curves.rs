@@ -36,6 +36,21 @@ impl ToneCurve {
         (self.len as usize).clamp(2, MAX_CURVE_POINTS)
     }
 
+    /// A curve through `points` (`(input, output)`, sorted by input). The
+    /// first and last set the ends' heights; the rest are inserted as long
+    /// as they fit.
+    pub fn with_points(points: &[[f32; 2]]) -> Self {
+        let mut curve = Self::default();
+        if let (Some(first), Some(last)) = (points.first(), points.last()) {
+            curve.move_point(0, 0.0, first[1]);
+            curve.move_point(1, 1.0, last[1]);
+            for p in points.iter().skip(1).take(points.len().saturating_sub(2)) {
+                curve.insert(p[0], p[1]);
+            }
+        }
+        curve
+    }
+
     /// The straight diagonal, which leaves the image unchanged.
     pub fn is_identity(&self) -> bool {
         *self == Self::default()
@@ -135,6 +150,67 @@ impl ToneCurve {
     }
 }
 
+/// Ready-made curve shapes for the point editor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CurvePreset {
+    Linear,
+    MediumContrast,
+    StrongContrast,
+    SoftContrast,
+    LiftShadows,
+    DarkenHighlights,
+    Brighten,
+    Darken,
+    Faded,
+    Crushed,
+}
+
+impl CurvePreset {
+    pub const ALL: [CurvePreset; 10] = [
+        CurvePreset::Linear,
+        CurvePreset::MediumContrast,
+        CurvePreset::StrongContrast,
+        CurvePreset::SoftContrast,
+        CurvePreset::LiftShadows,
+        CurvePreset::DarkenHighlights,
+        CurvePreset::Brighten,
+        CurvePreset::Darken,
+        CurvePreset::Faded,
+        CurvePreset::Crushed,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            CurvePreset::Linear => "Linear",
+            CurvePreset::MediumContrast => "Medium contrast",
+            CurvePreset::StrongContrast => "Strong contrast",
+            CurvePreset::SoftContrast => "Soft contrast",
+            CurvePreset::LiftShadows => "Lift shadows",
+            CurvePreset::DarkenHighlights => "Darken highlights",
+            CurvePreset::Brighten => "Brighten",
+            CurvePreset::Darken => "Darken",
+            CurvePreset::Faded => "Faded",
+            CurvePreset::Crushed => "Crushed blacks",
+        }
+    }
+
+    pub fn curve(&self) -> ToneCurve {
+        let pts: &[[f32; 2]] = match self {
+            CurvePreset::Linear => &[[0.0, 0.0], [1.0, 1.0]],
+            CurvePreset::MediumContrast => &[[0.0, 0.0], [0.25, 0.20], [0.75, 0.80], [1.0, 1.0]],
+            CurvePreset::StrongContrast => &[[0.0, 0.0], [0.25, 0.15], [0.75, 0.85], [1.0, 1.0]],
+            CurvePreset::SoftContrast => &[[0.0, 0.0], [0.25, 0.28], [0.75, 0.72], [1.0, 1.0]],
+            CurvePreset::LiftShadows => &[[0.0, 0.0], [0.2, 0.3], [0.6, 0.65], [1.0, 1.0]],
+            CurvePreset::DarkenHighlights => &[[0.0, 0.0], [0.4, 0.4], [0.8, 0.72], [1.0, 0.92]],
+            CurvePreset::Brighten => &[[0.0, 0.0], [0.5, 0.6], [1.0, 1.0]],
+            CurvePreset::Darken => &[[0.0, 0.0], [0.5, 0.4], [1.0, 1.0]],
+            CurvePreset::Faded => &[[0.0, 0.08], [0.5, 0.5], [1.0, 0.94]],
+            CurvePreset::Crushed => &[[0.0, 0.0], [0.15, 0.04], [0.8, 0.84], [1.0, 1.0]],
+        };
+        ToneCurve::with_points(pts)
+    }
+}
+
 /// Which curve is being edited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CurveChannel {
@@ -202,6 +278,19 @@ impl ToneCurves {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn presets_build_valid_curves_through_their_points() {
+        for preset in CurvePreset::ALL {
+            let curve = preset.curve();
+            assert!(curve.points().len() >= 2, "{}", preset.label());
+        }
+        assert!(CurvePreset::Linear.curve().is_identity());
+        let strong = CurvePreset::StrongContrast.curve();
+        assert!((strong.evaluate(0.25) - 0.15).abs() < 1e-4);
+        assert!((strong.evaluate(0.75) - 0.85).abs() < 1e-4);
+        assert!((CurvePreset::Faded.curve().evaluate(0.0) - 0.08).abs() < 1e-4);
+    }
 
     #[test]
     fn identity_maps_input_to_itself() {

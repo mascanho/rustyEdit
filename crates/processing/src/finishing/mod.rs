@@ -37,13 +37,13 @@ pub(crate) struct Finishing {
 impl Finishing {
     /// The tools that run on the whole picture, before it's cropped:
     /// `None` when they're all neutral.
-    pub(crate) fn before_crop(settings: &DevelopSettings, width: u32, height: u32) -> Option<Self> {
+    pub(crate) fn before_crop(settings: &DevelopSettings, image: &RgbImage) -> Option<Self> {
         Self {
-            curves: CurveLuts::new(&settings.curves),
+            curves: CurveLuts::new(&settings.curves, &settings.parametric),
             mixer: Mixer::new(&settings.mixer),
             grading: Grading::new(&settings.grading),
             dehaze: Dehaze::new(settings.dehaze),
-            local: LocalAdjustments::new(settings, width, height),
+            local: LocalAdjustments::new(settings, image),
             vignette: None,
             grain: None,
         }
@@ -153,7 +153,9 @@ mod tests {
 
     #[test]
     fn neutral_settings_need_no_finishing() {
-        assert!(Finishing::before_crop(&DevelopSettings::default(), 10, 10).is_none());
+        assert!(
+            Finishing::before_crop(&DevelopSettings::default(), &RgbImage::new(10, 10)).is_none()
+        );
         assert!(Finishing::after_crop(&DevelopSettings::default(), 10, 10).is_none());
     }
 
@@ -180,7 +182,7 @@ mod tests {
             band.luminance = 80.0;
         }
         let mut image = RgbImage::from_pixel(8, 8, image::Rgb([128, 128, 128]));
-        Finishing::before_crop(&settings, 8, 8)
+        Finishing::before_crop(&settings, &image.clone())
             .unwrap()
             .apply(&mut image);
         assert_eq!(image.get_pixel(3, 3).0, [128, 128, 128]);
