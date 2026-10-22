@@ -22,9 +22,9 @@ use crate::workspace::Workspace;
 pub(crate) struct LivePreview {
     /// What the viewer shows. `None` until the first render of this photo.
     image: Option<Arc<RenderImage>>,
-    /// Frames that were replaced and still occupy GPU atlas space. Freed on
-    /// the next render pass, which has the window that owns the atlas.
-    retired: Vec<Arc<RenderImage>>,
+    /// Frames that were replaced and still occupy GPU atlas space, with
+    /// how many render passes have happened since. See `release_retired`.
+    retired: Vec<(Arc<RenderImage>, u8)>,
     /// The photo without its edits (but with its crop and rotation), for
     /// Before / After; `before_key` says which photo and geometry it is for.
     before: Option<Arc<RenderImage>>,
@@ -46,9 +46,13 @@ impl LivePreview {
 
     fn show_before(&mut self, image: Arc<RenderImage>, key: (u64, DevelopSettings)) {
         if let Some(old) = self.before.replace(image) {
-            self.retired.push(old);
+            self.retire(old);
         }
         self.before_key = Some(key);
+    }
+
+    fn retire(&mut self, image: Arc<RenderImage>) {
+        self.retired.push((image, 0));
     }
 
     /// Pixel size of the current frame.
@@ -62,7 +66,7 @@ impl LivePreview {
     /// Swaps in a freshly rendered frame, retiring the one it replaces.
     fn show(&mut self, image: Arc<RenderImage>) {
         if let Some(old) = self.image.replace(image) {
-            self.retired.push(old);
+            self.retire(old);
         }
     }
 
@@ -71,19 +75,34 @@ impl LivePreview {
     /// render arrives.
     pub(crate) fn clear(&mut self) {
         if let Some(old) = self.image.take() {
-            self.retired.push(old);
+            self.retire(old);
         }
         if let Some(old) = self.before.take() {
-            self.retired.push(old);
+            self.retire(old);
         }
         self.before_key = None;
     }
 
-    /// Frees the GPU memory of every retired frame. Call once per render.
+    /// Frees the GPU memory of retired frames. Call once per render.
+    ///
+    /// A frame is only freed on the third render pass after it was
+    /// replaced. GPUI destroys an image's texture immediately, but the
+    /// frame drawn just before may still be running on the GPU and reading
+    /// it; freeing it then faults the GPU, and GPUI waits forever for that
+    /// frame (the app froze mid slider drag). GPUI waits for each frame
+    /// to finish before drawing the next, so two passes later nothing in
+    /// flight can still be using it; the third is a margin.
     pub(crate) fn release_retired(&mut self, window: &mut Window) {
-        for image in self.retired.drain(..) {
-            let _ = window.drop_image(image);
-        }
+        const PASSES: u8 = 2;
+        self.retired.retain_mut(|(image, passes)| {
+            if *passes >= PASSES {
+                let _ = window.drop_image(image.clone());
+                false
+            } else {
+                *passes += 1;
+                true
+            }
+        });
     }
 }
 
