@@ -56,13 +56,38 @@ impl Workspace {
         if !self.lifecycle_allowed() {
             return;
         }
-        let paths: HashSet<PathBuf> = self
+        let targets: Vec<usize> = self
             .target_indices()
             .into_iter()
-            .filter_map(|ix| self.catalog.assets.get(ix))
-            .filter(|asset| !asset.missing)
+            .filter(|&ix| self.catalog.assets.get(ix).is_some_and(|a| !a.missing))
+            .collect();
+        // Originals take the file (and all its versions) with them; a
+        // virtual copy only removes that one entry, never the file.
+        let paths: HashSet<PathBuf> = targets
+            .iter()
+            .map(|&ix| &self.catalog.assets[ix])
+            .filter(|asset| !asset.is_virtual_copy())
             .map(|asset| asset.path.clone())
             .collect();
+        let copies: Vec<usize> = targets
+            .iter()
+            .copied()
+            .filter(|&ix| {
+                let asset = &self.catalog.assets[ix];
+                asset.is_virtual_copy() && !paths.contains(&asset.path)
+            })
+            .collect();
+        if !copies.is_empty() {
+            let removed = self.remove_virtual_copies(&copies, cx);
+            self.status_message = Some(
+                format!(
+                    "Removed {removed} virtual cop{} (the original file is untouched).",
+                    if removed == 1 { "y" } else { "ies" }
+                )
+                .into(),
+            );
+            cx.notify();
+        }
         if paths.is_empty() {
             return;
         }
@@ -145,26 +170,49 @@ impl Workspace {
         if self.remove_paths_from_albums(&paths) {
             self.save_catalog_def();
         }
-        let removed = self.catalog.remove_assets(&paths);
+        self.finish_removal_where(|asset| paths.contains(&asset.path), cx);
+    }
+
+    /// Drops every photo `remove` picks from the in-memory catalog, then
+    /// fixes up everything holding asset indices or ids (which are
+    /// positions, so they shift). Returns how many were removed.
+    pub(crate) fn finish_removal_where(
+        &mut self,
+        remove: impl Fn(&rustyedit_core::Asset) -> bool,
+        cx: &mut Context<Self>,
+    ) -> usize {
+        let moved = self.catalog.remove_where(remove);
+        let removed = moved.iter().filter(|m| m.is_none()).count();
         if removed == 0 {
-            return;
+            return 0;
         }
+        self.remap_undo(&moved);
         self.clear_asset_caches();
+        self.facets = crate::filters_panel::Facets::build(&self.catalog);
         self.mark_catalog_dirty(cx);
         self.selection.clear();
         self.selection_anchor = None;
-        if let Some(&first) = self.catalog.visible_indices().first() {
-            self.catalog.select(first);
+        if self.catalog.visible_position(self.catalog.selected).is_none() {
+            if let Some(&first) = self.catalog.visible_indices().first() {
+                self.catalog.select(first);
+            }
         }
         self.on_selection_changed(cx);
+        removed
     }
 
     /// Removes one photo (used by the missing-files list, where the asset is
     /// not selectable through the normal grid selection).
     pub(crate) fn remove_asset_from_catalog(&mut self, index: usize, cx: &mut Context<Self>) {
-        let Some(path) = self.catalog.assets.get(index).map(|a| a.path.clone()) else {
+        let Some(asset) = self.catalog.assets.get(index) else {
             return;
         };
+        if asset.is_virtual_copy() {
+            let id = asset.id;
+            self.finish_removal_where(|a| a.id == id, cx);
+            return;
+        }
+        let path = asset.path.clone();
         self.catalog_def.exclude(&path);
         self.save_catalog_def();
         let paths: HashSet<PathBuf> = [path].into_iter().collect();
@@ -292,7 +340,17 @@ impl Workspace {
         if self.replace_path_in_albums(&old_path, &new_path) {
             self.save_catalog_def();
         }
-        if let Some(asset) = self.catalog.assets.get_mut(index) {
+        // The original and any virtual copies all point at this file.
+        let versions: Vec<usize> = self
+            .catalog
+            .assets
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.path == old_path)
+            .map(|(ix, _)| ix)
+            .collect();
+        for &ix in &versions {
+            let asset = &mut self.catalog.assets[ix];
             asset.path = new_path.clone();
             asset.thumbnail_path = None;
             asset.width = 0;
@@ -300,7 +358,7 @@ impl Workspace {
         }
         self.status_message = Some(format!("Renamed to {new_name}").into());
         self.mark_catalog_dirty(cx);
-        self.regenerate_thumbnails(&[index], cx);
+        self.regenerate_thumbnails(&versions, cx);
         self.on_selection_changed(cx);
     }
 
@@ -428,7 +486,16 @@ impl Workspace {
                 }
             }
         }
-        if let Some(asset) = self.catalog.assets.get_mut(index) {
+        // The original and its virtual copies all move to the new file.
+        let versions: Vec<usize> = self
+            .catalog
+            .assets
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.path == old_path)
+            .map(|(ix, _)| ix)
+            .collect();
+        for asset in self.catalog.assets.iter_mut().filter(|a| a.path == old_path) {
             asset.path = new_path.clone();
             asset.missing = false;
             asset.thumbnail_path = None;
@@ -450,7 +517,7 @@ impl Workspace {
             format!("Relocated {}", new_path.display()).into()
         });
         self.mark_catalog_dirty(cx);
-        self.regenerate_thumbnails(&[index], cx);
+        self.regenerate_thumbnails(&versions, cx);
         self.on_selection_changed(cx);
     }
 

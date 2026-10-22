@@ -133,13 +133,29 @@ impl Workspace {
         cx: &mut Context<Self>,
         new: impl Fn(&DevelopSettings) -> DevelopSettings,
     ) {
+        let updates = targets
+            .into_iter()
+            .filter_map(|ix| Some((ix, new(&self.catalog.assets.get(ix)?.develop))))
+            .collect();
+        self.replace_develop_each(updates, undo_label, note, cx);
+    }
+
+    /// Gives each photo in `updates` its own new Develop settings, as one
+    /// undo step named `undo_label`.
+    pub(crate) fn replace_develop_each(
+        &mut self,
+        updates: Vec<(usize, DevelopSettings)>,
+        undo_label: &str,
+        note: HistoryNote,
+        cx: &mut Context<Self>,
+    ) {
         let mut changes = Vec::new();
-        for ix in targets {
+        for (ix, develop) in updates {
             let Some(asset) = self.catalog.assets.get_mut(ix) else {
                 continue;
             };
             let before = asset.state();
-            asset.develop = new(&asset.develop);
+            asset.develop = develop;
             if asset.develop == before.develop {
                 continue;
             }

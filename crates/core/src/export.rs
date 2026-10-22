@@ -152,11 +152,16 @@ impl ExportNaming {
 
     /// File stem for `asset`, the `index`th (0-based) photo of the export.
     pub fn stem(&self, asset: &Asset, index: usize) -> String {
-        let original = asset
+        let mut original = asset
             .path
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| "photo".into());
+        // A virtual copy is a different picture of the same file, so it
+        // gets its own name rather than colliding with the original's.
+        if let Some(copy) = &asset.copy_name {
+            original = format!("{original}-{}", copy.to_lowercase().replace(' ', "-"));
+        }
         match self {
             ExportNaming::Original => original,
             ExportNaming::Edited => format!("{original}-edit"),

@@ -54,6 +54,10 @@ pub enum Icon {
     ZoomIn,
     Minus,
     Plus,
+    /// A pipette: pick white balance from the photo.
+    Eyedropper,
+    /// A wand with sparkles: an automatic adjustment.
+    Auto,
 }
 
 /// `icon` drawn `size` pixels square in `color`.
@@ -326,6 +330,22 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
             pen.line(&[(7.0, 4.8), (7.0, 9.2)]);
         }
         Icon::Minus => pen.line(&[(3.5, 8.0), (12.5, 8.0)]),
+        Icon::Eyedropper => {
+            // A pipette lying diagonally: solid bulb top right, a collar,
+            // then the glass tube down to its tip at the bottom left.
+            pen.solid(&[(10.6, 3.0), (12.4, 1.2), (14.8, 3.6), (13.0, 5.4)]);
+            pen.line(&[(9.2, 4.0), (12.0, 6.8)]);
+            pen.shape(&[(10.0, 5.4), (10.6, 6.0), (4.2, 12.4), (3.6, 11.8)]);
+            pen.line(&[(3.9, 12.1), (2.0, 14.0)]);
+        }
+        Icon::Auto => {
+            // A wand from bottom left, with a star and two sparkles.
+            pen.line(&[(2.0, 14.0), (9.5, 6.5)]);
+            pen.line(&[(11.5, 1.5), (11.5, 5.5)]);
+            pen.line(&[(9.5, 3.5), (13.5, 3.5)]);
+            pen.dot(5.0, 3.5, 0.9);
+            pen.dot(13.0, 10.0, 0.9);
+        }
         Icon::Plus => {
             pen.line(&[(3.5, 8.0), (12.5, 8.0)]);
             pen.line(&[(8.0, 3.5), (8.0, 12.5)]);

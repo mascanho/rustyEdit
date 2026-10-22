@@ -20,6 +20,7 @@
 //! floats from start to finish. The CPU modules are the reference and the
 //! fallback; they work in 8 bits between stages.
 
+mod auto;
 mod cms;
 mod color;
 mod crop;
@@ -35,6 +36,7 @@ mod retouch;
 mod sharpen;
 mod tone;
 
+pub use auto::{auto_tone, neutral_white_balance, BalanceError, NeutralBalance};
 pub use cms::{set_display_profile, OutputSpace};
 pub use develop_source::DevelopSource;
 pub use retouch::find_spot_source;

@@ -17,6 +17,7 @@ impl Workspace {
         };
         let asset_id = asset.id;
         let path = asset.path.clone();
+        let source_path = path.clone();
         let epoch = self.preview_epoch;
         // Longest edge the decoded source is downscaled to before it ever
         // touches the develop pipeline. Lightroom calls this a "smart
@@ -41,6 +42,7 @@ impl Workspace {
                     this.source_image = Some(preview);
                     this.full_source = Some(full);
                     this.source_image_for = Some(asset_id);
+                    this.source_image_path = Some(source_path);
                     this.request_preview_update(cx);
                 }
                 cx.notify();
@@ -57,6 +59,7 @@ impl Workspace {
         self.source_image = None;
         self.full_source = None;
         self.source_image_for = None;
+        self.source_image_path = None;
         self.live_preview.clear();
         self.develop_ui.retouch.reset_selection();
         self.develop_ui.gradients.reset_selection();

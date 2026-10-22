@@ -111,6 +111,11 @@ pub struct Asset {
     /// Saved alternative Develop states, oldest first.
     #[serde(default)]
     pub snapshots: Vec<Snapshot>,
+    /// Set on a virtual copy: another entry for the same file with its own
+    /// edits, flags and metadata. Holds its name, e.g. "Copy 1". `None` for
+    /// the original (master) photo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copy_name: Option<String>,
     /// Set when the file recorded in the catalog no longer exists on disk.
     /// Runtime-only: it is recomputed on every scan, so it is never saved.
     #[serde(skip)]
@@ -142,7 +147,22 @@ impl Asset {
             phash: 0,
             history: Vec::new(),
             snapshots: Vec::new(),
+            copy_name: None,
             missing: false,
+        }
+    }
+
+    /// Whether this entry is a virtual copy rather than the original photo.
+    pub fn is_virtual_copy(&self) -> bool {
+        self.copy_name.is_some()
+    }
+
+    /// The file name, followed by the copy's name for a virtual copy, e.g.
+    /// "IMG_0042.CR3 (Copy 1)". For showing photos apart in the UI.
+    pub fn display_name(&self) -> String {
+        match &self.copy_name {
+            Some(copy) => format!("{} ({copy})", self.file_name()),
+            None => self.file_name(),
         }
     }
 

@@ -299,31 +299,39 @@ impl Catalog {
         self.sort = order;
         let n = self.assets.len();
         let mut indices: Vec<usize> = (0..n).collect();
-        match order.key {
-            SortKey::Folder => {}
-            SortKey::FileName => {
-                let names: Vec<String> = self
-                    .assets
-                    .iter()
-                    .map(|a| a.file_name().to_lowercase())
-                    .collect();
-                indices.sort_by(|&a, &b| names[a].cmp(&names[b]).then(a.cmp(&b)));
+        let anchors = self.copy_anchors();
+        let has_copies = anchors.iter().enumerate().any(|(ix, a)| a.0 != ix);
+        let flag_rank = |flag: Flag| match flag {
+            Flag::Picked => 0,
+            Flag::Unflagged => 1,
+            Flag::Rejected => 2,
+        };
+        let names: Vec<String> = if order.key == SortKey::FileName {
+            self.assets
+                .iter()
+                .map(|a| a.file_name().to_lowercase())
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let primary = |a: usize, b: usize| -> std::cmp::Ordering {
+            let (x, y) = (&self.assets[a], &self.assets[b]);
+            match order.key {
+                SortKey::Folder => anchors[a].0.cmp(&anchors[b].0),
+                SortKey::FileName => names[a].cmp(&names[b]),
+                SortKey::CaptureDate => x.meta.captured.cmp(&y.meta.captured),
+                SortKey::Rating => x.rating.value().cmp(&y.rating.value()),
+                SortKey::Flag => flag_rank(x.flag).cmp(&flag_rank(y.flag)),
             }
-            SortKey::CaptureDate => indices.sort_by_key(|&i| (self.assets[i].meta.captured, i)),
-            SortKey::Rating => indices.sort_by_key(|&i| (self.assets[i].rating.value(), i)),
-            SortKey::Flag => indices.sort_by_key(|&i| {
-                let rank = match self.assets[i].flag {
-                    Flag::Picked => 0,
-                    Flag::Unflagged => 1,
-                    Flag::Rejected => 2,
-                };
-                (rank, i)
-            }),
-        }
-        if order.descending {
-            indices.reverse();
-        }
-        let identity = order.key == SortKey::Folder && !order.descending;
+        };
+        // Ties keep catalog order, with each virtual copy right after its
+        // original, whichever way the key runs.
+        indices.sort_by(|&a, &b| {
+            let key = primary(a, b);
+            let key = if order.descending { key.reverse() } else { key };
+            key.then(anchors[a].cmp(&anchors[b]))
+        });
+        let identity = order.key == SortKey::Folder && !order.descending && !has_copies;
         self.rank = if identity {
             Vec::new()
         } else {
@@ -421,23 +429,136 @@ impl Catalog {
         if paths.is_empty() {
             return 0;
         }
-        let before = self.assets.len();
-        self.assets.retain(|asset| !paths.contains(&asset.path));
-        let removed = before - self.assets.len();
-        if removed == 0 {
-            return 0;
+        let moved = self.remove_where(|asset| paths.contains(&asset.path));
+        moved.iter().filter(|new| new.is_none()).count()
+    }
+
+    /// Drops every photo `remove` picks, renumbering the rest so ids stay
+    /// equal to their positions. Returns where each old index went (`None`
+    /// for removed photos), for anything that holds on to indices.
+    pub fn remove_where(&mut self, remove: impl Fn(&Asset) -> bool) -> Vec<Option<usize>> {
+        let mut moved = Vec::with_capacity(self.assets.len());
+        let mut next = 0;
+        for asset in &self.assets {
+            if remove(asset) {
+                moved.push(None);
+            } else {
+                moved.push(Some(next));
+                next += 1;
+            }
         }
+        if next == self.assets.len() {
+            return moved;
+        }
+        let selected = moved.get(self.selected).copied().flatten();
+        self.assets.retain(|asset| !remove(asset));
         for (ix, asset) in self.assets.iter_mut().enumerate() {
             asset.id = ix as u64;
         }
         let order = self.sort;
         self.set_sort(order);
+        self.selected = selected.unwrap_or(0);
         if self.assets.is_empty() {
             self.selected = 0;
         } else if self.visible_position(self.selected).is_none() {
             self.selected = self.visible.first().copied().unwrap_or(0);
         }
-        removed
+        moved
+    }
+
+    // --- Virtual copies ------------------------------------------------------
+
+    /// For each photo, the index of its original and its place among that
+    /// original's copies (0 for the original itself). Photos without copies
+    /// are their own anchor.
+    fn copy_anchors(&self) -> Vec<(usize, u32)> {
+        let mut anchors: Vec<(usize, u32)> = (0..self.assets.len()).map(|ix| (ix, 0)).collect();
+        if !self.assets.iter().any(Asset::is_virtual_copy) {
+            return anchors;
+        }
+        let mut masters: HashMap<&std::path::Path, usize> = HashMap::new();
+        for (ix, asset) in self.assets.iter().enumerate() {
+            if !asset.is_virtual_copy() {
+                masters.entry(asset.path.as_path()).or_insert(ix);
+            }
+        }
+        let mut copies_seen: HashMap<usize, u32> = HashMap::new();
+        for (ix, asset) in self.assets.iter().enumerate() {
+            if !asset.is_virtual_copy() {
+                continue;
+            }
+            if let Some(&master) = masters.get(asset.path.as_path()) {
+                let seen = copies_seen.entry(master).or_insert(0);
+                *seen += 1;
+                anchors[ix] = (master, *seen);
+            }
+        }
+        anchors
+    }
+
+    /// The original photo of `index`'s file (itself, if it isn't a copy or
+    /// its original is no longer in the catalog).
+    pub fn master_of(&self, index: usize) -> usize {
+        let Some(asset) = self.assets.get(index) else {
+            return index;
+        };
+        if !asset.is_virtual_copy() {
+            return index;
+        }
+        self.assets
+            .iter()
+            .position(|a| !a.is_virtual_copy() && a.path == asset.path)
+            .unwrap_or(index)
+    }
+
+    /// Adds a virtual copy of photo `index`: a new entry for the same file
+    /// starting with its edits, flags and metadata, named "Copy N". The
+    /// original and its copies are stacked together (and the stack
+    /// expanded). Returns the copy's index, which is the end of the list,
+    /// so no existing index changes.
+    pub fn add_virtual_copy(&mut self, index: usize) -> Option<usize> {
+        let source = self.assets.get(index)?;
+        if source.missing {
+            return None;
+        }
+        let path = source.path.clone();
+        let number = self
+            .assets
+            .iter()
+            .filter(|a| a.path == path)
+            .filter_map(|a| a.copy_name.as_deref()?.strip_prefix("Copy ")?.parse::<u32>().ok())
+            .max()
+            .unwrap_or(0)
+            + 1;
+
+        let mut copy = source.clone();
+        let new_index = self.assets.len();
+        copy.id = new_index as u64;
+        copy.copy_name = Some(format!("Copy {number}"));
+        copy.snapshots.clear();
+        copy.history.clear();
+        let from = source.display_name();
+        copy.record_develop_change("Virtual copy", from, format!("Copy {number}"));
+
+        let master = self.master_of(index);
+        let stack = match self.assets[master].stack_id {
+            Some(id) => id,
+            None => {
+                let id = self.max_stack_id() + 1;
+                self.assets[master].stack_id = Some(id);
+                self.assets[master].stack_cover = true;
+                id
+            }
+        };
+        copy.stack_id = Some(stack);
+        copy.stack_cover = false;
+        self.assets.push(copy);
+        self.collapsed_stacks.remove(&stack);
+
+        let order = self.sort;
+        self.set_sort(order);
+        self.selected = new_index;
+        Some(new_index)
     }
 
     /// Moves the selection to the next/previous visible asset, wrapping
@@ -686,6 +807,49 @@ impl CatalogCounts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn virtual_copies_sit_after_their_original_and_stack_with_it() {
+        let mut c = catalog(3);
+        let copy = c.add_virtual_copy(0).unwrap();
+        assert_eq!(copy, 3);
+        assert_eq!(c.assets[3].copy_name.as_deref(), Some("Copy 1"));
+        assert_eq!(c.assets[3].path, c.assets[0].path);
+        assert_eq!(c.selected, 3);
+        // Folder order: right after the original, nothing else moved.
+        assert_eq!(c.visible_indices(), &[0, 3, 1, 2]);
+        let stack = c.assets[0].stack_id.unwrap();
+        assert_eq!(c.assets[3].stack_id, Some(stack));
+        assert!(c.assets[0].stack_cover && !c.assets[3].stack_cover);
+        assert_index_consistent(&c);
+
+        // A copy of the copy is numbered on and joins the same stack.
+        let second = c.add_virtual_copy(3).unwrap();
+        assert_eq!(c.assets[second].copy_name.as_deref(), Some("Copy 2"));
+        assert_eq!(c.assets[second].stack_id, Some(stack));
+        assert_eq!(c.visible_indices(), &[0, 3, 4, 1, 2]);
+        assert_eq!(c.master_of(4), 0);
+
+        // Descending keeps copies after their original too.
+        c.set_sort(SortOrder {
+            key: SortKey::Folder,
+            descending: true,
+        });
+        assert_eq!(c.visible_indices(), &[2, 1, 0, 3, 4]);
+    }
+
+    #[test]
+    fn removing_a_copy_keeps_the_original_and_maps_indices() {
+        let mut c = catalog(3);
+        c.add_virtual_copy(1).unwrap();
+        c.select(2);
+        let moved = c.remove_where(|a| a.is_virtual_copy());
+        assert_eq!(moved, vec![Some(0), Some(1), Some(2), None]);
+        assert_eq!(c.assets.len(), 3);
+        assert!(c.assets.iter().all(|a| !a.is_virtual_copy()));
+        assert_eq!(c.selected, 2);
+        assert_index_consistent(&c);
+    }
 
     fn catalog(n: usize) -> Catalog {
         let assets = (0..n)

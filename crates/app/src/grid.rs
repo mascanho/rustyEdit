@@ -194,6 +194,9 @@ impl Workspace {
             })
             .when_some(stack, |el, (id, count, collapsed)| {
                 el.child(stack_badge(asset_ix, id, count, collapsed, entity, &theme))
+            })
+            .when_some(asset.copy_name.clone(), |el, name| {
+                el.child(copy_badge(name, &theme))
             });
 
         let card = div()
@@ -366,7 +369,7 @@ fn card_header(
 /// Name, and optionally the capture details, under the thumbnail.
 fn card_footer(asset: &Asset, grid: &GridSettings, theme: &Theme) -> AnyElement {
     let name = if asset.title.trim().is_empty() {
-        asset.file_name()
+        asset.display_name()
     } else {
         asset.title.clone()
     };
@@ -462,6 +465,26 @@ fn minimal_badges(asset: &Asset, theme: &Theme) -> Option<AnyElement> {
             })
             .into_any_element(),
     )
+}
+
+/// Marks a virtual copy, pinned to the thumbnail's bottom-right corner.
+pub(crate) fn copy_badge(name: String, theme: &Theme) -> AnyElement {
+    div()
+        .absolute()
+        .right(px(4.0))
+        .bottom(px(4.0))
+        .h(px(16.0))
+        .px_1p5()
+        .flex()
+        .items_center()
+        .rounded_sm()
+        .bg(theme.background.opacity(0.85))
+        .border_1()
+        .border_color(theme.accent.opacity(0.7))
+        .text_size(px(9.0))
+        .text_color(theme.text)
+        .child(name)
+        .into_any_element()
 }
 
 /// Expand / collapse toggle for a stack, pinned to the thumbnail's

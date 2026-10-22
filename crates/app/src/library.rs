@@ -345,12 +345,19 @@ impl Workspace {
                 rustyedit_ui::section(
                     &theme,
                     "Info",
-                    vec![
-                        info_row(&theme, "File", asset.file_name()),
-                        info_row(&theme, "Size", dimensions),
-                        info_row(&theme, "Location", location),
-                        self.file_actions_row(cx),
-                    ],
+                    [
+                        Some(info_row(&theme, "File", asset.file_name())),
+                        asset
+                            .copy_name
+                            .clone()
+                            .map(|name| info_row(&theme, "Virtual copy", name)),
+                        Some(info_row(&theme, "Size", dimensions)),
+                        Some(info_row(&theme, "Location", location)),
+                        Some(self.file_actions_row(cx)),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect(),
                 )
                 .into_any_element(),
             );
@@ -466,7 +473,7 @@ impl Workspace {
         let file_name = self
             .catalog
             .selected_asset()
-            .map(|a| a.file_name())
+            .map(|a| a.display_name())
             .unwrap_or_default();
 
         div()

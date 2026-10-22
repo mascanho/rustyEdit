@@ -69,6 +69,47 @@ impl Workspace {
         }
     }
 
+    /// Follows photos to their new positions after some were removed from
+    /// the catalog (`moved[old] = new`, `None` if removed), dropping the
+    /// parts of undo and redo steps that were about removed photos.
+    pub(crate) fn remap_undo(&mut self, moved: &[Option<usize>]) {
+        for stack in [&mut self.undo_stack, &mut self.redo_stack] {
+            for entry in stack.iter_mut() {
+                entry.changes = std::mem::take(&mut entry.changes)
+                    .into_iter()
+                    .filter_map(|(ix, before, after)| {
+                        Some((moved.get(ix).copied().flatten()?, before, after))
+                    })
+                    .collect();
+            }
+            stack.retain(|entry| !entry.changes.is_empty());
+        }
+    }
+
+    /// Photo `ix` was just stacked by something that isn't itself undoable
+    /// (making a virtual copy). Earlier undo steps for it recorded it as
+    /// unstacked; give them its new stack so undoing them doesn't take it
+    /// out of the stack.
+    pub(crate) fn keep_stack_in_undo(&mut self, ix: usize) {
+        let Some(asset) = self.catalog.assets.get(ix) else {
+            return;
+        };
+        let (stack, cover) = (asset.stack_id, asset.stack_cover);
+        for entry in self.undo_stack.iter_mut().chain(self.redo_stack.iter_mut()) {
+            for (at, before, after) in &mut entry.changes {
+                if *at != ix {
+                    continue;
+                }
+                for state in [before, after] {
+                    if state.stack_id.is_none() {
+                        state.stack_id = stack;
+                        state.stack_cover = cover;
+                    }
+                }
+            }
+        }
+    }
+
     pub fn undo(&mut self, _: &Undo, _w: &mut Window, cx: &mut Context<Self>) {
         let Some(entry) = self.undo_stack.pop() else {
             self.status_message = Some("Nothing to undo.".into());

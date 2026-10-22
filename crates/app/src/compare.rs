@@ -147,7 +147,7 @@ impl Workspace {
                     .border_color(theme.border_subtle)
                     .text_xs()
                     .text_color(if active { theme.text } else { theme.text_muted })
-                    .child(asset.file_name())
+                    .child(asset.display_name())
                     .child(
                         div()
                             .flex()
@@ -289,7 +289,7 @@ impl Workspace {
                     .bg(theme.background.opacity(0.7))
                     .text_size(px(10.0))
                     .text_color(theme.text_muted)
-                    .child(asset.file_name())
+                    .child(asset.display_name())
                     .child(rustyedit_ui::flag_badge(asset.flag, &theme)),
             )
             .when(removable, |el| {

@@ -27,7 +27,7 @@ impl Workspace {
                     .text_sm()
                     .text_color(theme.text)
                     .overflow_hidden()
-                    .child(asset.file_name()),
+                    .child(asset.display_name()),
             )
             .child(
                 div()

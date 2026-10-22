@@ -1,9 +1,10 @@
 //! The tool strip pinned under the histogram: the tools that work on the
-//! photo itself (Heal, Clone, Linear and Radial gradients), then view
+//! photo itself (Heal, Clone, Linear and Radial gradients, the
+//! white-balance eyedropper), then view
 //! toggles (clipping, zoom). It stays put while the sections scroll.
 //!
 //! Every way of picking a tool (the strip, the Retouch and Gradients
-//! sections, Q / M / Shift+M) goes through [`Workspace::toggle_photo_tool`],
+//! sections, Q / M / Shift+M / W) goes through [`Workspace::toggle_photo_tool`],
 //! so only one is ever active and its section is open.
 
 use gpui::{
@@ -17,7 +18,7 @@ use super::grid_overlay::GridOverlay;
 use crate::before_after::BaMode;
 
 use crate::{
-    actions::{ToolLinearGradient, ToolRadialGradient, ToolSpotRemoval},
+    actions::{ToolLinearGradient, ToolRadialGradient, ToolSpotRemoval, ToolWhiteBalance},
     workspace::{Mode, Workspace},
 };
 
@@ -28,6 +29,7 @@ pub(crate) enum PhotoTool {
     Clone,
     Linear,
     Radial,
+    WhiteBalance,
 }
 
 impl PhotoTool {
@@ -37,6 +39,7 @@ impl PhotoTool {
             PhotoTool::Clone => Icon::Clone,
             PhotoTool::Linear => Icon::LinearGradient,
             PhotoTool::Radial => Icon::RadialGradient,
+            PhotoTool::WhiteBalance => Icon::Eyedropper,
         }
     }
 
@@ -46,6 +49,7 @@ impl PhotoTool {
             PhotoTool::Clone => "Clone spots",
             PhotoTool::Linear => "Linear gradient (M)",
             PhotoTool::Radial => "Radial gradient (Shift+M)",
+            PhotoTool::WhiteBalance => "White balance: click something neutral (W)",
         }
     }
 
@@ -54,6 +58,7 @@ impl PhotoTool {
         match self {
             PhotoTool::Heal | PhotoTool::Clone => "develop-retouch",
             PhotoTool::Linear | PhotoTool::Radial => "develop-gradients",
+            PhotoTool::WhiteBalance => "develop-color",
         }
     }
 }
@@ -83,6 +88,7 @@ impl Workspace {
             .tool
             .map(PhotoTool::from)
             .or(ui.gradients.tool.map(PhotoTool::from))
+            .or(ui.wb_picker.then_some(PhotoTool::WhiteBalance))
     }
 
     /// Picks `tool` (putting any other down and opening its section), or
@@ -92,12 +98,14 @@ impl Workspace {
         let ui = &mut self.develop_ui;
         ui.retouch.tool = None;
         ui.gradients.tool = None;
+        ui.wb_picker = false;
         if picking {
             match tool {
                 PhotoTool::Heal => ui.retouch.tool = Some(SpotKind::Heal),
                 PhotoTool::Clone => ui.retouch.tool = Some(SpotKind::Clone),
                 PhotoTool::Linear => ui.gradients.tool = Some(GradientKind::Linear),
                 PhotoTool::Radial => ui.gradients.tool = Some(GradientKind::Radial),
+                PhotoTool::WhiteBalance => ui.wb_picker = true,
             }
             self.collapsed_sections.remove(tool.section_key());
         }
@@ -154,6 +162,17 @@ impl Workspace {
         }
     }
 
+    pub fn tool_white_balance(
+        &mut self,
+        _: &ToolWhiteBalance,
+        _w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.mode == Mode::Develop {
+            self.toggle_photo_tool(PhotoTool::WhiteBalance, cx);
+        }
+    }
+
     /// The strip itself.
     pub(super) fn render_tool_strip(&self, cx: &mut Context<Self>) -> AnyElement {
         let active = self.active_photo_tool();
@@ -162,6 +181,7 @@ impl Workspace {
             PhotoTool::Clone,
             PhotoTool::Linear,
             PhotoTool::Radial,
+            PhotoTool::WhiteBalance,
         ]
         .map(|tool| {
             self.strip_button(

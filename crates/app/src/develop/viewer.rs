@@ -80,6 +80,7 @@ impl Workspace {
                     .children(self.render_grid_overlay())
                     .children(self.render_retouch_overlay(cx))
                     .children(self.render_gradient_overlay(cx))
+                    .children(self.render_white_balance_overlay(cx))
                     .children(self.develop_split_overlay(cx)),
             )
             .child(self.render_zoom_badge(cx))
@@ -271,8 +272,8 @@ impl Workspace {
     }
 
     /// Whether a tool that works by clicking the photo (Heal / Clone, a
-    /// gradient) is picked, so plain clicks don't pan.
+    /// gradient, the eyedropper) is picked, so plain clicks don't pan.
     fn photo_tool_active(&self) -> bool {
-        self.develop_ui.retouch.tool.is_some() || self.develop_ui.gradients.tool.is_some()
+        self.active_photo_tool().is_some()
     }
 }

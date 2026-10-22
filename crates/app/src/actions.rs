@@ -76,5 +76,9 @@ actions!(
         ToolSpotRemoval,
         ToolLinearGradient,
         ToolRadialGradient,
+        ToolWhiteBalance,
+        AutoTone,
+        SyncSettings,
+        CreateVirtualCopy,
     ]
 );

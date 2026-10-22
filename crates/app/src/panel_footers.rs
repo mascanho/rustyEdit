@@ -1,8 +1,8 @@
 //! The fixed footers along the bottom of the side panels, Lightroom-style:
 //!
 //! - Library's Navigator dock: Import… / Export…
-//! - Library's Inspector dock: Copy Edits / Paste Edits
-//! - Develop's tools column: Copy Edits / Paste Edits
+//! - Library's Inspector dock: Copy Edits / Paste Edits / Sync…
+//! - Develop's tools column: Copy Edits / Paste Edits / Sync…
 //! - Develop's editing panel: Previous / Reset
 //!
 //! A dock holding several panels stacks their rows.
@@ -94,6 +94,14 @@ impl Workspace {
                 has_photo && self.edit_clipboard.is_some(),
                 &theme,
                 cx.listener(|this, _: &ClickEvent, _w, cx| this.paste_edits(cx)),
+            ),
+            rustyedit_ui::footer_button(
+                "footer-sync",
+                "Sync\u{2026}",
+                "Copy chosen settings from the active photo to the other selected photos (\u{21E7}\u{2318}S)",
+                self.can_sync(),
+                &theme,
+                cx.listener(|this, _: &ClickEvent, _w, cx| this.open_sync_dialog(cx)),
             ),
         ]
     }

@@ -87,11 +87,13 @@ pub fn missing_assets(saved: &Catalog) -> Vec<Asset> {
 /// Carries flags, ratings, colour labels and develop settings from a previously saved
 /// catalog onto a freshly rescanned asset list (matched by file path), so
 /// re-opening a folder never loses prior culling or edit work even if files
-/// were added or removed since the last save.
-pub fn merge_saved_state(fresh: &mut [Asset], saved: &Catalog) {
+/// were added or removed since the last save. Saved virtual copies of files
+/// that are still there come back too, each right after its original.
+pub fn merge_saved_state(fresh: &mut Vec<Asset>, saved: &Catalog) {
     let by_path: HashMap<&Path, &Asset> = saved
         .assets
         .iter()
+        .filter(|asset| !asset.is_virtual_copy())
         .map(|asset| (asset.path.as_path(), asset))
         .collect();
 
@@ -119,11 +121,56 @@ pub fn merge_saved_state(fresh: &mut [Asset], saved: &Catalog) {
             asset.meta = previous.meta.clone();
         }
     }
+
+    let mut copies: HashMap<&Path, Vec<&Asset>> = HashMap::new();
+    for asset in saved.assets.iter().filter(|a| a.is_virtual_copy()) {
+        copies.entry(asset.path.as_path()).or_default().push(asset);
+    }
+    if copies.is_empty() {
+        return;
+    }
+    let mut merged = Vec::with_capacity(fresh.len());
+    for asset in fresh.drain(..) {
+        let own = copies.remove(asset.path.as_path()).unwrap_or_default();
+        merged.push(asset);
+        merged.extend(own.into_iter().map(|copy| {
+            let mut copy = copy.clone();
+            copy.missing = false;
+            copy
+        }));
+    }
+    *fresh = merged;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merging_restores_virtual_copies_after_their_original() {
+        let a = PathBuf::from("/p/a.jpg");
+        let b = PathBuf::from("/p/b.jpg");
+        let gone = PathBuf::from("/p/gone.jpg");
+        let mut master = Asset::new(0, a.clone());
+        master.develop.exposure = 10.0;
+        let mut copy = Asset::new(1, a.clone());
+        copy.copy_name = Some("Copy 1".into());
+        copy.develop.exposure = -30.0;
+        let mut orphan = Asset::new(2, gone);
+        orphan.copy_name = Some("Copy 1".into());
+        let saved = Catalog::new(PathBuf::from("/p"), vec![copy, master, orphan]);
+
+        let mut fresh = vec![Asset::new(0, a.clone()), Asset::new(1, b.clone())];
+        merge_saved_state(&mut fresh, &saved);
+        assert_eq!(fresh.len(), 3);
+        assert_eq!(fresh[0].path, a);
+        assert!(!fresh[0].is_virtual_copy());
+        // The original keeps its own edits, not the copy's.
+        assert_eq!(fresh[0].develop.exposure, 10.0);
+        assert_eq!(fresh[1].copy_name.as_deref(), Some("Copy 1"));
+        assert_eq!(fresh[1].develop.exposure, -30.0);
+        assert_eq!(fresh[2].path, b);
+    }
 
     #[test]
     fn missing_assets_flags_only_vanished_files() {

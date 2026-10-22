@@ -276,6 +276,30 @@ impl Workspace {
                 |this, _w, cx| this.paste_edits(cx),
             ));
         }
+        if multi && self.can_sync() {
+            entries.push(
+                action(
+                    "ctx-sync-settings",
+                    "\u{21C4}",
+                    "Sync settings\u{2026}",
+                    |this, _w, cx| this.open_sync_dialog(cx),
+                )
+                .hint("\u{21E7}\u{2318}S"),
+            );
+        }
+        entries.push(
+            action(
+                "ctx-virtual-copy",
+                "\u{2750}",
+                if multi {
+                    "Create virtual copies"
+                } else {
+                    "Create virtual copy"
+                },
+                |this, _w, cx| this.create_virtual_copies(cx),
+            )
+            .hint("\u{2318}'"),
+        );
         if assets.iter().any(|a| a.develop.is_edited()) {
             entries.push(action(
                 "ctx-reset-edits",

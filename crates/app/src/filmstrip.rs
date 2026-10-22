@@ -420,6 +420,9 @@ fn film_frame(
             look.picture_border
         })
         .child(image)
+        .when_some(asset.copy_name.clone(), |el, name| {
+            el.child(crate::grid::copy_badge(name, &theme))
+        })
         .when_some(label_color, |el, color| {
             el.child(
                 div()

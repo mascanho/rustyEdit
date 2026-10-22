@@ -217,10 +217,18 @@ pub struct Workspace {
     pub(crate) source_image: Option<DevelopSource>,
     pub(crate) full_source: Option<DevelopSource>,
     pub(crate) source_image_for: Option<u64>,
+    /// The file the decoded source came from. Virtual copies share their
+    /// original's file, so switching between them reuses it.
+    pub(crate) source_image_path: Option<PathBuf>,
     pub(crate) live_preview: LivePreview,
     pub(crate) develop_ui: DevelopUi,
     pub(crate) histogram_ui: HistogramUi,
     pub(crate) preview_epoch: u64,
+
+    /// The Sync Settings dialog, while open (see `sync_settings.rs`), and
+    /// the sections last chosen in it.
+    pub(crate) sync_dialog: Option<crate::sync_settings::SyncDialog>,
+    pub(crate) sync_choice: Vec<rustyedit_core::DevelopSection>,
 }
 
 impl Workspace {
@@ -347,10 +355,13 @@ impl Workspace {
             source_image: None,
             full_source: None,
             source_image_for: None,
+            source_image_path: None,
             live_preview: LivePreview::default(),
             develop_ui,
             histogram_ui: HistogramUi::default(),
             preview_epoch: 0,
+            sync_dialog: None,
+            sync_choice: crate::sync_settings::default_choice(),
         };
         // Pick up where the last session left off.
         if !this.catalog_def.folders.is_empty() {
@@ -485,12 +496,35 @@ impl Workspace {
             self.loupe_zoom = None;
         }
         self.preview_epoch += 1;
+        // Another version of the same file (a virtual copy or its
+        // original) can keep the decoded photo and just re-render.
+        let selected = self
+            .catalog
+            .selected_asset()
+            .map(|a| (a.id, a.path.clone()));
+        let reuse = self.source_image.is_some()
+            && selected.as_ref().map(|(_, path)| path) == self.source_image_path.as_ref();
+        let kept = reuse.then(|| {
+            (
+                self.source_image.take(),
+                self.full_source.take(),
+                self.source_image_path.take(),
+            )
+        });
         // The previous asset's rendered preview is now meaningless for the
         // newly selected asset; drop it immediately so the viewer falls
         // back to the (correct) source image while the new preview is
         // generated, instead of briefly showing the old photo.
         self.reset_develop_preview();
-        if self.mode == Mode::Develop || self.ba_active() {
+        if let (Some((source, full, path)), Some((id, _))) = (kept, selected) {
+            self.source_image = source;
+            self.full_source = full;
+            self.source_image_path = path;
+            self.source_image_for = Some(id);
+            if self.mode == Mode::Develop || self.ba_active() {
+                self.request_preview_update(cx);
+            }
+        } else if self.mode == Mode::Develop || self.ba_active() {
             self.load_source_image(cx);
         }
         if let Some(pos) = self.catalog.visible_position(self.catalog.selected) {
@@ -508,7 +542,11 @@ impl Workspace {
     }
 
     pub fn go_library(&mut self, _: &GoLibrary, _window: &mut Window, cx: &mut Context<Self>) {
-        // Escape first closes the recipe modal, then a context menu.
+        // Escape first closes a dialog, then a context menu.
+        if self.sync_dialog.is_some() {
+            self.close_sync_dialog(cx);
+            return;
+        }
         if self.develop_ui.preset_ui.recipe.is_some() {
             self.close_recipe_modal(cx);
             return;
@@ -911,6 +949,10 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::tool_spot_removal))
             .on_action(cx.listener(Self::tool_linear_gradient))
             .on_action(cx.listener(Self::tool_radial_gradient))
+            .on_action(cx.listener(Self::tool_white_balance))
+            .on_action(cx.listener(Self::auto_tone_action))
+            .on_action(cx.listener(Self::sync_settings_action))
+            .on_action(cx.listener(Self::create_virtual_copy))
             .on_action(cx.listener(Self::flag_pick))
             .on_action(cx.listener(Self::flag_reject))
             .on_action(cx.listener(Self::flag_unflag))
@@ -966,6 +1008,9 @@ impl Render for Workspace {
             })
             .when(self.develop_ui.preset_ui.recipe.is_some(), |el| {
                 el.child(self.render_recipe_modal(cx))
+            })
+            .when(self.sync_dialog.is_some(), |el| {
+                el.child(self.render_sync_dialog(cx))
             })
     }
 }

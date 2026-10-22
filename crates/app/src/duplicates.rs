@@ -40,6 +40,8 @@ impl Workspace {
             .assets
             .iter()
             .enumerate()
+            // A virtual copy is the same file on purpose, not a duplicate.
+            .filter(|(_, asset)| !asset.is_virtual_copy())
             .map(|(index, asset)| PhotoHash {
                 index,
                 width: asset.width,

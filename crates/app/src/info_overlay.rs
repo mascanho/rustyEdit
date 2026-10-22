@@ -107,7 +107,7 @@ impl Workspace {
                 .text_sm()
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text)
-                .child(asset.file_name()),
+                .child(asset.display_name()),
         );
         if !asset.title.trim().is_empty() {
             header = header.child(

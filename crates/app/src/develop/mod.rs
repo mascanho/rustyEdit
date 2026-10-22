@@ -8,6 +8,7 @@
 //! - `viewer`: the photo, fitted or zoomed, with drag-to-pan
 //! - `zoom`: Ctrl + wheel zoom around the pointer, Space-drag panning
 //! - `adjustments`: the slider sections and every Develop-settings change
+//! - `auto`: Auto Tone and the white-balance eyedropper
 //! - `retouch`: Heal and Clone spots, and drawing / dragging them
 //! - `gradients`: Linear and Radial masks with local adjustments
 //! - `sections`: each editing section's title bar (drag grip, reset
@@ -20,6 +21,7 @@
 //! - `navigator`, `presets`, `snapshots`, `history`: its sections
 
 mod adjustments;
+mod auto;
 mod color_grading;
 mod color_mixer;
 mod crop;
@@ -94,6 +96,10 @@ pub(crate) struct DevelopUi {
     pub(crate) retouch: RetouchUi,
     /// Linear / Radial gradient tool state.
     pub(crate) gradients: GradientUi,
+    /// The white-balance eyedropper is picked.
+    pub(crate) wb_picker: bool,
+    /// Auto Tone or the eyedropper is measuring the photo.
+    pub(crate) auto_busy: bool,
 }
 
 impl DevelopUi {
@@ -118,6 +124,8 @@ impl DevelopUi {
             mixer_prop: MixerProp::default(),
             retouch: RetouchUi::default(),
             gradients: GradientUi::default(),
+            wb_picker: false,
+            auto_busy: false,
         }
     }
 }
@@ -229,15 +237,17 @@ impl Workspace {
             S::Crop => ("develop-crop", self.crop_section(cx)),
             S::Retouch => ("develop-retouch", self.retouch_section(cx)),
             S::Gradients => ("develop-gradients", self.gradients_section(cx)),
-            S::Basic => (
-                "develop-basic",
-                self.adjustment_sliders(&Adjustment::BASIC, cx),
-            ),
+            S::Basic => {
+                let mut children = vec![self.auto_tone_row(cx)];
+                children.extend(self.adjustment_sliders(&Adjustment::BASIC, cx));
+                ("develop-basic", children)
+            }
             S::ToneCurve => ("develop-curve", self.curve_section(cx)),
-            S::Color => (
-                "develop-color",
-                self.adjustment_sliders(&Adjustment::COLOR, cx),
-            ),
+            S::Color => {
+                let mut children = vec![self.white_balance_row(cx)];
+                children.extend(self.adjustment_sliders(&Adjustment::COLOR, cx));
+                ("develop-color", children)
+            }
             S::ColorMixer => ("develop-mixer", self.color_mixer_section(cx)),
             S::ColorGrading => ("develop-grading", self.color_grading_section(cx)),
             S::Detail => ("develop-detail", self.detail_section(cx)),

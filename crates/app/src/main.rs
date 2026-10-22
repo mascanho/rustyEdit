@@ -36,7 +36,9 @@ mod selection;
 mod settings_view;
 mod size_menu;
 mod stacks;
+mod sync_settings;
 mod undo;
+mod virtual_copies;
 mod wheel_zoom;
 mod workspace;
 
@@ -55,6 +57,7 @@ use actions::{
     ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
 };
 use actions::{
+    AutoTone, CreateVirtualCopy, SyncSettings, ToolWhiteBalance,
     CycleGridStyle, GridLarger, GridSmaller, ToolLinearGradient, ToolRadialGradient,
     ToolSpotRemoval, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp,
     SelectDown, SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
@@ -109,6 +112,10 @@ fn main() {
             KeyBinding::new("q", ToolSpotRemoval, Some(KEY_CONTEXT)),
             KeyBinding::new("m", ToolLinearGradient, Some(KEY_CONTEXT)),
             KeyBinding::new("shift-m", ToolRadialGradient, Some(KEY_CONTEXT)),
+            KeyBinding::new("w", ToolWhiteBalance, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-u", AutoTone, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-shift-s", SyncSettings, Some(KEY_CONTEXT)),
+            KeyBinding::new("cmd-'", CreateVirtualCopy, Some(KEY_CONTEXT)),
             // "+" is shift-= on most layouts; bind every way it can arrive.
             KeyBinding::new("ctrl-=", GridLarger, Some(KEY_CONTEXT)),
             KeyBinding::new("ctrl-+", GridLarger, Some(KEY_CONTEXT)),
@@ -156,6 +163,10 @@ fn main() {
                     MenuItem::action("Rename Photo…", RenamePhoto),
                     MenuItem::action("Rotate Left", RotateLeft),
                     MenuItem::action("Rotate Right", RotateRight),
+                    MenuItem::separator(),
+                    MenuItem::action("Create Virtual Copy", CreateVirtualCopy),
+                    MenuItem::action("Sync Settings…", SyncSettings),
+                    MenuItem::action("Auto Tone", AutoTone),
                     MenuItem::separator(),
                     MenuItem::action("Remove from Catalog", DeleteFromCatalog),
                     MenuItem::action("Move to Trash…", DeleteFromDisk),
