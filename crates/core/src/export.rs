@@ -292,6 +292,35 @@ impl ExportSharpen {
     }
 }
 
+/// The colour space exported pixels are written in; its ICC profile is
+/// embedded in the file so other apps show the colours as intended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExportColorSpace {
+    /// Safe everywhere, and what the web expects.
+    #[default]
+    Srgb,
+    /// Wider gamut, as on Apple displays and phones.
+    DisplayP3,
+    /// Wider gamut, common in print workflows.
+    AdobeRgb,
+}
+
+impl ExportColorSpace {
+    pub const ALL: [ExportColorSpace; 3] = [
+        ExportColorSpace::Srgb,
+        ExportColorSpace::DisplayP3,
+        ExportColorSpace::AdobeRgb,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            ExportColorSpace::Srgb => "sRGB",
+            ExportColorSpace::DisplayP3 => "Display P3",
+            ExportColorSpace::AdobeRgb => "Adobe RGB",
+        }
+    }
+}
+
 /// PNG encoder effort.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExportPngCompression {
@@ -329,6 +358,7 @@ pub struct ExportOptions {
     pub subfolder: ExportSubfolder,
     pub sharpen: ExportSharpen,
     pub png_compression: ExportPngCompression,
+    pub color_space: ExportColorSpace,
     /// Leave rejected photos out, whatever the scope.
     pub skip_rejected: bool,
     /// Reveal the destination in the file manager when finished.
@@ -348,6 +378,7 @@ impl Default for ExportOptions {
             subfolder: ExportSubfolder::None,
             sharpen: ExportSharpen::Off,
             png_compression: ExportPngCompression::Balanced,
+            color_space: ExportColorSpace::Srgb,
             skip_rejected: true,
             open_when_done: false,
         }

@@ -9,3 +9,6 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png"]
 wgpu = "30.0.1"
 pollster = "1.0.1"
 bytemuck = { version = "1.25.2", features = ["derive"] }
+half = "2.7"
+moxcms = "0.8.1"
+rawler = "0.8.0"

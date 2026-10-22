@@ -9,8 +9,8 @@
 //! don't use them pay nothing.
 
 mod curves;
-mod effects;
-mod grading;
+pub(crate) mod effects;
+pub(crate) mod grading;
 mod local;
 mod mixer;
 

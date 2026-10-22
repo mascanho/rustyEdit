@@ -1,7 +1,6 @@
-//! Decoding the selected photo into the downscaled "smart preview" that
-//! the live preview pipeline renders from.
-
-use std::sync::Arc;
+//! Decoding the selected photo: in full (RAW files as sensor data, other
+//! images converted into the editing colour space), plus the downscaled
+//! "smart preview" the live preview renders from.
 
 use gpui::Context;
 
@@ -25,10 +24,11 @@ impl Workspace {
         // original is, at the cost of not previewing at 100% detail.
         let max_edge = self.settings.develop.preview_quality.max_edge();
 
+        crate::display_profile::refresh();
         let decode = cx.background_executor().spawn(async move {
-            rustyedit_io::open_image(&path)
-                .ok()
-                .map(|image| rustyedit_processing::downscale_for_preview(&image, max_edge))
+            let full = rustyedit_io::open_for_develop(&path).ok()?;
+            let preview = rustyedit_processing::prepare_preview(&full, max_edge);
+            Some((full, preview))
         });
 
         cx.spawn(async move |this, cx| {
@@ -37,8 +37,9 @@ impl Workspace {
                 if this.preview_epoch != epoch {
                     return;
                 }
-                if let Some(image) = decoded {
-                    this.source_image = Some(Arc::new(image));
+                if let Some((full, preview)) = decoded {
+                    this.source_image = Some(preview);
+                    this.full_source = Some(full);
                     this.source_image_for = Some(asset_id);
                     this.request_preview_update(cx);
                 }
@@ -54,6 +55,7 @@ impl Workspace {
     /// preview has been rendered.
     pub(crate) fn reset_develop_preview(&mut self) {
         self.source_image = None;
+        self.full_source = None;
         self.source_image_for = None;
         self.live_preview.clear();
         self.develop_ui.retouch.reset_selection();

@@ -19,9 +19,10 @@ use gpui::{
     div, hsla, img, prelude::*, px, relative, Animation, AnimationExt, AnyElement, App, ClickEvent,
     Context, Entity, ObjectFit, SharedString, Window,
 };
-use image::{codecs::jpeg::JpegEncoder, DynamicImage, ExtendedColorType, ImageEncoder};
+use image::{codecs::jpeg::JpegEncoder, ExtendedColorType, ImageEncoder};
 use rustyedit_core::{
-    Asset, ExportConflict, ExportFormat, ExportNaming, ExportOptions, ExportPngCompression,
+    Asset, ExportColorSpace, ExportConflict, ExportFormat, ExportNaming, ExportOptions,
+    ExportPngCompression,
     ExportScope, ExportSharpen, ExportSize, ExportSubfolder, Flag,
 };
 use rustyedit_ui::Theme;
@@ -375,6 +376,19 @@ impl Workspace {
             ));
         }
 
+        if options.format != ExportFormat::Bmp {
+            format_children.push(labelled(&theme, "Colour space", div().into_any_element()));
+            format_children.push(option_row(
+                &theme,
+                &entity,
+                "export-color-space",
+                &ExportColorSpace::ALL,
+                options.color_space,
+                |c| c.label().to_string(),
+                |o, v| o.color_space = v,
+            ));
+        }
+
         let size_row = option_row(
             &theme,
             &entity,
@@ -710,6 +724,9 @@ impl Workspace {
             },
         )];
         pills.push(pill(&theme, options.size.label()));
+        if output_space(options) != rustyedit_processing::OutputSpace::Srgb {
+            pills.push(pill(&theme, options.color_space.label().to_string()));
+        }
         if options.sharpen != ExportSharpen::Off {
             pills.push(pill(&theme, format!("Sharpen {}", options.sharpen.label())));
         }
@@ -1465,25 +1482,47 @@ fn export_one(
     }
 }
 
-fn render_to(asset: &Asset, options: &ExportOptions, file: std::fs::File) -> anyhow::Result<u64> {
-    let source = rustyedit_io::open_image(&asset.path)?;
-    let rendered = DynamicImage::ImageRgb8(rustyedit_processing::apply(&source, &asset.develop));
-    let rendered = match options.size.0 {
-        Some(edge) if rendered.width().max(rendered.height()) > edge => {
-            rendered.resize(edge, edge, image::imageops::FilterType::Lanczos3)
-        }
-        _ => rendered,
-    };
-    let mut rgb = rendered.to_rgb8();
-    if let Some((sigma, threshold)) = options.sharpen.params() {
-        rgb = image::imageops::unsharpen(&rgb, sigma, threshold);
+/// The colour space a file in `options` is written in. BMP can't carry a
+/// colour profile, so it's always sRGB.
+fn output_space(options: &ExportOptions) -> rustyedit_processing::OutputSpace {
+    use rustyedit_processing::OutputSpace;
+    if options.format == ExportFormat::Bmp {
+        return OutputSpace::Srgb;
     }
+    match options.color_space {
+        ExportColorSpace::Srgb => OutputSpace::Srgb,
+        ExportColorSpace::DisplayP3 => OutputSpace::DisplayP3,
+        ExportColorSpace::AdobeRgb => OutputSpace::AdobeRgb,
+    }
+}
+
+fn render_to(asset: &Asset, options: &ExportOptions, file: std::fs::File) -> anyhow::Result<u64> {
+    let source = rustyedit_io::open_for_develop(&asset.path)?;
+    let space = output_space(options);
+    // Develop (from the RAW data for RAW files), resize, output sharpening
+    // and colour conversion in one GPU pass (or the CPU fallback).
+    let rgb = rustyedit_processing::render_export(
+        &source,
+        &asset.develop,
+        options.size.0,
+        options.sharpen.params(),
+        &space,
+    );
+    let icc = space.icc();
+    let tag = |encoder: &mut dyn ImageEncoderIcc| {
+        if let Some(icc) = &icc {
+            encoder.embed(icc.clone());
+        }
+    };
 
     let mut out = std::io::BufWriter::new(file);
     let (w, h) = (rgb.width(), rgb.height());
     match options.format {
-        ExportFormat::Jpeg => JpegEncoder::new_with_quality(&mut out, options.quality)
-            .write_image(rgb.as_raw(), w, h, ExtendedColorType::Rgb8)?,
+        ExportFormat::Jpeg => {
+            let mut encoder = JpegEncoder::new_with_quality(&mut out, options.quality);
+            tag(&mut encoder);
+            encoder.write_image(rgb.as_raw(), w, h, ExtendedColorType::Rgb8)?
+        }
         ExportFormat::Png => {
             use image::codecs::png::{CompressionType, FilterType, PngEncoder};
             let compression = match options.png_compression {
@@ -1491,19 +1530,16 @@ fn render_to(asset: &Asset, options: &ExportOptions, file: std::fs::File) -> any
                 ExportPngCompression::Balanced => CompressionType::Default,
                 ExportPngCompression::Smallest => CompressionType::Best,
             };
-            PngEncoder::new_with_quality(&mut out, compression, FilterType::Adaptive).write_image(
-                rgb.as_raw(),
-                w,
-                h,
-                ExtendedColorType::Rgb8,
-            )?
+            let mut encoder =
+                PngEncoder::new_with_quality(&mut out, compression, FilterType::Adaptive);
+            tag(&mut encoder);
+            encoder.write_image(rgb.as_raw(), w, h, ExtendedColorType::Rgb8)?
         }
-        ExportFormat::Tiff => image::codecs::tiff::TiffEncoder::new(&mut out).write_image(
-            rgb.as_raw(),
-            w,
-            h,
-            ExtendedColorType::Rgb8,
-        )?,
+        ExportFormat::Tiff => {
+            let mut encoder = image::codecs::tiff::TiffEncoder::new(&mut out);
+            tag(&mut encoder);
+            encoder.write_image(rgb.as_raw(), w, h, ExtendedColorType::Rgb8)?
+        }
         ExportFormat::Bmp => image::codecs::bmp::BmpEncoder::new(&mut out).write_image(
             rgb.as_raw(),
             w,
@@ -1516,6 +1552,19 @@ fn render_to(asset: &Asset, options: &ExportOptions, file: std::fs::File) -> any
         .into_inner()
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     Ok(file.metadata()?.len())
+}
+
+/// Embedding an ICC profile, for any encoder that can.
+trait ImageEncoderIcc {
+    fn embed(&mut self, icc: Vec<u8>);
+}
+
+impl<E: ImageEncoder> ImageEncoderIcc for E {
+    fn embed(&mut self, icc: Vec<u8>) {
+        // Every format offered with a colour space supports profiles; if
+        // one didn't, the file would simply be untagged.
+        let _ = self.set_icc_profile(icc);
+    }
 }
 
 /// Picks and opens the output file according to the conflict rule. Paths

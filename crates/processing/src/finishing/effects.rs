@@ -13,6 +13,11 @@ impl Dehaze {
         (amount.abs() > 0.5).then(|| Self(amount / 100.0))
     }
 
+    /// The strength, -1..=1.
+    pub(crate) fn amount(&self) -> f32 {
+        self.0
+    }
+
     pub(crate) fn apply(&self, rgb: [f32; 3]) -> [f32; 3] {
         let amount = self.0;
         if amount > 0.0 {
@@ -29,10 +34,10 @@ impl Dehaze {
 /// Darkens (or lightens) towards the corners, in an ellipse matching the
 /// photo's proportions.
 pub(crate) struct Vignette {
-    amount: f32,
-    centre: (f32, f32),
-    inner: f32,
-    outer: f32,
+    pub(crate) amount: f32,
+    pub(crate) centre: (f32, f32),
+    pub(crate) inner: f32,
+    pub(crate) outer: f32,
 }
 
 impl Vignette {
@@ -70,8 +75,8 @@ impl Vignette {
 /// and its cell size scales with the image so the preview and a full-size
 /// export look alike.
 pub(crate) struct Grain {
-    strength: f32,
-    cell: u32,
+    pub(crate) strength: f32,
+    pub(crate) cell: u32,
 }
 
 impl Grain {

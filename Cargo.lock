@@ -5317,6 +5317,9 @@ dependencies = [
  "anyhow",
  "gpui",
  "image",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "rfd",
  "rustyedit-core",
  "rustyedit-io",
@@ -5343,6 +5346,7 @@ dependencies = [
  "rawler",
  "rayon",
  "rustyedit-core",
+ "rustyedit-processing",
  "serde",
  "serde_json",
  "walkdir",
@@ -5353,8 +5357,11 @@ name = "rustyedit-processing"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "half",
  "image",
+ "moxcms",
  "pollster 1.0.1",
+ "rawler",
  "rustyedit-core",
  "wgpu",
 ]

@@ -31,6 +31,39 @@ pub fn open_image(path: &Path) -> anyhow::Result<DynamicImage> {
     Ok(image)
 }
 
+/// Opens a photo for editing in Develop. RAW files keep their sensor data
+/// (demosaiced and developed on the GPU, so white balance and exposure act
+/// on the camera's own values); other images are converted from their
+/// embedded colour profile into the editing colour space. Falls back to
+/// [`open_image`] for RAW layouts the GPU path doesn't handle. Does real
+/// decode work; call off the UI thread.
+pub fn open_for_develop(path: &Path) -> anyhow::Result<rustyedit_processing::DevelopSource> {
+    use rustyedit_processing::DevelopSource;
+    if is_raw(path) {
+        if let Ok(raw) = rawler::decode_file(path) {
+            if let Some(source) = DevelopSource::from_raw(raw, exif_orientation(path)) {
+                return Ok(source);
+            }
+        }
+        return Ok(DevelopSource::from_image(&open_image(path)?, None));
+    }
+    let (mut image, icc) = decode_with_profile(path)?;
+    if let Some(orientation) = Orientation::from_exif(exif_orientation(path)) {
+        image.apply_orientation(orientation);
+    }
+    Ok(DevelopSource::from_image(&image, icc.as_deref()))
+}
+
+/// Decodes a non-RAW image along with its embedded ICC profile, if any.
+fn decode_with_profile(path: &Path) -> anyhow::Result<(DynamicImage, Option<Vec<u8>>)> {
+    use image::ImageDecoder;
+    let mut decoder = image::ImageReader::open(path)?
+        .with_guessed_format()?
+        .into_decoder()?;
+    let icc = decoder.icc_profile().ok().flatten();
+    Ok((DynamicImage::from_decoder(decoder)?, icc))
+}
+
 /// EXIF orientation of `path` (1 = upright), or 1 when unknown.
 pub fn exif_orientation(path: &Path) -> u8 {
     std::fs::File::open(path)

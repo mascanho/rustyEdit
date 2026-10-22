@@ -11,7 +11,7 @@ use gpui::{
     div, prelude::*, App, ClickEvent, Context, FocusHandle, Focusable, ScrollHandle, SharedString,
     Subscription, UniformListScrollHandle, Window,
 };
-use image::DynamicImage;
+use rustyedit_processing::DevelopSource;
 use rustyedit_core::{
     settings::StartupView, Catalog, ColorLabel, ExportOptions, Flag, Histogram, RailTool, Settings,
 };
@@ -209,7 +209,10 @@ pub struct Workspace {
     pub(crate) develop_histogram: Option<(u64, Arc<Histogram>)>,
 
     // Develop-mode live preview pipeline state.
-    pub(crate) source_image: Option<Arc<DynamicImage>>,
+    /// The selected photo as the live preview renders it (preview-sized)
+    /// and in full, for the zoomed-in detail view and exports.
+    pub(crate) source_image: Option<DevelopSource>,
+    pub(crate) full_source: Option<DevelopSource>,
     pub(crate) source_image_for: Option<u64>,
     pub(crate) live_preview: LivePreview,
     pub(crate) develop_ui: DevelopUi,
@@ -237,6 +240,7 @@ impl Workspace {
         cx.background_executor()
             .spawn(async { rustyedit_processing::gpu_adapter_name() })
             .detach();
+        crate::display_profile::refresh();
         let mut this = Self {
             focus_handle: cx.focus_handle(),
             theme: Theme::from_appearance(&settings.appearance),
@@ -325,6 +329,7 @@ impl Workspace {
             histogram_loading: None,
             develop_histogram: None,
             source_image: None,
+            full_source: None,
             source_image_for: None,
             live_preview: LivePreview::default(),
             develop_ui,

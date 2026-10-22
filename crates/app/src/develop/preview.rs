@@ -11,8 +11,9 @@
 use std::sync::Arc;
 
 use gpui::{Context, RenderImage, Window};
-use image::{Frame, RgbImage, RgbaImage};
-use rustyedit_core::{DevelopSettings, Histogram};
+use image::{Frame, RgbaImage};
+use rustyedit_core::DevelopSettings;
+use rustyedit_processing::ClipWarnings;
 
 use crate::workspace::Workspace;
 
@@ -109,7 +110,7 @@ impl Workspace {
         let settings = asset.develop;
         let asset_id = asset.id;
         let epoch = self.preview_epoch;
-        let clipping = ClippingOverlay {
+        let clipping = ClipWarnings {
             shadows: self.histogram_ui.show_shadow_clipping,
             highlights: self.histogram_ui.show_highlight_clipping,
         };
@@ -128,20 +129,20 @@ impl Workspace {
         self.live_preview.busy = true;
         self.live_preview.pending = false;
 
+        // The frame, its clipping warnings and the histogram all come
+        // from one GPU pass (or the CPU fallback); nothing per-pixel is
+        // left to do here.
         let render = cx.background_executor().spawn(async move {
-            let rendered = rustyedit_processing::apply(&source, &settings);
-            let histogram = Histogram::from_rgb8_sized(rendered.as_raw(), rendered.width() as usize);
+            let frame = rustyedit_processing::render_preview(&source, &settings, clipping);
             let before = need_before.then(|| {
-                let plain = rustyedit_processing::apply(&source, &geometry);
-                to_render_image(
-                    &plain,
-                    ClippingOverlay {
-                        shadows: false,
-                        highlights: false,
-                    },
-                )
+                let plain = rustyedit_processing::render_preview(
+                    &source,
+                    &geometry,
+                    ClipWarnings::default(),
+                );
+                to_render_image(plain.bgra)
             });
-            (to_render_image(&rendered, clipping), histogram, before)
+            (to_render_image(frame.bgra), frame.histogram, before)
         });
 
         cx.spawn(async move |this, cx| {
@@ -168,47 +169,7 @@ impl Workspace {
     }
 }
 
-/// Which clipped pixels to paint over the preview (toggled from the
-/// histogram, or with J).
-#[derive(Clone, Copy)]
-struct ClippingOverlay {
-    shadows: bool,
-    highlights: bool,
-}
-
-impl ClippingOverlay {
-    /// The warning colour for an RGB pixel, if it's clipped: blue where
-    /// every channel is (near) pure black, red where any channel is (near)
-    /// blown. A little tolerance, since JPEG sources rarely hit 0 or 255
-    /// exactly.
-    fn colour(&self, [r, g, b]: [u8; 3]) -> Option<[u8; 3]> {
-        if self.highlights && r.max(g).max(b) >= 254 {
-            Some([255, 40, 40])
-        } else if self.shadows && r.max(g).max(b) <= 2 {
-            Some([40, 110, 255])
-        } else {
-            None
-        }
-    }
-}
-
-/// Packs an RGB render into the BGRA frame GPUI uploads to the GPU,
-/// painting clipped pixels when asked. The histogram is taken from the
-/// render beforehand, so the warning colours never skew it.
-fn to_render_image(rgb: &RgbImage, clipping: ClippingOverlay) -> Arc<RenderImage> {
-    let (width, height) = rgb.dimensions();
-    let mut bgra = Vec::with_capacity(width as usize * height as usize * 4);
-    let overlay = clipping.shadows || clipping.highlights;
-    for pixel in rgb.as_raw().chunks_exact(3) {
-        let [r, g, b] = [pixel[0], pixel[1], pixel[2]];
-        let [r, g, b] = if overlay {
-            clipping.colour([r, g, b]).unwrap_or([r, g, b])
-        } else {
-            [r, g, b]
-        };
-        bgra.extend_from_slice(&[b, g, r, 255]);
-    }
-    let buffer = RgbaImage::from_raw(width, height, bgra)
-        .expect("buffer is exactly width * height * 4 bytes");
-    Arc::new(RenderImage::new(vec![Frame::new(buffer)]))
+/// Wraps a BGRA frame as an image GPUI can upload as-is.
+fn to_render_image(bgra: RgbaImage) -> Arc<RenderImage> {
+    Arc::new(RenderImage::new(vec![Frame::new(bgra)]))
 }

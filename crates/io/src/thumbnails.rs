@@ -16,6 +16,17 @@ pub const THUMBNAIL_LONG_EDGE: u32 = 512;
 /// Longest edge of the loupe preview generated for RAW files.
 pub const LOUPE_LONG_EDGE: u32 = 2560;
 
+/// `image` scaled so its longest edge is `edge` (Triangle filter).
+/// Shrinking runs on the GPU when there is one; the decode stays the main
+/// cost of a thumbnail.
+fn fit(image: &DynamicImage, edge: u32) -> DynamicImage {
+    if image.width().max(image.height()) > edge {
+        rustyedit_processing::downscale_for_preview(image, edge)
+    } else {
+        image.resize(edge, edge, FilterType::Triangle)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ThumbnailCache {
     dir: PathBuf,
@@ -158,14 +169,14 @@ impl ThumbnailCache {
                 return Ok((path, w, h));
             }
         }
-        let image = Self::rotate_image(crate::decode::open_image(source)?, quarters);
-        let (width, height) = (image.width(), image.height());
-        image
-            .resize(
-                THUMBNAIL_LONG_EDGE,
-                THUMBNAIL_LONG_EDGE,
-                FilterType::Triangle,
-            )
+        // Shrink first, then turn the small image: far less to rotate.
+        let image = crate::decode::open_image(source)?;
+        let (width, height) = if quarters % 2 == 1 {
+            (image.height(), image.width())
+        } else {
+            (image.width(), image.height())
+        };
+        Self::rotate_image(fit(&image, THUMBNAIL_LONG_EDGE), quarters)
             .to_rgb8()
             .save(&path)?;
         Ok((path, width, height))
@@ -195,13 +206,13 @@ impl ThumbnailCache {
         if path.exists() {
             return Ok(path);
         }
-        let image = Self::rotate_image(crate::decode::open_image(source)?, quarters);
+        let image = crate::decode::open_image(source)?;
         let image = if image.width().max(image.height()) > LOUPE_LONG_EDGE {
-            image.resize(LOUPE_LONG_EDGE, LOUPE_LONG_EDGE, FilterType::Triangle)
+            fit(&image, LOUPE_LONG_EDGE)
         } else {
             image
         };
-        image.to_rgb8().save(&path)?;
+        Self::rotate_image(image, quarters).to_rgb8().save(&path)?;
         Ok(path)
     }
 
@@ -246,12 +257,9 @@ impl ThumbnailCache {
         let image = crate::decode::open_image(source)?;
         let (width, height) = (image.width(), image.height());
 
-        let thumbnail = image.resize(
-            THUMBNAIL_LONG_EDGE,
-            THUMBNAIL_LONG_EDGE,
-            FilterType::Triangle,
-        );
-        thumbnail.to_rgb8().save(&cache_path)?;
+        fit(&image, THUMBNAIL_LONG_EDGE)
+            .to_rgb8()
+            .save(&cache_path)?;
 
         Ok((cache_path, width, height))
     }

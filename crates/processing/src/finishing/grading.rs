@@ -32,6 +32,15 @@ impl Grading {
         })
     }
 
+    /// Shadow, midtone and highlight tints, then the pivot: the layout the
+    /// GPU shader reads.
+    pub(crate) fn packed(&self) -> [f32; 10] {
+        let [s, m, h] = [self.shadows, self.midtones, self.highlights];
+        [
+            s[0], s[1], s[2], m[0], m[1], m[2], h[0], h[1], h[2], self.pivot,
+        ]
+    }
+
     pub(crate) fn apply(&self, rgb: [f32; 3]) -> [f32; 3] {
         let l = luma(rgb);
         let shadow_w = smoothstep(self.pivot, 0.0, l);

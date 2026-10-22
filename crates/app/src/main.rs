@@ -9,6 +9,7 @@ mod compare;
 mod context_menu;
 mod cull_bar;
 mod develop;
+mod display_profile;
 mod duplicates;
 mod edit_clipboard;
 mod export;

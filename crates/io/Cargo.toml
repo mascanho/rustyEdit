@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 rustyedit-core = { path = "../core" }
+rustyedit-processing = { path = "../processing" }
 image = { version = "0.25", default-features = false, features = [
     "jpeg",
     "png",
