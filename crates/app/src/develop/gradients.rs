@@ -31,14 +31,21 @@ pub(crate) struct GradientUi {
     pub(crate) tool: Option<GradientKind>,
     pub(crate) selected: Option<usize>,
     drag: Option<GradientDrag>,
+    /// Where a press on empty photo started. A gradient is only added once
+    /// the pointer is dragged from here, so a plain click changes nothing.
+    pending: Option<Point<Pixels>>,
 }
 
 impl GradientUi {
     pub(crate) fn reset_selection(&mut self) {
         self.selected = None;
         self.drag = None;
+        self.pending = None;
     }
 }
+
+/// How far the pointer must move before a press becomes a new gradient.
+const ADD_DRAG_THRESHOLD: f32 = 4.0;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Handle {
@@ -760,7 +767,9 @@ impl Workspace {
                 return;
             }
         }
-        self.add_gradient(position, rect, &develop, cx);
+        // Wait for a drag before adding anything.
+        self.develop_ui.gradients.pending = Some(position);
+        cx.notify();
     }
 
     /// Adds a gradient at `position` with a sensible size, ready for the
@@ -832,6 +841,25 @@ impl Workspace {
         dragging: bool,
         cx: &mut Context<Self>,
     ) -> bool {
+        if let Some(start) = self.develop_ui.gradients.pending {
+            if !dragging {
+                // Released without dragging: a click, which adds nothing.
+                self.develop_ui.gradients.pending = None;
+                return true;
+            }
+            let (dx, dy) = (
+                f32::from(position.x - start.x),
+                f32::from(position.y - start.y),
+            );
+            if (dx * dx + dy * dy).sqrt() < ADD_DRAG_THRESHOLD {
+                return true;
+            }
+            self.develop_ui.gradients.pending = None;
+            let Some((rect, develop)) = self.gradient_space() else {
+                return true;
+            };
+            self.add_gradient(start, rect, &develop, cx);
+        }
         let Some(drag) = self.develop_ui.gradients.drag else {
             return false;
         };
@@ -898,6 +926,7 @@ impl Workspace {
 
     pub(super) fn end_gradient_drag(&mut self) {
         self.develop_ui.gradients.drag = None;
+        self.develop_ui.gradients.pending = None;
     }
 }
 

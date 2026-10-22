@@ -849,6 +849,25 @@ impl Workspace {
                     .text_color(theme.text_faint)
                     .child("Hover a photo and click \u{2715} to remove it from the export."),
             )
+            .when(count > 0, |el| {
+                el.child(rustyedit_ui::chrome_button(
+                    "export-clear-queue",
+                    "Remove all",
+                    false,
+                    &theme,
+                    cx.listener(|this, _: &ClickEvent, _w, cx| {
+                        // Take every photo the current selection would export
+                        // out of the queue; "Restore" brings them back.
+                        let ids: Vec<u64> = this
+                            .scope_indices(this.export_options.scope)
+                            .into_iter()
+                            .filter_map(|ix| this.catalog.assets.get(ix).map(|a| a.id))
+                            .collect();
+                        this.export_excluded.extend(ids);
+                        cx.notify();
+                    }),
+                ))
+            })
             .when(removed > 0, |el| {
                 el.child(rustyedit_ui::chrome_button(
                     "export-restore",

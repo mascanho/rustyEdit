@@ -327,6 +327,120 @@ fn plot(curve: &mut ToneCurve, points: &[(f32, f32)]) {
     }
 }
 
+impl DevelopSettings {
+    /// These settings with `look` stacked on top: its sliders are added to
+    /// the current ones (scaled by `amount`, 0.0 to 1.0) instead of
+    /// replacing them, so several presets can be applied one after another.
+    /// Only the `sections` of the look count. Curves are taken from the look
+    /// when it has any; gradings are added per tonal range.
+    pub fn with_look_added(
+        &self,
+        look: &DevelopSettings,
+        sections: &[DevelopSection],
+        amount: f32,
+    ) -> DevelopSettings {
+        let amount = amount.clamp(0.0, 1.0);
+        let neutral = DevelopSettings::default();
+        // What the look changes, relative to neutral, section by section.
+        let mut delta = neutral;
+        for section in sections {
+            section.copy(look, &mut delta);
+        }
+        let mut out = *self;
+        let add = |cur: f32, d: f32, base: f32, lo: f32, hi: f32| {
+            (cur + (d - base) * amount).clamp(lo, hi)
+        };
+        macro_rules! slider {
+            ($field:ident, $lo:expr, $hi:expr) => {
+                out.$field = add(self.$field, delta.$field, neutral.$field, $lo, $hi);
+            };
+        }
+        slider!(exposure, -100.0, 100.0);
+        slider!(contrast, -100.0, 100.0);
+        slider!(highlights, -100.0, 100.0);
+        slider!(shadows, -100.0, 100.0);
+        slider!(whites, -100.0, 100.0);
+        slider!(blacks, -100.0, 100.0);
+        slider!(temperature, -100.0, 100.0);
+        slider!(tint, -100.0, 100.0);
+        slider!(vibrance, -100.0, 100.0);
+        slider!(saturation, -100.0, 100.0);
+        slider!(clarity, -100.0, 100.0);
+        slider!(sharpening, -100.0, 100.0);
+        slider!(sharpen_radius, 0.0, 100.0);
+        slider!(sharpen_masking, 0.0, 100.0);
+        slider!(noise_luma, 0.0, 100.0);
+        slider!(noise_color, 0.0, 100.0);
+        slider!(dehaze, -100.0, 100.0);
+        slider!(vignette, -100.0, 100.0);
+        slider!(vignette_midpoint, 0.0, 100.0);
+        slider!(vignette_feather, 0.0, 100.0);
+        slider!(grain, 0.0, 100.0);
+        slider!(grain_size, 0.0, 100.0);
+
+        out.parametric.highlights = add(
+            self.parametric.highlights,
+            delta.parametric.highlights,
+            0.0,
+            -100.0,
+            100.0,
+        );
+        out.parametric.lights = add(
+            self.parametric.lights,
+            delta.parametric.lights,
+            0.0,
+            -100.0,
+            100.0,
+        );
+        out.parametric.darks = add(
+            self.parametric.darks,
+            delta.parametric.darks,
+            0.0,
+            -100.0,
+            100.0,
+        );
+        out.parametric.shadows = add(
+            self.parametric.shadows,
+            delta.parametric.shadows,
+            0.0,
+            -100.0,
+            100.0,
+        );
+
+        for i in 0..out.mixer.len() {
+            let (cur, d) = (self.mixer[i], delta.mixer[i]);
+            out.mixer[i].hue = add(cur.hue, d.hue, 0.0, -100.0, 100.0);
+            out.mixer[i].saturation = add(cur.saturation, d.saturation, 0.0, -100.0, 100.0);
+            out.mixer[i].luminance = add(cur.luminance, d.luminance, 0.0, -100.0, 100.0);
+        }
+
+        for zone in ToneZone::ALL {
+            let look_grade = *delta.grading.zone(zone);
+            if look_grade.saturation > 0.0 {
+                let own = out.grading.zone_mut(zone);
+                own.hue = look_grade.hue;
+                own.saturation = (own.saturation + look_grade.saturation * amount).min(100.0);
+            }
+        }
+        out.grading.balance = add(
+            self.grading.balance,
+            delta.grading.balance,
+            0.0,
+            -100.0,
+            100.0,
+        );
+
+        if amount >= 0.5 {
+            for channel in crate::CurveChannel::ALL {
+                if !delta.curves.get(channel).is_identity() {
+                    *out.curves.get_mut(channel) = *delta.curves.get(channel);
+                }
+            }
+        }
+        out
+    }
+}
+
 /// The presets that ship with the app.
 pub fn builtin_presets() -> Vec<DevelopPreset> {
     let look = |category: &str, name: &str, edit: fn(&mut DevelopSettings)| {
@@ -846,6 +960,55 @@ mod tests {
         let tone_only = photo.with_look_blended(&look, &[DevelopSection::Basic], 1.0);
         assert_eq!(tone_only.exposure, 50.0);
         assert_eq!(tone_only.saturation, 0.0);
+    }
+
+    #[test]
+    fn presets_can_be_stacked_one_on_another() {
+        let warm = DevelopSettings {
+            exposure: 10.0,
+            temperature: 20.0,
+            ..Default::default()
+        };
+        let photo = DevelopSettings {
+            exposure: 5.0,
+            rotation_degrees: 90.0,
+            ..Default::default()
+        };
+        let once = photo.with_look_added(&warm, &DevelopSection::LOOK, 1.0);
+        assert_eq!(once.exposure, 15.0);
+        assert_eq!(once.rotation_degrees, 90.0);
+        // Applying it again adds again.
+        let twice = once.with_look_added(&warm, &DevelopSection::LOOK, 1.0);
+        assert_eq!(twice.exposure, 25.0);
+        assert_eq!(twice.temperature, 40.0);
+        // Half strength adds half; a section left out adds nothing.
+        let half = photo.with_look_added(&warm, &DevelopSection::LOOK, 0.5);
+        assert_eq!(half.exposure, 10.0);
+        let tone_only = photo.with_look_added(&warm, &[DevelopSection::Basic], 1.0);
+        assert_eq!(tone_only.temperature, 0.0);
+        // Sliders stay in range.
+        let big = DevelopSettings {
+            exposure: 90.0,
+            ..Default::default()
+        };
+        assert_eq!(
+            big.with_look_added(&warm, &DevelopSection::LOOK, 1.0)
+                .exposure,
+            100.0
+        );
+    }
+
+    #[test]
+    fn two_different_built_ins_stack_rather_than_replace() {
+        let all = builtin_presets();
+        let find = |n: &str| all.iter().find(|p| p.name == n).unwrap().settings;
+        let (punchy, warm) = (find("Punchy"), find("Warm"));
+        let photo = DevelopSettings::default()
+            .with_look_added(&punchy, &DevelopSection::LOOK, 1.0)
+            .with_look_added(&warm, &DevelopSection::LOOK, 1.0);
+        // Punchy's contrast is still there after Warm.
+        assert_eq!(photo.contrast, punchy.contrast);
+        assert_eq!(photo.temperature, warm.temperature);
     }
 
     #[test]

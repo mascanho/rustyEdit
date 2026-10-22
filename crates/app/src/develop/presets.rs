@@ -30,6 +30,9 @@ pub(crate) struct PresetUi {
     pub(crate) sort_az: bool,
     /// The search & options pop-up is open.
     pub(crate) popup_open: bool,
+    /// Clicking a preset adds it on top of the current look (so presets
+    /// stack) instead of replacing the look.
+    pub(crate) stack: bool,
     /// The Fujifilm recipe being entered, while its modal is open.
     pub(crate) recipe: Option<rustyedit_core::FujiRecipe>,
     pub(crate) recipe_scroll: gpui::ScrollHandle,
@@ -44,6 +47,7 @@ impl Default for PresetUi {
             renaming: None,
             sort_az: false,
             popup_open: false,
+            stack: true,
             recipe: None,
             recipe_scroll: gpui::ScrollHandle::new(),
         }
@@ -389,6 +393,41 @@ impl Workspace {
                     .items_center()
                     .justify_between()
                     .pt_2()
+                    .child(small_caption(&theme, "WHEN APPLYING"))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .gap_1()
+                            .child(rustyedit_ui::chrome_button(
+                                "preset-mode-stack",
+                                "Add to look",
+                                ui.stack,
+                                &theme,
+                                cx.listener(|this, _: &ClickEvent, _w, cx| {
+                                    this.develop_ui.preset_ui.stack = true;
+                                    cx.notify();
+                                }),
+                            ))
+                            .child(rustyedit_ui::chrome_button(
+                                "preset-mode-replace",
+                                "Replace",
+                                !ui.stack,
+                                &theme,
+                                cx.listener(|this, _: &ClickEvent, _w, cx| {
+                                    this.develop_ui.preset_ui.stack = false;
+                                    cx.notify();
+                                }),
+                            )),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .pt_2()
                     .child(small_caption(&theme, "LIST ORDER"))
                     .child(rustyedit_ui::chrome_button(
                         "preset-sort",
@@ -414,6 +453,13 @@ impl Workspace {
         let ui = &self.develop_ui.preset_ui;
         let store = &self.develop_ui.presets;
         let current = self.catalog.selected_asset().map(|a| a.develop);
+        // Presets applied to the selected photo, while it still has edits.
+        let applied: Vec<String> = self
+            .catalog
+            .selected_asset()
+            .filter(|a| a.develop.is_edited())
+            .map(|a| a.applied_presets.clone())
+            .unwrap_or_default();
 
         // Everything, with favourites resolved.
         let mut entries: Vec<(Entry, bool)> = builtin_presets()
@@ -482,10 +528,18 @@ impl Workspace {
                 .into_iter()
                 .map(|(entry, fav)| {
                     uid += 1;
-                    let active = current.is_some_and(|c| {
-                        c.with_look_blended(&entry.preset().settings, &DevelopSection::LOOK, 1.0)
-                            == c
-                    });
+                    // Ticked once applied to the photo (presets stack, so
+                    // several can be), or when the photo's look is exactly it.
+                    let name = &entry.preset().name;
+                    let active = applied.iter().any(|n| n == name)
+                        || current.is_some_and(|c| {
+                            c.is_edited()
+                                && c.with_look_blended(
+                                    &entry.preset().settings,
+                                    &DevelopSection::LOOK,
+                                    1.0,
+                                ) == c
+                        });
                     self.preset_row(uid, &entry, fav, active, amount, &scope, renaming, cx)
                 })
                 .collect();
@@ -797,21 +851,55 @@ impl Workspace {
         }
         let look = preset.settings;
         let sections = sections.to_vec();
-        let detail = if amount < 1.0 {
+        let stack = self.develop_ui.preset_ui.stack;
+        let mut detail = if amount < 1.0 {
             format!("{} ({}%)", preset.name, (amount * 100.0).round())
         } else {
             preset.name.clone()
         };
-        self.replace_develop(
-            self.target_indices(),
+        if stack {
+            detail.push_str(", added");
+        }
+        let targets = self.target_indices();
+        let count = targets.len();
+        let name = preset.name.clone();
+        self.replace_develop_and(
+            targets,
             &format!("preset \u{201C}{}\u{201D}", preset.name),
             HistoryNote::Record {
                 title: "Preset",
                 detail: &detail,
             },
             cx,
-            move |develop: &DevelopSettings| develop.with_look_blended(&look, &sections, amount),
+            move |develop: &DevelopSettings| {
+                if stack {
+                    develop.with_look_added(&look, &sections, amount)
+                } else {
+                    develop.with_look_blended(&look, &sections, amount)
+                }
+            },
+            move |asset, before| {
+                // A photo whose edits were cleared starts a fresh list; a
+                // replacing preset leaves only itself.
+                if !stack || !before.is_edited() {
+                    asset.applied_presets.clear();
+                }
+                if !asset.applied_presets.contains(&name) {
+                    asset.applied_presets.push(name.clone());
+                }
+            },
         );
+        self.status_message = Some(
+            format!(
+                "{} \u{201C}{}\u{201D} {} {count} photo{}",
+                if stack { "Added" } else { "Applied" },
+                preset.name,
+                if stack { "to" } else { "on" },
+                if count == 1 { "" } else { "s" }
+            )
+            .into(),
+        );
+        cx.notify();
     }
 
     /// Replaces the look of every target photo with `look`.
@@ -820,7 +908,7 @@ impl Workspace {
             return;
         }
         let (look, sections) = (*look, self.develop_ui.preset_ui.scope_sections());
-        self.replace_develop(
+        self.replace_develop_and(
             self.target_indices(),
             title,
             HistoryNote::Record {
@@ -829,6 +917,7 @@ impl Workspace {
             },
             cx,
             move |develop: &DevelopSettings| develop.with_look_blended(&look, &sections, 1.0),
+            |asset, _| asset.applied_presets.clear(),
         );
     }
 

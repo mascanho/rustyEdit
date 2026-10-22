@@ -9,6 +9,13 @@ use rustyedit_ui::{Icon, PanelSide, RailButton};
 use crate::workspace::Workspace;
 
 impl Workspace {
+    /// The Presets tab is open in a Library dock.
+    pub(crate) fn library_presets_open(&self) -> bool {
+        self.mode == crate::workspace::Mode::Library
+            && (self.left_rail_tool == Some(RailTool::Presets)
+                || self.right_rail_tool == Some(RailTool::Presets))
+    }
+
     pub(crate) fn active_rail_tool(&self, side: DockSide) -> Option<RailTool> {
         match side {
             DockSide::Left => self.left_rail_tool,
@@ -113,6 +120,14 @@ impl Workspace {
 
     /// The extension point: give each tool its behaviour here as it's built.
     fn activate_rail_tool(&mut self, tool: RailTool, cx: &mut Context<Self>) {
+        // In the Library, the Presets tab renders the selected photo's edits
+        // so the Navigator shows what a preset does.
+        if tool == RailTool::Presets && self.library_presets_open() {
+            if self.source_image_for != self.catalog.selected_asset().map(|a| a.id) {
+                self.load_source_image(cx);
+            }
+            return;
+        }
         if tool == RailTool::Duplicates {
             self.ensure_duplicates(cx);
             return;

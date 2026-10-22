@@ -55,9 +55,12 @@ impl Workspace {
         if self.is_importing {
             return;
         }
+        // Already-covered folders still get rescanned, which picks up any
+        // new files; everything already in the library stays as it is.
         if self.catalog_def.add_folder(&folder) {
             self.save_catalog_def();
         }
+        self.import_append = select.is_none();
         self.open_catalog(select, cx);
     }
 
@@ -76,9 +79,19 @@ impl Workspace {
             self.status_message = Some("This catalog is empty \u{2014} import a folder.".into());
             return;
         }
+        // Write any pending edits first, and keep the library's current state
+        // to carry over: a reload (an import, a sync) only ever adds to it.
+        self.save_outgoing_catalog();
         let excluded: HashSet<PathBuf> = self.catalog_def.excluded.iter().cloned().collect();
         let before_paths: HashSet<PathBuf> =
             self.catalog.assets.iter().map(|a| a.path.clone()).collect();
+        let current: std::collections::HashMap<PathBuf, rustyedit_core::Asset> = self
+            .catalog
+            .assets
+            .iter()
+            .map(|a| (a.path.clone(), a.clone()))
+            .collect();
+        let import_append = std::mem::take(&mut self.import_append);
         self.is_importing = true;
         self.status_message = Some(format!("Scanning {}…", self.catalog_def.name).into());
         if let Some(folder) = folders.last() {
@@ -105,6 +118,18 @@ impl Workspace {
                         // Keep vanished photos listed so they can be located
                         // or explicitly removed instead of silently dropped.
                         all.extend(missing);
+                    }
+                    // The same file under two folders (a parent and a child
+                    // added separately) is listed once.
+                    let mut seen = HashSet::new();
+                    all.retain(|asset| seen.insert(asset.path.clone()));
+                    // Photos already in the library keep everything set on
+                    // them, even if a folder's saved catalog didn't have it
+                    // (e.g. a parent folder absorbing a child's).
+                    for asset in all.iter_mut() {
+                        if let Some(old) = current.get(&asset.path) {
+                            asset.carry_over_from(old);
+                        }
                     }
                     // Ids are positions in the combined list.
                     for (ix, asset) in all.iter_mut().enumerate() {
@@ -182,8 +207,37 @@ impl Workspace {
                 let missing = assets.iter().filter(|a| a.missing).count();
                 let added = after_paths.difference(&before_paths).count();
                 let removed = before_paths.difference(&after_paths).count();
+                // After an import, go to the first new photo; otherwise stay
+                // on the one that was selected.
+                let first_new = assets
+                    .iter()
+                    .find(|a| !before_paths.contains(&a.path))
+                    .map(|a| a.path.clone());
+                let previous = this.catalog.selected_asset().map(|a| a.path.clone());
+                let select = select.or(if import_append {
+                    first_new.or(previous)
+                } else {
+                    previous
+                });
+                let kept = after_paths.intersection(&before_paths).count();
                 let catalog = Catalog::new_multi(folders, assets);
                 this.install_catalog(catalog, Some(Arc::new(cache)), select, cx);
+                if import_append {
+                    this.post_scan_message = Some(
+                        if added == 0 {
+                            format!(
+                                "No new photos \u{2014} everything was already in the library ({kept} photos)."
+                            )
+                        } else {
+                            format!(
+                                "Added {added} new photo{} to the library ({} in total).",
+                                if added == 1 { "" } else { "s" },
+                                kept + added
+                            )
+                        }
+                        .into(),
+                    );
+                }
                 this.is_importing = false;
                 this.import_progress = None;
                 if this.pending_sync_report {
@@ -242,6 +296,9 @@ impl Workspace {
         self.loupe_full_loading.clear();
         self.selection.clear();
         self.selection_anchor = None;
+        // Keyed by asset id, and ids are reassigned on every load.
+        self.edited_thumbs = Default::default();
+        self.export_excluded.clear();
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.loupe_zoom = None;

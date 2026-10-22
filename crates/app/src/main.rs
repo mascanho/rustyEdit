@@ -24,6 +24,7 @@ mod histogram_panel;
 mod history_panel;
 mod import;
 mod before_after;
+mod edited_thumbs;
 mod info_overlay;
 mod keywords;
 mod library;

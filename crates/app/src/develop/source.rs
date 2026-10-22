@@ -63,6 +63,10 @@ impl Workspace {
         self.live_preview.clear();
         self.develop_ui.retouch.reset_selection();
         self.develop_ui.gradients.reset_selection();
+        // A tool picked for one photo mustn't add spots or gradients to the
+        // next one with the first click.
+        self.develop_ui.retouch.tool = None;
+        self.develop_ui.gradients.tool = None;
         // A new photo keeps the zoom level, opening on its centre.
         self.develop_ui.zoom.centre_on(0.5, 0.5);
     }

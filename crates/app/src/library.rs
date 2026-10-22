@@ -253,7 +253,22 @@ impl Workspace {
                     }
                     cx.notify();
                 }),
-                presets_tab.then(|| self.presets_pinned(cx)),
+                {
+                    // The left column always starts with a preview of the
+                    // selected photo; the Presets tab adds its controls.
+                    let preview = (side == DockSide::Left)
+                        .then(|| self.library_navigator_preview(width));
+                    let presets = presets_tab.then(|| self.presets_pinned(cx));
+                    (preview.is_some() || presets.is_some()).then(|| {
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .children(preview)
+                            .children(presets)
+                            .into_any_element()
+                    })
+                },
                 footer,
                 children,
             )
@@ -624,6 +639,95 @@ impl Workspace {
             gpui::size(gpui::px(w), gpui::px(h)),
         );
         self.ba_split_overlay(photo, area, cx)
+    }
+
+    /// The Navigator at the top of the Library's left column: the selected
+    /// photo, with its edits once they've been rendered (the Presets tab
+    /// renders them so applying a preset shows straight away).
+    fn library_navigator_preview(&self, dock_width: f32) -> AnyElement {
+        let theme = self.theme;
+        const MAX_HEIGHT: f32 = 170.0;
+        let header = |name: String| {
+            div()
+                .flex()
+                .flex_row()
+                .justify_between()
+                .items_baseline()
+                .gap_2()
+                .pb_1()
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .text_size(px(10.0))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.text_muted)
+                        .child("NAVIGATOR"),
+                )
+                .child(
+                    div()
+                        .min_w(px(0.0))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_size(px(10.0))
+                        .text_color(theme.text_faint)
+                        .child(name),
+                )
+        };
+        let Some(asset) = self.catalog.selected_asset() else {
+            return div()
+                .px_1()
+                .child(header(String::new()))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.text_faint)
+                        .child("No photo selected"),
+                )
+                .into_any_element();
+        };
+
+        // The edited render when it's for this photo, else the file.
+        // Unedited photos show their own file, so the preview never looks
+        // different from the photo until something has been applied.
+        let live = (self.source_image_for == Some(asset.id) && asset.develop.is_edited())
+            .then(|| self.live_preview.image())
+            .flatten();
+        let (w, h) = match (&live, self.live_preview.size()) {
+            (Some(_), Some(size)) => size,
+            _ => (asset.width.max(1) as f32, asset.height.max(1) as f32),
+        };
+        let (w, h) = if asset.rotation_quarters() % 2 == 1 && live.is_none() {
+            (h, w)
+        } else {
+            (w, h)
+        };
+        let max_width = (dock_width - 16.0).max(40.0);
+        let mut width = max_width;
+        let mut height = width * h / w.max(1.0);
+        if height > MAX_HEIGHT {
+            height = MAX_HEIGHT;
+            width = height * w / h.max(1.0);
+        }
+        let source: gpui::ImageSource = match live {
+            Some(image) => image.into(),
+            None => self.loupe_source(asset).into(),
+        };
+
+        div()
+            .flex()
+            .flex_col()
+            .px_1()
+            .child(header(asset.file_name()))
+            .child(
+                div()
+                    .w(px(width))
+                    .h(px(height))
+                    .mx_auto()
+                    .overflow_hidden()
+                    .bg(theme.background)
+                    .child(img(source).object_fit(ObjectFit::Contain).size_full()),
+            )
+            .into_any_element()
     }
 
     /// Width a dock currently occupies (0 when the layout has none).

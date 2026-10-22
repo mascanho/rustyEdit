@@ -214,6 +214,20 @@ impl Workspace {
             .hint("U")
             .checked(same_flag == Some(Flag::Unflagged)),
         );
+        // Not just reject: actually get rid of the photo.
+        entries.push(
+            action(
+                "ctx-trash",
+                "\u{2326}",
+                if multi {
+                    format!("Delete {count} photos\u{2026}")
+                } else {
+                    "Delete photo\u{2026}".to_string()
+                },
+                |this, _w, cx| this.delete_selected(true, cx),
+            )
+            .hint("\u{2318}\u{232B}"),
+        );
         entries.push(Entry::Stars {
             current: same_rating,
         });
@@ -351,6 +365,39 @@ impl Workspace {
                 cx.write_to_clipboard(ClipboardItem::new_string(copy_paths.join("\n")));
             },
         ));
+        entries.push(Entry::Separator);
+
+        // --- Remove -------------------------------------------------------------
+        entries.push(
+            action(
+                "ctx-remove",
+                "\u{232B}",
+                if multi {
+                    format!("Remove {count} photos from library (keep files)")
+                } else {
+                    "Remove from library (keep file)".to_string()
+                },
+                |this, _w, cx| this.delete_selected(false, cx),
+            )
+            .hint("\u{232B}"),
+        );
+        let rejected = self
+            .catalog
+            .assets
+            .iter()
+            .filter(|a| a.flag == Flag::Rejected && !a.missing)
+            .count();
+        if rejected > 0 {
+            entries.push(action(
+                "ctx-delete-rejected",
+                "\u{2715}",
+                format!(
+                    "Delete {rejected} rejected photo{}\u{2026}",
+                    if rejected == 1 { "" } else { "s" }
+                ),
+                |this, _w, cx| this.delete_rejected(cx),
+            ));
+        }
         entries
     }
 

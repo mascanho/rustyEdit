@@ -118,6 +118,18 @@ impl Workspace {
                     row_count,
                     cx.processor(move |this, range: std::ops::Range<usize>, _window, cx| {
                         let entity = cx.entity();
+                        // Cards on screen show their edits.
+                        let on_screen: Vec<usize> = {
+                            let visible = this.catalog.visible_indices();
+                            range
+                                .clone()
+                                .flat_map(|row| {
+                                    row * columns..((row + 1) * columns).min(visible.len())
+                                })
+                                .map(|i| visible[i])
+                                .collect()
+                        };
+                        this.ensure_edited_thumbnails(&on_screen, cx);
                         let visible = this.catalog.visible_indices();
                         range
                             .map(|row| {
@@ -185,7 +197,13 @@ impl Workspace {
             .overflow_hidden()
             .when(style != GridStyle::Bare, |el| el.bg(theme.background))
             .when(style == GridStyle::Bare, |el| el.rounded_sm())
-            .child(thumb_image(asset, asset_ix, grid.crop_to_fill, &theme))
+            .child(thumb_image(
+                asset,
+                self.display_thumbnail(asset),
+                asset_ix,
+                grid.crop_to_fill,
+                &theme,
+            ))
             .when(style == GridStyle::Minimal, |el| {
                 el.children(minimal_badges(asset, &theme))
             })
@@ -270,9 +288,15 @@ impl Workspace {
 
 /// The photo itself, a pulsing placeholder while its thumbnail is being
 /// made, or a note when the original is gone.
-fn thumb_image(asset: &Asset, asset_ix: usize, crop: bool, theme: &Theme) -> AnyElement {
-    match asset.thumbnail_path.as_ref() {
-        Some(path) => img(path.clone())
+fn thumb_image(
+    asset: &Asset,
+    thumbnail: Option<std::path::PathBuf>,
+    asset_ix: usize,
+    crop: bool,
+    theme: &Theme,
+) -> AnyElement {
+    match thumbnail {
+        Some(path) => img(path)
             .object_fit(if crop {
                 ObjectFit::Cover
             } else {
@@ -594,6 +618,20 @@ fn card_controls(asset_ix: usize, entity: &Entity<Workspace>, theme: &Theme) -> 
                     "Reject (X)",
                     theme.reject,
                     |this, cx| this.apply_cull(CullOp::Flag(Flag::Rejected), cx),
+                ))
+                .child(button(
+                    "grid-remove",
+                    "\u{2212}",
+                    "Remove from library \u{2014} the file stays on disk (\u{232B})",
+                    theme.text,
+                    |this, cx| this.delete_selected(false, cx),
+                ))
+                .child(button(
+                    "grid-delete",
+                    "\u{2326}",
+                    "Move to Trash\u{2026} (\u{2318}\u{232B})",
+                    theme.danger,
+                    |this, cx| this.delete_selected(true, cx),
                 )),
         )
         .child(
