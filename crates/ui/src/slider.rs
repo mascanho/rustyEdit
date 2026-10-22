@@ -1,9 +1,9 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gpui::{
     div, hsla, linear_color_stop, linear_gradient, prelude::*, px, relative, AnyElement, App,
-    ClickEvent, Context, DragMoveEvent, ElementId, Hsla, MouseButton, MouseDownEvent, Render,
-    SharedString, Window,
+    ClickEvent, Context, CursorStyle, DragMoveEvent, ElementId, Hsla, Keystroke, MouseButton,
+    MouseDownEvent, Render, SharedString, Window,
 };
 
 use crate::{
@@ -42,6 +42,195 @@ struct FineAnchor {
 
 thread_local! {
     static FINE_ANCHOR: RefCell<Option<FineAnchor>> = const { RefCell::new(None) };
+    static KEYBOARD: RefCell<Keyboard> = RefCell::default();
+}
+
+type OnChange = Rc<dyn Fn(f32, &mut Window, &mut App)>;
+
+/// A labelled slider as of its last render, so keystrokes can change it
+/// between renders.
+struct Registered {
+    value: f32,
+    min: f32,
+    max: f32,
+    on_change: OnChange,
+}
+
+/// A value being typed into a slider.
+struct ValueEntry {
+    id: ElementId,
+    text: String,
+    /// The whole value is selected: the next character replaces it.
+    replace: bool,
+}
+
+/// Keyboard state for labelled sliders: which one the arrow keys move
+/// (the hovered one, else the last one clicked) and any typed value.
+#[derive(Default)]
+struct Keyboard {
+    sliders: HashMap<ElementId, Registered>,
+    hovered: Option<ElementId>,
+    focused: Option<ElementId>,
+    entry: Option<ValueEntry>,
+}
+
+/// How far one arrow press moves a slider: one unit on the usual wide
+/// ranges, a tenth on narrow ones, and ten times finer with Shift (as
+/// Shift makes drags finer).
+fn arrow_step(min: f32, max: f32, fine: bool) -> f32 {
+    let step = if max - min >= 20.0 { 1.0 } else { 0.1 };
+    if fine {
+        step / 10.0
+    } else {
+        step
+    }
+}
+
+/// `value` moved one `step` in `direction`, landing on a multiple of the
+/// step, so 12.4 goes to 13 or 12 rather than 13.4 or 11.4.
+fn step_value(value: f32, step: f32, direction: f32) -> f32 {
+    let steps = value / step;
+    let next = if direction > 0.0 {
+        (steps + 1e-3).floor() + 1.0
+    } else {
+        (steps - 1e-3).ceil() - 1.0
+    };
+    next * step
+}
+
+/// Handles a keystroke for the labelled sliders before any shortcut sees
+/// it: typing into a value being entered, and, when `arrows` is set, the
+/// arrow keys nudging the hovered (or last clicked) slider. Returns
+/// whether the keystroke was used; if so, stop it propagating.
+pub fn slider_keystroke(
+    keystroke: &Keystroke,
+    arrows: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> bool {
+    if KEYBOARD.with(|k| k.borrow().entry.is_some()) {
+        return entry_keystroke(keystroke, window, cx);
+    }
+    if !arrows {
+        return false;
+    }
+    let direction = match keystroke.key.as_str() {
+        "right" | "up" => 1.0,
+        "left" | "down" => -1.0,
+        _ => return false,
+    };
+    let m = &keystroke.modifiers;
+    if m.platform || m.control || m.alt {
+        return false;
+    }
+    let change = KEYBOARD.with(|k| {
+        let mut k = k.borrow_mut();
+        let id = k.hovered.clone().or_else(|| k.focused.clone())?;
+        let slider = k.sliders.get_mut(&id)?;
+        let step = arrow_step(slider.min, slider.max, m.shift);
+        let next = step_value(slider.value, step, direction).clamp(slider.min, slider.max);
+        // Remember it now, so presses faster than renders keep adding up.
+        slider.value = next;
+        Some((next, slider.on_change.clone()))
+    });
+    let Some((value, on_change)) = change else {
+        return false;
+    };
+    on_change(value, window, cx);
+    true
+}
+
+/// Typing into a slider's value: digits, sign and decimal point; Enter or
+/// Tab applies it, Escape cancels. Every other key is swallowed so it
+/// can't trigger a shortcut, except Cmd/Ctrl combinations.
+fn entry_keystroke(keystroke: &Keystroke, window: &mut Window, cx: &mut App) -> bool {
+    let m = &keystroke.modifiers;
+    if m.platform || m.control {
+        return false;
+    }
+    match keystroke.key.as_str() {
+        "enter" | "tab" => {
+            commit_entry(window, cx);
+            return true;
+        }
+        "escape" => KEYBOARD.with(|k| k.borrow_mut().entry = None),
+        "backspace" => KEYBOARD.with(|k| {
+            if let Some(entry) = k.borrow_mut().entry.as_mut() {
+                if entry.replace {
+                    entry.text.clear();
+                    entry.replace = false;
+                } else {
+                    entry.text.pop();
+                }
+            }
+        }),
+        _ => {
+            let typed = keystroke
+                .key_char
+                .as_deref()
+                .filter(|t| !t.is_empty() && t.chars().all(|c| "0123456789.,+-".contains(c)));
+            if let Some(typed) = typed {
+                KEYBOARD.with(|k| {
+                    if let Some(entry) = k.borrow_mut().entry.as_mut() {
+                        if entry.replace {
+                            entry.text.clear();
+                            entry.replace = false;
+                        }
+                        entry.text.push_str(&typed.replace(',', "."));
+                    }
+                });
+            }
+        }
+    }
+    window.refresh();
+    true
+}
+
+/// Applies a typed value, clamped to the slider's range. Text that isn't
+/// a number leaves the slider as it was.
+fn commit_entry(window: &mut Window, cx: &mut App) {
+    let change = KEYBOARD.with(|k| {
+        let mut k = k.borrow_mut();
+        let entry = k.entry.take()?;
+        let slider = k.sliders.get_mut(&entry.id)?;
+        let value = entry
+            .text
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|v| v.is_finite())?;
+        let value = value.clamp(slider.min, slider.max);
+        slider.value = value;
+        Some((value, slider.on_change.clone()))
+    });
+    if let Some((value, on_change)) = change {
+        on_change(value, window, cx);
+    }
+    window.refresh();
+}
+
+/// Call on every mouse press in the window, before it reaches any
+/// element: applies a value being typed and forgets which slider was
+/// last clicked (a slider pressed now claims it again).
+pub fn sliders_pointer_down(window: &mut Window, cx: &mut App) {
+    let (editing, focused) = KEYBOARD.with(|k| {
+        let k = k.borrow();
+        (k.entry.is_some(), k.focused.is_some())
+    });
+    if editing {
+        commit_entry(window, cx);
+    }
+    if focused {
+        KEYBOARD.with(|k| k.borrow_mut().focused = None);
+        window.refresh();
+    }
+}
+
+/// Makes `id` the slider the arrow keys move until something else is
+/// clicked.
+fn focus_slider(id: &ElementId, window: &mut Window) {
+    KEYBOARD.with(|k| k.borrow_mut().focused = Some(id.clone()));
+    window.refresh();
 }
 
 /// How much a drag is slowed down by held modifiers: Shift = 10x finer,
@@ -116,17 +305,80 @@ pub fn labeled_slider(
     let fraction = to_fraction(value);
     let on_change = Rc::new(on_change);
 
+    // Register for the keyboard, and pick up this slider's keyboard state.
+    let (focused, entry) = KEYBOARD.with(|k| {
+        let mut k = k.borrow_mut();
+        let dyn_change: OnChange = on_change.clone();
+        k.sliders.insert(
+            id.clone(),
+            Registered {
+                value,
+                min,
+                max,
+                on_change: dyn_change,
+            },
+        );
+        let entry = k
+            .entry
+            .as_ref()
+            .filter(|e| e.id == id)
+            .map(|e| (e.text.clone(), e.replace));
+        (k.focused.as_ref() == Some(&id), entry)
+    });
+
     let track_id = id.clone();
     let reset = {
         let on_change = on_change.clone();
         move |_: &MouseDownEvent, window: &mut Window, cx: &mut App| on_change(default, window, cx)
     };
-    let shown = format_value(value, signed);
+    let value_id = SharedString::from(format!("{:?}-value", track_id));
+    let value_view = match entry {
+        Some((text, replace)) => value_entry(value_id, text, replace, &theme),
+        None => {
+            let entry_id = id.clone();
+            div()
+                .id(value_id)
+                .px_1()
+                .rounded_sm()
+                .text_color(theme.text)
+                .cursor(CursorStyle::IBeam)
+                .hover(|el| el.bg(theme.surface_elevated))
+                .tooltip(tip("Click to type a value", &theme))
+                .on_mouse_down(MouseButton::Left, move |_, window, _| {
+                    KEYBOARD.with(|k| {
+                        let mut k = k.borrow_mut();
+                        k.entry = Some(ValueEntry {
+                            id: entry_id.clone(),
+                            text: format_value(value, false),
+                            replace: true,
+                        });
+                        k.focused = Some(entry_id.clone());
+                    });
+                    window.refresh();
+                })
+                .child(format_value(value, signed))
+                .into_any_element()
+        }
+    };
+    let group = SharedString::from(format!("{:?}-track", track_id));
+    let hover_id = id.clone();
 
     div()
+        .id(SharedString::from(format!("{:?}-slider", track_id)))
         .flex()
         .flex_col()
         .gap_1()
+        // The hovered slider is the one the arrow keys move.
+        .on_hover(move |hovered, _, _| {
+            KEYBOARD.with(|k| {
+                let mut k = k.borrow_mut();
+                if *hovered {
+                    k.hovered = Some(hover_id.clone());
+                } else if k.hovered.as_ref() == Some(&hover_id) {
+                    k.hovered = None;
+                }
+            })
+        })
         .child(
             div()
                 .flex()
@@ -154,7 +406,7 @@ pub fn labeled_slider(
                         .flex_row()
                         .items_center()
                         .gap_1()
-                        .child(div().text_color(theme.text).child(shown))
+                        .child(value_view)
                         .child(reset_button(
                             SharedString::from(format!("{:?}-reset", track_id)),
                             (value - default).abs() > 0.05,
@@ -171,13 +423,16 @@ pub fn labeled_slider(
         .child({
             let on_change = on_change.clone();
             let drag_id = track_id.clone();
+            let press_id = track_id.clone();
             div()
                 .id(track_id.clone())
+                .group(group.clone())
                 .relative()
                 .h(px(14.0))
                 .w_full()
                 .flex()
                 .items_center()
+                .cursor(CursorStyle::ResizeLeftRight)
                 .child(track_background(track, &theme))
                 .when(matches!(track, SliderTrack::Accent), |el| {
                     // Fill from the neutral point to the value, so a
@@ -196,19 +451,7 @@ pub fn labeled_slider(
                             .bg(theme.accent),
                     )
                 })
-                .child(
-                    div()
-                        .absolute()
-                        .left(relative(fraction))
-                        .top(px(1.0))
-                        .size(px(12.0))
-                        .ml(px(-6.0))
-                        .rounded_full()
-                        .bg(theme.text)
-                        .border_1()
-                        .border_color(theme.surface)
-                        .shadow_sm(),
-                )
+                .child(slider_handle(fraction, 12.0, 1.0, focused, group, &theme))
                 // Shift/Alt + scroll nudges the value: 1% of the range per
                 // notch with Shift, 0.1% with Alt. Plain scrolling is left
                 // to the panel.
@@ -228,14 +471,16 @@ pub fn labeled_slider(
                         let (dx, dy) = (f32::from(delta.x), f32::from(delta.y));
                         let notches = if dy.abs() >= dx.abs() { dy } else { dx } / 16.0;
                         cx.stop_propagation();
-                        let next = (value + notches.clamp(-4.0, 4.0) * unit * (max - min))
-                            .clamp(min, max);
+                        let next =
+                            (value + notches.clamp(-4.0, 4.0) * unit * (max - min)).clamp(min, max);
                         on_change(next, window, cx);
                     }
                 })
                 // A new press starts a new drag, so forget any fine anchor.
-                .on_mouse_down(MouseButton::Left, |_, _, _| {
+                // The pressed slider is also the one the arrow keys move.
+                .on_mouse_down(MouseButton::Left, move |_, window, _| {
                     FINE_ANCHOR.with(|a| *a.borrow_mut() = None);
+                    focus_slider(&press_id, window);
                 })
                 .on_drag(SliderDrag(track_id), move |_, _, _, cx| {
                     cx.new(|_| DragGhost)
@@ -278,6 +523,67 @@ pub fn labeled_slider(
                     },
                 )
         })
+}
+
+/// A slider's round handle at `fraction` along a 14px-tall track. It grows
+/// and takes the accent colour while the track (`group`) is hovered, and
+/// stays accented while `active` (the slider the arrow keys move).
+fn slider_handle(
+    fraction: f32,
+    size: f32,
+    top: f32,
+    active: bool,
+    group: SharedString,
+    theme: &Theme,
+) -> impl IntoElement {
+    let grown = size + 2.0;
+    let accent = theme.accent;
+    div()
+        .absolute()
+        .left(relative(fraction))
+        .top(px(top))
+        .size(px(size))
+        .ml(px(-size / 2.0))
+        .rounded_full()
+        .bg(if active { accent } else { theme.text })
+        .border_1()
+        .border_color(theme.surface)
+        .shadow_sm()
+        .group_hover(group, move |style| {
+            style
+                .bg(accent)
+                .size(px(grown))
+                .ml(px(-grown / 2.0))
+                .top(px(top - 1.0))
+        })
+}
+
+/// The text field shown in place of a slider's value while one is typed:
+/// the text (highlighted while it is all selected) and a caret.
+fn value_entry(id: SharedString, text: String, replace: bool, theme: &Theme) -> AnyElement {
+    div()
+        .id(id)
+        .flex()
+        .flex_row()
+        .items_center()
+        .min_w(px(32.0))
+        .h(px(16.0))
+        .px_1()
+        .rounded_sm()
+        .border_1()
+        .border_color(theme.accent)
+        .bg(theme.background)
+        .text_color(theme.text)
+        .cursor(CursorStyle::IBeam)
+        .child(
+            div()
+                .when(replace && !text.is_empty(), |el| {
+                    el.bg(theme.accent.opacity(0.35))
+                })
+                .child(text),
+        )
+        .child(div().w(px(1.0)).h(px(11.0)).bg(theme.accent))
+        .into_any_element()
 }
 
 /// The track behind the handle.
@@ -352,15 +658,17 @@ pub fn compact_slider(
     let id = id.into();
     let drag_id = id.clone();
     let fraction = fraction.clamp(0.0, 1.0);
+    let group = SharedString::from(format!("{:?}-track", id));
 
     div()
         .id(id.clone())
+        .group(group.clone())
         .relative()
         .flex()
         .items_center()
         .w(px(width))
         .h(px(14.0))
-        .cursor_pointer()
+        .cursor(CursorStyle::ResizeLeftRight)
         .child(
             div()
                 .absolute()
@@ -379,18 +687,7 @@ pub fn compact_slider(
                 .rounded_full()
                 .bg(theme.accent),
         )
-        .child(
-            div()
-                .absolute()
-                .left(relative(fraction))
-                .size(px(10.0))
-                .ml(px(-5.0))
-                .rounded_full()
-                .bg(theme.text)
-                .border_1()
-                .border_color(theme.surface)
-                .shadow_sm(),
-        )
+        .child(slider_handle(fraction, 10.0, 2.0, false, group, &theme))
         .on_drag(SliderDrag(id), move |_, _, _, cx| cx.new(|_| DragGhost))
         .on_drag_move(
             move |event: &DragMoveEvent<SliderDrag>, window: &mut Window, cx: &mut App| {
@@ -402,4 +699,27 @@ pub fn compact_slider(
                 on_change((x / width).clamp(0.0, 1.0), window, cx);
             },
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arrow_steps_are_a_unit_or_a_tenth() {
+        assert_eq!(arrow_step(-100.0, 100.0, false), 1.0);
+        assert_eq!(arrow_step(-100.0, 100.0, true), 0.1);
+        assert_eq!(arrow_step(0.0, 5.0, false), 0.1);
+    }
+
+    #[test]
+    fn stepping_lands_on_the_step_grid() {
+        assert_eq!(step_value(12.0, 1.0, 1.0), 13.0);
+        assert_eq!(step_value(12.0, 1.0, -1.0), 11.0);
+        assert_eq!(step_value(12.4, 1.0, 1.0), 13.0);
+        assert_eq!(step_value(12.4, 1.0, -1.0), 12.0);
+        assert_eq!(step_value(-0.4, 1.0, 1.0), 0.0);
+        assert!((step_value(0.3, 0.1, 1.0) - 0.4).abs() < 1e-5);
+        assert!((step_value(0.3, 0.1, -1.0) - 0.2).abs() < 1e-5);
+    }
 }

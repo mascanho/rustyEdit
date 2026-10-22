@@ -191,6 +191,9 @@ pub struct Workspace {
     pub(crate) catalog_save_scheduled: bool,
     pub(crate) catalog_save_in_flight: bool,
     _quit_subscription: Subscription,
+    /// Sends keystrokes to the Develop sliders (typed values, arrow-key
+    /// nudges) before any shortcut sees them.
+    _slider_keys: Subscription,
 
     // Preferences and the Settings window (see `settings_view.rs`).
     pub(crate) settings: Settings,
@@ -241,6 +244,18 @@ impl Workspace {
             .spawn(async { rustyedit_processing::gpu_adapter_name() })
             .detach();
         crate::display_profile::refresh();
+        let workspace = cx.weak_entity();
+        let slider_keys = cx.intercept_keystrokes(move |event, window, cx| {
+            // Arrows move a slider only in Develop, and not while a text
+            // field is being typed into.
+            let arrows = workspace.upgrade().is_some_and(|ws| {
+                let ws = ws.read(cx);
+                ws.mode == Mode::Develop && ws.text_draft.is_none()
+            });
+            if rustyedit_ui::slider_keystroke(&event.keystroke, arrows, window, cx) {
+                cx.stop_propagation();
+            }
+        });
         let mut this = Self {
             focus_handle: cx.focus_handle(),
             theme: Theme::from_appearance(&settings.appearance),
@@ -319,6 +334,7 @@ impl Workspace {
             catalog_save_scheduled: false,
             catalog_save_in_flight: false,
             _quit_subscription: quit_subscription,
+            _slider_keys: slider_keys,
             settings,
             settings_open: false,
             settings_page: 0,
@@ -843,6 +859,8 @@ impl Render for Workspace {
             } else {
                 "Workspace"
             })
+            // Clicking anywhere applies a slider value being typed.
+            .capture_any_mouse_down(|_, window, cx| rustyedit_ui::sliders_pointer_down(window, cx))
             .on_key_down(cx.listener(Self::on_text_key))
             .on_key_down(cx.listener(Self::develop_key_down))
             .on_key_up(cx.listener(Self::develop_key_up))

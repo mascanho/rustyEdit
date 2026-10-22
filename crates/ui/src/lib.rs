@@ -42,7 +42,10 @@ pub use panel::{
 };
 pub use rating_stars::rating_stars;
 pub use scrollbar::vertical_scrollbar;
-pub use slider::{compact_slider, labeled_slider, reset_button, SliderSpec, SliderTrack};
+pub use slider::{
+    compact_slider, labeled_slider, reset_button, slider_keystroke, sliders_pointer_down,
+    SliderSpec, SliderTrack,
+};
 pub use status_bar::{status_bar, status_divider, STATUS_BAR_HEIGHT};
 pub use theme::Theme;
 pub use title_bar::{title_bar, TITLE_BAR_HEIGHT};
