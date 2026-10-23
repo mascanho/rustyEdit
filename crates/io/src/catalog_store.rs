@@ -114,7 +114,7 @@ pub fn merge_saved_state(fresh: &mut Vec<Asset>, saved: &Catalog) {
             asset.phash = previous.phash;
             asset.history = previous.history.clone();
             asset.snapshots = previous.snapshots.clone();
-            asset.applied_presets = previous.applied_presets.clone();
+            asset.applied_preset = previous.applied_preset.clone();
             // Remembered so reopening never has to re-read every file.
             asset.width = previous.width;
             asset.height = previous.height;

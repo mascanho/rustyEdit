@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    sections::DevelopSection,
     color_label::ColorLabel, develop::DevelopSettings, flag::Flag, history, history::HistoryEntry,
     rating::Rating, snapshot::Snapshot,
 };
@@ -58,7 +59,25 @@ pub struct AssetState {
     pub keywords: Vec<String>,
     pub stack_id: Option<u64>,
     pub stack_cover: bool,
-    pub applied_presets: Vec<String>,
+    pub applied_preset: Option<AppliedPreset>,
+}
+
+/// The preset that makes up a photo's look. Only one applies at a time:
+/// applying another replaces it completely.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AppliedPreset {
+    pub name: String,
+    /// The photo's settings from before the preset. The next preset starts
+    /// from these rather than from this preset's look, so none of this one
+    /// is left behind (even at partial strength).
+    pub base: DevelopSettings,
+    /// How strongly it was applied, 0-1.
+    #[serde(default = "full_strength")]
+    pub amount: f32,
+}
+
+fn full_strength() -> f32 {
+    1.0
 }
 
 /// A single photo known to the catalog.
@@ -117,11 +136,9 @@ pub struct Asset {
     /// the original (master) photo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copy_name: Option<String>,
-    /// Names of the presets that make up the photo's current look, in the
-    /// order they were applied. Cleared when the edits are reset or a
-    /// preset replaces the whole look.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub applied_presets: Vec<String>,
+    /// The preset currently making up the photo's look, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applied_preset: Option<AppliedPreset>,
     /// Set when the file recorded in the catalog no longer exists on disk.
     /// Runtime-only: it is recomputed on every scan, so it is never saved.
     #[serde(skip)]
@@ -154,7 +171,7 @@ impl Asset {
             history: Vec::new(),
             snapshots: Vec::new(),
             copy_name: None,
-            applied_presets: Vec::new(),
+            applied_preset: None,
             missing: false,
         }
     }
@@ -178,7 +195,7 @@ impl Asset {
         self.history = old.history.clone();
         self.snapshots = old.snapshots.clone();
         self.copy_name = old.copy_name.clone();
-        self.applied_presets = old.applied_presets.clone();
+        self.applied_preset = old.applied_preset.clone();
         if old.content_hash != 0 {
             self.content_hash = old.content_hash;
         }
@@ -193,6 +210,53 @@ impl Asset {
         if old.meta != PhotoMeta::default() {
             self.meta = old.meta.clone();
         }
+    }
+
+    /// The strength (0-1) of the photo's current preset, if it has one.
+    pub fn current_preset_amount(&self) -> Option<f32> {
+        self.current_preset()?;
+        self.applied_preset.as_ref().map(|p| p.amount)
+    }
+
+    /// The name of the preset making up the photo's look, while it still
+    /// has edits.
+    pub fn current_preset(&self) -> Option<&str> {
+        self.applied_preset
+            .as_ref()
+            .filter(|_| self.develop.is_edited())
+            .map(|p| p.name.as_str())
+    }
+
+    /// Where a newly applied preset starts from: the photo as it is now,
+    /// but with the look sections as they were before its current preset,
+    /// so the new preset replaces that one entirely. Geometry, retouching
+    /// and masks stay as they are now.
+    pub fn preset_base(&self) -> DevelopSettings {
+        let mut start = self.develop;
+        if let Some(previous) = self.applied_preset.as_ref().filter(|_| self.develop.is_edited()) {
+            for section in DevelopSection::LOOK {
+                section.copy(&previous.base, &mut start);
+            }
+        }
+        start
+    }
+
+    /// Applies `look` (only its `sections`, at `amount`) as the photo's one
+    /// preset, replacing any preset applied before.
+    pub fn apply_preset(
+        &mut self,
+        name: &str,
+        look: &DevelopSettings,
+        sections: &[DevelopSection],
+        amount: f32,
+    ) {
+        let base = self.preset_base();
+        self.develop = base.with_look_blended(look, sections, amount);
+        self.applied_preset = Some(AppliedPreset {
+            name: name.to_string(),
+            base,
+            amount: amount.clamp(0.0, 1.0),
+        });
     }
 
     /// Whether this entry is a virtual copy rather than the original photo.
@@ -269,7 +333,7 @@ impl Asset {
             keywords: self.keywords.clone(),
             stack_id: self.stack_id,
             stack_cover: self.stack_cover,
-            applied_presets: self.applied_presets.clone(),
+            applied_preset: self.applied_preset.clone(),
         }
     }
 
@@ -292,5 +356,77 @@ impl Asset {
     /// if one exists yet, otherwise the full source file.
     pub fn display_source(&self) -> &Path {
         self.thumbnail_path.as_deref().unwrap_or(&self.path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_new_preset_replaces_the_previous_one_completely() {
+        let mut photo = Asset::new(0, PathBuf::from("a.jpg"));
+        photo.develop.exposure = 10.0;
+        photo.develop.rotation_degrees = 90.0;
+        let warm = DevelopSettings {
+            temperature: 40.0,
+            contrast: 30.0,
+            ..Default::default()
+        };
+        let cool = DevelopSettings {
+            temperature: -20.0,
+            ..Default::default()
+        };
+
+        photo.apply_preset("Warm", &warm, &DevelopSection::LOOK, 1.0);
+        assert_eq!(photo.develop.temperature, 40.0);
+        assert_eq!(photo.current_preset(), Some("Warm"));
+
+        // At half strength, Cool blends from the photo before Warm: nothing
+        // of Warm's temperature or contrast is left.
+        photo.apply_preset("Cool", &cool, &DevelopSection::LOOK, 0.5);
+        assert_eq!(photo.develop.temperature, -10.0);
+        assert_eq!(photo.develop.contrast, 0.0);
+        assert_eq!(photo.develop.exposure, 5.0);
+        assert_eq!(photo.current_preset(), Some("Cool"));
+        // Geometry is never touched.
+        assert_eq!(photo.develop.rotation_degrees, 90.0);
+
+        // Applying Warm again lands exactly where Warm did the first time.
+        photo.apply_preset("Warm", &warm, &DevelopSection::LOOK, 1.0);
+        assert_eq!(photo.develop.temperature, 40.0);
+        assert_eq!(photo.develop.contrast, 30.0);
+    }
+
+    #[test]
+    fn changing_a_presets_strength_is_exact_and_reversible() {
+        let mut photo = Asset::new(0, PathBuf::from("a.jpg"));
+        photo.develop.exposure = 10.0;
+        let look = DevelopSettings {
+            exposure: 50.0,
+            ..Default::default()
+        };
+        photo.apply_preset("Bright", &look, &DevelopSection::LOOK, 1.0);
+        assert_eq!(photo.develop.exposure, 50.0);
+        photo.apply_preset("Bright", &look, &DevelopSection::LOOK, 0.5);
+        assert_eq!(photo.develop.exposure, 30.0);
+        assert_eq!(photo.current_preset_amount(), Some(0.5));
+        photo.apply_preset("Bright", &look, &DevelopSection::LOOK, 0.0);
+        assert_eq!(photo.develop.exposure, 10.0);
+        photo.apply_preset("Bright", &look, &DevelopSection::LOOK, 1.0);
+        assert_eq!(photo.develop.exposure, 50.0);
+    }
+
+    #[test]
+    fn crops_made_after_a_preset_survive_the_next_one() {
+        let mut photo = Asset::new(0, PathBuf::from("a.jpg"));
+        let look = DevelopSettings {
+            vibrance: 20.0,
+            ..Default::default()
+        };
+        photo.apply_preset("A", &look, &DevelopSection::LOOK, 1.0);
+        photo.develop.rotation_degrees = 180.0;
+        photo.apply_preset("B", &look, &DevelopSection::LOOK, 1.0);
+        assert_eq!(photo.develop.rotation_degrees, 180.0);
     }
 }

@@ -32,7 +32,7 @@ pub mod settings;
 mod snapshot;
 
 pub use albums::{Album, Albums};
-pub use asset::{Asset, AssetState, PhotoMeta};
+pub use asset::{AppliedPreset, Asset, AssetState, PhotoMeta};
 pub use catalog::{Catalog, CatalogCounts, FilterMode, RatingFilter, SortKey, SortOrder};
 pub use catalog_def::CatalogDef;
 pub use collections::{default_keyword_sets, KeywordSet, SmartCollection, SmartCollections};

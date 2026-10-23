@@ -43,16 +43,15 @@ impl Workspace {
 
         if coalesce {
             if let Some(top) = self.undo_stack.last_mut() {
-                if top.label == label
-                    && top.changes.len() == 1
-                    && changes.len() == 1
-                    && top.changes[0].0 == changes[0].0
-                    && top.at.elapsed() < COALESCE
-                {
-                    top.changes[0].2 = changes[0].2.clone();
+                let same_photos = top.changes.len() == changes.len()
+                    && top.changes.iter().zip(&changes).all(|(a, b)| a.0 == b.0);
+                if top.label == label && same_photos && top.at.elapsed() < COALESCE {
+                    for (kept, new) in top.changes.iter_mut().zip(changes) {
+                        kept.2 = new.2;
+                    }
                     top.at = Instant::now();
                     // Dragged back to where it started: nothing to undo.
-                    if top.changes[0].1 == top.changes[0].2 {
+                    if top.changes.iter().all(|(_, before, after)| before == after) {
                         self.undo_stack.pop();
                     }
                     return;

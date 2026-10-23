@@ -30,9 +30,6 @@ pub(crate) struct PresetUi {
     pub(crate) sort_az: bool,
     /// The search & options pop-up is open.
     pub(crate) popup_open: bool,
-    /// Clicking a preset adds it on top of the current look (so presets
-    /// stack) instead of replacing the look.
-    pub(crate) stack: bool,
     /// The Fujifilm recipe being entered, while its modal is open.
     pub(crate) recipe: Option<rustyedit_core::FujiRecipe>,
     pub(crate) recipe_scroll: gpui::ScrollHandle,
@@ -47,7 +44,6 @@ impl Default for PresetUi {
             renaming: None,
             sort_az: false,
             popup_open: false,
-            stack: true,
             recipe: None,
             recipe_scroll: gpui::ScrollHandle::new(),
         }
@@ -232,25 +228,28 @@ impl Workspace {
             cx,
         );
 
-        // Strength: how strongly a clicked preset is applied.
+        // Strength: how strongly the photo's preset is applied (changing it
+        // re-applies the preset), or a clicked preset will be.
         let entity = cx.entity();
+        let shown = self
+            .catalog
+            .selected_asset()
+            .and_then(|a| a.current_preset_amount())
+            .map_or(ui.amount, |amount| (amount * 100.0).round());
         let strength = rustyedit_ui::labeled_slider(
             "preset-strength",
             "Strength",
-            ui.amount,
+            shown,
             SliderSpec {
                 min: 0.0,
                 max: 100.0,
                 default: 100.0,
                 signed: false,
-                track: SliderTrack::Accent,
+                track: SliderTrack::Amount,
             },
             &theme,
             move |value, _w: &mut Window, cx: &mut App| {
-                entity.update(cx, |this, cx| {
-                    this.develop_ui.preset_ui.amount = value.clamp(0.0, 100.0);
-                    cx.notify();
-                });
+                entity.update(cx, |this, cx| this.set_preset_strength(value, cx));
             },
         );
 
@@ -386,41 +385,7 @@ impl Workspace {
                         }),
                     )),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
-                    .pt_2()
-                    .child(small_caption(&theme, "WHEN APPLYING"))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .gap_1()
-                            .child(rustyedit_ui::chrome_button(
-                                "preset-mode-stack",
-                                "Add to look",
-                                ui.stack,
-                                &theme,
-                                cx.listener(|this, _: &ClickEvent, _w, cx| {
-                                    this.develop_ui.preset_ui.stack = true;
-                                    cx.notify();
-                                }),
-                            ))
-                            .child(rustyedit_ui::chrome_button(
-                                "preset-mode-replace",
-                                "Replace",
-                                !ui.stack,
-                                &theme,
-                                cx.listener(|this, _: &ClickEvent, _w, cx| {
-                                    this.develop_ui.preset_ui.stack = false;
-                                    cx.notify();
-                                }),
-                            )),
-                    ),
-            )
+
             .child(
                 div()
                     .flex()
@@ -453,13 +418,11 @@ impl Workspace {
         let ui = &self.develop_ui.preset_ui;
         let store = &self.develop_ui.presets;
         let current = self.catalog.selected_asset().map(|a| a.develop);
-        // Presets applied to the selected photo, while it still has edits.
-        let applied: Vec<String> = self
+        // The preset making up the selected photo's look, if any.
+        let applied: Option<String> = self
             .catalog
             .selected_asset()
-            .filter(|a| a.develop.is_edited())
-            .map(|a| a.applied_presets.clone())
-            .unwrap_or_default();
+            .and_then(|a| a.current_preset().map(str::to_string));
 
         // Everything, with favourites resolved.
         let mut entries: Vec<(Entry, bool)> = builtin_presets()
@@ -518,7 +481,12 @@ impl Workspace {
                     .into_any_element(),
             );
         }
-        let amount = ui.amount;
+        // Clicking a preset uses the strength the slider shows.
+        let amount = self
+            .catalog
+            .selected_asset()
+            .and_then(|a| a.current_preset_amount())
+            .map_or(ui.amount, |amount| (amount * 100.0).round());
         let scope = ui.scope_sections();
         let renaming = ui.renaming;
         let mut uid = 0usize;
@@ -528,10 +496,10 @@ impl Workspace {
                 .into_iter()
                 .map(|(entry, fav)| {
                     uid += 1;
-                    // Ticked once applied to the photo (presets stack, so
-                    // several can be), or when the photo's look is exactly it.
+                    // Ticked when it's the photo's preset (only one can
+                    // be), or when the photo's look is exactly it.
                     let name = &entry.preset().name;
-                    let active = applied.iter().any(|n| n == name)
+                    let active = applied.as_deref() == Some(name.as_str())
                         || current.is_some_and(|c| {
                             c.is_edited()
                                 && c.with_look_blended(
@@ -850,54 +818,108 @@ impl Workspace {
             return;
         }
         let look = preset.settings;
-        let sections = sections.to_vec();
-        let stack = self.develop_ui.preset_ui.stack;
-        let mut detail = if amount < 1.0 {
+        let detail = if amount < 1.0 {
             format!("{} ({}%)", preset.name, (amount * 100.0).round())
         } else {
             preset.name.clone()
         };
-        if stack {
-            detail.push_str(", added");
-        }
         let targets = self.target_indices();
         let count = targets.len();
-        let name = preset.name.clone();
-        self.replace_develop_and(
-            targets,
+        // Each photo's new look, and the preset record that goes with it.
+        // Applying a preset replaces the one before it entirely.
+        let mut updates = Vec::new();
+        let mut records = std::collections::HashMap::new();
+        for ix in targets {
+            let Some(asset) = self.catalog.assets.get(ix) else {
+                continue;
+            };
+            let mut next = asset.clone();
+            next.apply_preset(&preset.name, &look, sections, amount);
+            updates.push((ix, next.develop));
+            records.insert(asset.id, next.applied_preset);
+        }
+        self.develop_ui.preset_ui.amount = (amount * 100.0).round();
+        self.replace_develop_each_and(
+            updates,
             &format!("preset \u{201C}{}\u{201D}", preset.name),
             HistoryNote::Record {
                 title: "Preset",
                 detail: &detail,
             },
+            false,
             cx,
-            move |develop: &DevelopSettings| {
-                if stack {
-                    develop.with_look_added(&look, &sections, amount)
-                } else {
-                    develop.with_look_blended(&look, &sections, amount)
-                }
-            },
-            move |asset, before| {
-                // A photo whose edits were cleared starts a fresh list; a
-                // replacing preset leaves only itself.
-                if !stack || !before.is_edited() {
-                    asset.applied_presets.clear();
-                }
-                if !asset.applied_presets.contains(&name) {
-                    asset.applied_presets.push(name.clone());
+            move |asset, _| {
+                if let Some(record) = records.get(&asset.id) {
+                    asset.applied_preset = record.clone();
                 }
             },
         );
         self.status_message = Some(
             format!(
-                "{} \u{201C}{}\u{201D} {} {count} photo{}",
-                if stack { "Added" } else { "Applied" },
+                "Applied \u{201C}{}\u{201D} to {count} photo{}",
                 preset.name,
-                if stack { "to" } else { "on" },
                 if count == 1 { "" } else { "s" }
             )
             .into(),
+        );
+        cx.notify();
+    }
+
+    /// The preset called `name`: the user's own first, then a built-in.
+    fn find_preset(&self, name: &str) -> Option<DevelopPreset> {
+        self.develop_ui
+            .presets
+            .user
+            .iter()
+            .find(|p| p.name == name)
+            .cloned()
+            .or_else(|| builtin_presets().into_iter().find(|p| p.name == name))
+    }
+
+    /// The Strength slider: remembered for the next preset clicked, and
+    /// applied straight away to the target photos' current presets. Each
+    /// photo re-applies its own preset from its pre-preset settings, so any
+    /// strength can be set and changed back exactly.
+    fn set_preset_strength(&mut self, value: f32, cx: &mut Context<Self>) {
+        let value = value.clamp(0.0, 100.0);
+        self.develop_ui.preset_ui.amount = value;
+        let sections = self.develop_ui.preset_ui.scope_sections();
+        let mut updates = Vec::new();
+        let mut records = std::collections::HashMap::new();
+        for ix in self.target_indices() {
+            let Some(asset) = self.catalog.assets.get(ix) else {
+                continue;
+            };
+            let Some(name) = asset.current_preset().map(str::to_string) else {
+                continue;
+            };
+            let Some(preset) = self.find_preset(&name) else {
+                continue;
+            };
+            let mut next = asset.clone();
+            next.apply_preset(&name, &preset.settings, &sections, value / 100.0);
+            updates.push((ix, next.develop));
+            records.insert(asset.id, next.applied_preset);
+        }
+        if updates.is_empty() {
+            cx.notify();
+            return;
+        }
+        let detail = format!("{}%", value.round());
+        self.replace_develop_each_and(
+            updates,
+            "preset strength",
+            HistoryNote::Record {
+                title: "Preset strength",
+                detail: &detail,
+            },
+            true,
+            cx,
+            move |asset, _| {
+                if let Some(record) = records.get(&asset.id) {
+                    asset.applied_preset = record.clone();
+                }
+            },
         );
         cx.notify();
     }
@@ -917,7 +939,7 @@ impl Workspace {
             },
             cx,
             move |develop: &DevelopSettings| develop.with_look_blended(&look, &sections, 1.0),
-            |asset, _| asset.applied_presets.clear(),
+            |asset, _| asset.applied_preset = None,
         );
     }
 

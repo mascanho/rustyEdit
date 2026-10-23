@@ -156,7 +156,7 @@ impl Workspace {
             .into_iter()
             .filter_map(|ix| Some((ix, new(&self.catalog.assets.get(ix)?.develop))))
             .collect();
-        self.replace_develop_each_and(updates, undo_label, note, cx, also);
+        self.replace_develop_each_and(updates, undo_label, note, false, cx, also);
     }
 
     /// Gives each photo in `updates` its own new Develop settings, as one
@@ -168,14 +168,17 @@ impl Workspace {
         note: HistoryNote,
         cx: &mut Context<Self>,
     ) {
-        self.replace_develop_each_and(updates, undo_label, note, cx, |_, _| {});
+        self.replace_develop_each_and(updates, undo_label, note, false, cx, |_, _| {});
     }
 
-    fn replace_develop_each_and(
+    /// With `coalesce`, repeated calls under the same label in quick
+    /// succession (a slider drag) merge into one undo step.
+    pub(crate) fn replace_develop_each_and(
         &mut self,
         updates: Vec<(usize, DevelopSettings)>,
         undo_label: &str,
         note: HistoryNote,
+        coalesce: bool,
         cx: &mut Context<Self>,
         also: impl Fn(&mut rustyedit_core::Asset, &DevelopSettings),
     ) {
@@ -207,7 +210,7 @@ impl Workspace {
             })
             .map(|(ix, ..)| *ix)
             .collect();
-        self.push_undo(undo_label.to_string(), changes, false);
+        self.push_undo(undo_label.to_string(), changes, coalesce);
         self.mark_catalog_dirty(cx);
         if !rotated.is_empty() {
             self.refresh_asset_thumbnails(&rotated, cx);

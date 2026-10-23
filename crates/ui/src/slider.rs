@@ -262,6 +262,9 @@ fn format_value(value: f32, signed: bool) -> String {
 pub enum SliderTrack {
     /// Neutral track with an accent fill from the default to the value.
     Accent,
+    /// Neutral track with an accent fill from the left end to the value,
+    /// for amounts (a strength, an opacity) whatever their default is.
+    Amount,
     /// A colour ramp from left to right (temperature, a colour's
     /// saturation, …), with no fill.
     Gradient(Hsla, Hsla),
@@ -434,12 +437,16 @@ pub fn labeled_slider(
                 .items_center()
                 .cursor(CursorStyle::ResizeLeftRight)
                 .child(track_background(track, &theme))
-                .when(matches!(track, SliderTrack::Accent), |el| {
+                .when(matches!(track, SliderTrack::Accent | SliderTrack::Amount), |el| {
                     // Fill from the neutral point to the value, so a
-                    // bipolar slider fills left or right of centre.
-                    let (lo, hi) = {
-                        let d = to_fraction(default);
-                        (d.min(fraction), d.max(fraction))
+                    // bipolar slider fills left or right of centre; an
+                    // amount always fills from the left.
+                    let (lo, hi) = match track {
+                        SliderTrack::Amount => (0.0, fraction),
+                        _ => {
+                            let d = to_fraction(default);
+                            (d.min(fraction), d.max(fraction))
+                        }
                     };
                     el.child(
                         div()
@@ -598,7 +605,7 @@ fn track_background(track: SliderTrack, theme: &Theme) -> AnyElement {
             .overflow_hidden()
     };
     match track {
-        SliderTrack::Accent => base().bg(theme.border).into_any_element(),
+        SliderTrack::Accent | SliderTrack::Amount => base().bg(theme.border).into_any_element(),
         SliderTrack::Gradient(from, to) => base()
             .bg(linear_gradient(
                 90.0,

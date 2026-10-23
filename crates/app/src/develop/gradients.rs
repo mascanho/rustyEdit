@@ -421,7 +421,7 @@ impl Workspace {
                         max: 100.0,
                         default: 100.0,
                         signed: false,
-                        track: SliderTrack::Accent,
+                        track: SliderTrack::Amount,
                     },
                     &theme,
                     move |value, _w, cx| {

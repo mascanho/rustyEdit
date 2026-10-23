@@ -667,7 +667,7 @@ impl Catalog {
             asset.keywords = state.keywords.clone();
             asset.stack_id = state.stack_id;
             asset.stack_cover = state.stack_cover;
-            asset.applied_presets = state.applied_presets.clone();
+            asset.applied_preset = state.applied_preset.clone();
         }
         self.refresh();
     }

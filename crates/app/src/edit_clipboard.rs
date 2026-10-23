@@ -49,7 +49,7 @@ impl Workspace {
 
     /// Takes every target photo back to unedited.
     pub(crate) fn reset_edits(&mut self, cx: &mut Context<Self>) {
-        self.replace_develop(
+        self.replace_develop_and(
             self.target_indices(),
             "reset edits",
             HistoryNote::Record {
@@ -58,6 +58,8 @@ impl Workspace {
             },
             cx,
             |_| DevelopSettings::default(),
+            // Back to the original: no preset either.
+            |asset, _| asset.applied_preset = None,
         );
     }
 
@@ -86,7 +88,7 @@ impl Workspace {
         detail: &str,
         cx: &mut Context<Self>,
     ) {
-        self.replace_develop(
+        self.replace_develop_and(
             self.target_indices(),
             undo_label,
             HistoryNote::Record { title, detail },
@@ -95,6 +97,8 @@ impl Workspace {
                 spots: own.spots,
                 ..own.with_look_of(&look)
             },
+            // The look is no longer a preset's.
+            |asset, _| asset.applied_preset = None,
         );
     }
 }
