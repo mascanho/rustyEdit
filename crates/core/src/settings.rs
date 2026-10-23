@@ -21,6 +21,7 @@ pub struct Settings {
     pub develop: DevelopPreferences,
     pub grid: GridSettings,
     pub appearance: AppearanceSettings,
+    pub culling: CullingSettings,
 }
 
 // --- Appearance -------------------------------------------------------------------
@@ -312,6 +313,41 @@ impl Default for LibrarySettings {
             auto_advance: false,
             loupe_background: LoupeBackground::Theme,
             sort: crate::catalog::SortOrder::default(),
+        }
+    }
+}
+
+// --- Culling ------------------------------------------------------------------
+
+/// Smart culling (see `crate::culling`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CullingSettings {
+    /// Measure each photo's sharpness and make suggestions. Off: nothing
+    /// is measured and no badges show.
+    pub enabled: bool,
+    /// "BEST" on the sharpest frame of each burst.
+    pub show_best: bool,
+    /// "SOFT" on photos that are probably out of focus.
+    pub show_soft: bool,
+    /// Frames shot within seconds of each other count as a burst (stacks
+    /// always do).
+    pub detect_bursts: bool,
+    /// The full-screen cull view moves to the next photo after a decision.
+    pub auto_advance: bool,
+    /// The cull view makes the window full screen.
+    pub full_screen: bool,
+}
+
+impl Default for CullingSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            show_best: true,
+            show_soft: true,
+            detect_bursts: true,
+            auto_advance: true,
+            full_screen: true,
         }
     }
 }
@@ -859,6 +895,74 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                 },
             ],
         }],
+    },
+    SettingsPage {
+        title: "Culling",
+        sections: &[
+            SettingsSection {
+                title: "Suggestions",
+                items: &[
+                    SettingItem {
+                        label: "Smart culling",
+                        description: "Measure how sharp each photo is and suggest the best \
+                                      frame of each burst. Measuring happens in the \
+                                      background, once per photo.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.culling.enabled,
+                            set: |s, v| s.culling.enabled = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Best of burst badges",
+                        description: "Mark the sharpest frame of each burst with BEST.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.culling.show_best,
+                            set: |s, v| s.culling.show_best = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Soft photo badges",
+                        description: "Mark photos that are probably out of focus or blurred \
+                                      with SOFT.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.culling.show_soft,
+                            set: |s, v| s.culling.show_soft = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Detect bursts",
+                        description: "Treat look-alike frames shot within 2 seconds as a \
+                                      burst. Stacks always count as one.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.culling.detect_bursts,
+                            set: |s, v| s.culling.detect_bursts = v,
+                        },
+                    },
+                ],
+            },
+            SettingsSection {
+                title: "Full-screen cull (Shift+F)",
+                items: &[
+                    SettingItem {
+                        label: "Auto-advance",
+                        description: "After picking, rejecting or rating, move to the next \
+                                      photo.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.culling.auto_advance,
+                            set: |s, v| s.culling.auto_advance = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Use the whole screen",
+                        description: "Make the window full screen while culling.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.culling.full_screen,
+                            set: |s, v| s.culling.full_screen = v,
+                        },
+                    },
+                ],
+            },
+        ],
     },
     SettingsPage {
         title: "Grid",

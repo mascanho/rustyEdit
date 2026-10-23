@@ -82,10 +82,10 @@ pub fn sharpness(luma: &[u8], width: usize, height: usize) -> Option<f32> {
 
 /// Groups of photos that are takes of the same moment: frames shot within
 /// a couple of seconds of each other on the same camera that look alike,
-/// and photos the user stacked. Each group (two or more photos, catalog
+/// (when `by_time`), and photos the user stacked. Each group (two or more photos, catalog
 /// indices) is in capture order. Virtual copies and missing photos are
 /// left out.
-pub fn burst_groups(assets: &[Asset]) -> Vec<Vec<usize>> {
+pub fn burst_groups(assets: &[Asset], by_time: bool) -> Vec<Vec<usize>> {
     let eligible = |a: &Asset| !a.missing && !a.is_virtual_copy();
     let mut parent: Vec<usize> = (0..assets.len()).collect();
     fn find(parent: &mut [usize], mut i: usize) -> usize {
@@ -117,7 +117,7 @@ pub fn burst_groups(assets: &[Asset]) -> Vec<Vec<usize>> {
 
     // Bursts: neighbours in capture order on the same camera.
     let mut order: Vec<usize> = (0..assets.len())
-        .filter(|&i| eligible(&assets[i]) && assets[i].meta.captured > 0)
+        .filter(|&i| by_time && eligible(&assets[i]) && assets[i].meta.captured > 0)
         .collect();
     order.sort_by(|&a, &b| {
         let (x, y) = (&assets[a], &assets[b]);
@@ -169,14 +169,16 @@ pub struct CullInfo {
 }
 
 impl CullInfo {
-    pub fn analyze(assets: &[Asset]) -> Self {
+    /// Suggestions for `assets`; `bursts_by_time` also groups frames shot
+    /// within seconds of each other (stacks always group).
+    pub fn analyze(assets: &[Asset], bursts_by_time: bool) -> Self {
         let mut marks = vec![CullMark::default(); assets.len()];
         for (mark, asset) in marks.iter_mut().zip(assets) {
             mark.soft = !asset.missing
                 && !asset.is_virtual_copy()
                 && asset.sharpness.is_some_and(|s| s < SOFT_THRESHOLD);
         }
-        let groups = burst_groups(assets);
+        let groups = burst_groups(assets, bursts_by_time);
         for group in &groups {
             let len = group.len().min(u16::MAX as usize) as u16;
             for (pos, &i) in group.iter().enumerate() {
@@ -321,7 +323,9 @@ mod tests {
             // Same second, but a completely different picture.
             shot(4, 1012, !0b1111, 50.0),
         ];
-        let info = CullInfo::analyze(&assets);
+        let info = CullInfo::analyze(&assets, true);
+        // Without time-based bursts only stacks group.
+        assert!(CullInfo::analyze(&assets, false).groups.is_empty());
         assert_eq!(info.groups, vec![vec![0, 1, 2]]);
         assert!(info.mark(1).best);
         assert_eq!(info.mark(0).burst, Some((1, 3)));
@@ -341,14 +345,14 @@ mod tests {
         copy.id = 2;
         copy.copy_name = Some("Copy 1".into());
         copy.sharpness = Some(99.0);
-        let info = CullInfo::analyze(&[a, b, copy]);
+        let info = CullInfo::analyze(&[a, b, copy], false);
         assert_eq!(info.groups, vec![vec![0, 1]]);
         assert!(info.mark(1).best && !info.mark(2).best);
     }
 
     #[test]
     fn soft_photos_are_flagged_on_their_own() {
-        let info = CullInfo::analyze(&[shot(0, 0, 0, 5.0), shot(1, 100, 0, 40.0)]);
+        let info = CullInfo::analyze(&[shot(0, 0, 0, 5.0), shot(1, 100, 0, 40.0)], true);
         assert_eq!(info.soft(), vec![0]);
     }
 }

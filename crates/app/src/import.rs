@@ -94,6 +94,7 @@ impl Workspace {
                 .map(|a| ((a.path.clone(), a.copy_name.clone()), a.clone()))
                 .collect();
         let import_append = std::mem::take(&mut self.import_append);
+        let measure_sharpness = self.settings.culling.enabled;
         self.is_importing = true;
         self.status_message = Some(format!("Scanning {}…", self.catalog_def.name).into());
         if let Some(folder) = folders.last() {
@@ -164,7 +165,12 @@ impl Workspace {
             })
             .ok();
             let job = cx.background_executor().spawn(async move {
-                rustyedit_io::generate_thumbnails(&thumb_cache, &thumb_assets, &worker_done)
+                rustyedit_io::generate_thumbnails(
+                    &thumb_cache,
+                    &thumb_assets,
+                    &worker_done,
+                    measure_sharpness,
+                )
             });
             // Repaint a few times a second so the loader's progress bar moves.
             let ticker = cx.spawn({

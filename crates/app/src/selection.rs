@@ -301,13 +301,14 @@ impl Workspace {
 
         // Auto-advance after a decision on a single photo (never wraps).
         let decides = matches!(op, CullOp::Flag(_) | CullOp::Rating(_));
-        // The cull view always moves on: deciding quickly is its point.
-        if decides
-            && (self.settings.library.auto_advance || self.cull_view)
-            && targets.len() == 1
-            && self.mode == Mode::Library
-            && (self.library_view != LibraryView::Grid || self.cull_view)
-        {
+        // The cull view has its own setting (on by default: deciding
+        // quickly is its point); the loupe follows the Library's.
+        let advance = if self.cull_view {
+            self.settings.culling.auto_advance
+        } else {
+            self.settings.library.auto_advance && self.library_view != LibraryView::Grid
+        };
+        if decides && advance && targets.len() == 1 && self.mode == Mode::Library {
             let at = self.catalog.visible_position(self.catalog.selected);
             if let Some(next) = at.and_then(|p| self.catalog.visible_indices().get(p + 1).copied())
             {

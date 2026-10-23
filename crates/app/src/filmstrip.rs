@@ -205,7 +205,7 @@ impl Workspace {
                     &look,
                     prefs,
                     frame_px,
-                    culls.mark(asset_ix),
+                    self.shown_mark(&culls, asset_ix),
                 )
                 .absolute()
                 .top_0()

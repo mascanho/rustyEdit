@@ -1,6 +1,8 @@
 //! Smart culling in the app (see `rustyedit_core::culling`):
 //!
 //! - "Best" and "Soft" badges on grid and filmstrip cells.
+//!
+//! Each part can be switched off in Settings ▸ Culling.
 //! - Photo ▸ Pick Best of Each Burst / Reject Soft Photos: one undo step.
 //! - Full-screen cull view (Shift+F): one big photo and nothing else; P/X/U
 //!   and 0-5 decide and move on to the next photo, arrows move, Esc leaves.
@@ -26,8 +28,11 @@ impl Workspace {
     /// Culling suggestions for the catalog, recomputed only when something
     /// they depend on changed.
     pub(crate) fn cull_info(&self) -> Rc<CullInfo> {
+        let culling = &self.settings.culling;
         // A cheap fingerprint of what the analysis reads.
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        culling.enabled.hash(&mut hasher);
+        culling.detect_bursts.hash(&mut hasher);
         self.catalog.assets.len().hash(&mut hasher);
         for asset in &self.catalog.assets {
             asset.sharpness.map(f32::to_bits).hash(&mut hasher);
@@ -43,9 +48,80 @@ impl Workspace {
                 return info.clone();
             }
         }
-        let info = Rc::new(CullInfo::analyze(&self.catalog.assets));
+        // Switched off: no suggestions at all.
+        let info = Rc::new(if culling.enabled {
+            CullInfo::analyze(&self.catalog.assets, culling.detect_bursts)
+        } else {
+            CullInfo::default()
+        });
         *self.cull_cache.borrow_mut() = Some((key, info.clone()));
         info
+    }
+
+    /// `index`'s suggestions as its badges show them: only the kinds
+    /// switched on in Settings.
+    pub(crate) fn shown_mark(&self, info: &CullInfo, index: usize) -> CullMark {
+        let culling = &self.settings.culling;
+        let mut mark = info.mark(index);
+        mark.best &= culling.show_best;
+        mark.soft &= culling.show_soft;
+        mark
+    }
+
+    /// Says so (and returns `false`) when smart culling is switched off.
+    fn culling_on(&mut self, cx: &mut Context<Self>) -> bool {
+        if !self.settings.culling.enabled {
+            self.status_message =
+                Some("Smart culling is off. Turn it on in Settings \u{25B8} Culling.".into());
+            cx.notify();
+        }
+        self.settings.culling.enabled
+    }
+
+    /// Measures the photos that have no sharpness score yet (taken while
+    /// smart culling was off), from their cached thumbnails, in the
+    /// background.
+    pub(crate) fn measure_missing_sharpness(&mut self, cx: &mut Context<Self>) {
+        let Some(cache) = self.thumbnail_cache.clone() else {
+            return;
+        };
+        let jobs: Vec<rustyedit_core::Asset> = self
+            .catalog
+            .assets
+            .iter()
+            .filter(|a| a.sharpness.is_none() && !a.missing && a.width > 0)
+            .cloned()
+            .collect();
+        if jobs.is_empty() {
+            return;
+        }
+        let work = cx.background_executor().spawn(async move {
+            let counter = std::sync::atomic::AtomicUsize::new(0);
+            rustyedit_io::generate_thumbnails(&cache, &jobs, &counter, true)
+        });
+        cx.spawn(async move |this, cx| {
+            let infos = work.await;
+            this.update(cx, |this, cx| {
+                let mut changed = false;
+                for info in infos {
+                    if let Some(asset) = this
+                        .catalog
+                        .assets
+                        .get_mut(info.id as usize)
+                        .filter(|a| a.id == info.id && a.sharpness.is_none())
+                    {
+                        asset.sharpness = info.sharpness;
+                        changed |= info.sharpness.is_some();
+                    }
+                }
+                if changed {
+                    this.mark_catalog_dirty(cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub fn pick_best_of_bursts(
@@ -54,6 +130,9 @@ impl Workspace {
         _w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.culling_on(cx) {
+            return;
+        }
         let best = self.cull_info().best();
         let done = self.flag_photos(&best, Flag::Picked, "Pick best of bursts", cx);
         self.status_message = Some(if self.cull_info().groups.is_empty() {
@@ -75,6 +154,9 @@ impl Workspace {
         _w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.culling_on(cx) {
+            return;
+        }
         let soft = self.cull_info().soft();
         let done = self.flag_photos(&soft, Flag::Rejected, "Reject soft photos", cx);
         self.status_message = Some(match done {
@@ -134,7 +216,7 @@ impl Workspace {
         // Library mode: Develop would decode every photo arrowed past.
         self.mode = Mode::Library;
         self.cull_view = true;
-        if !window.is_fullscreen() {
+        if self.settings.culling.full_screen && !window.is_fullscreen() {
             window.toggle_fullscreen();
             self.cull_made_fullscreen = true;
         }
@@ -181,7 +263,7 @@ impl Workspace {
             return div().into_any_element();
         };
         let ix = self.catalog.selected;
-        let mark = self.cull_info().mark(ix);
+        let mark = self.shown_mark(&self.cull_info(), ix);
         let visible = self.catalog.visible_indices();
         let position = self
             .catalog
@@ -207,6 +289,7 @@ impl Workspace {
         let stars = asset.rating.value();
         let sharpness = asset
             .sharpness
+            .filter(|_| self.settings.culling.enabled)
             .map(|s| format!("Sharpness {:.0}", s))
             .unwrap_or_default();
 

@@ -55,6 +55,9 @@ impl Workspace {
         {
             self.load_source_image(cx);
         }
+        if self.settings.culling.enabled && !previous.culling.enabled {
+            self.measure_missing_sharpness(cx);
+        }
         cx.notify();
     }
 

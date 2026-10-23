@@ -148,7 +148,7 @@ impl Workspace {
                                             visible[i],
                                             geometry,
                                             &entity,
-                                            culls.mark(visible[i]),
+                                            this.shown_mark(&culls, visible[i]),
                                         )
                                     }))
                                     .into_any_element()

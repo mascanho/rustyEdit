@@ -734,6 +734,7 @@ impl Workspace {
         if jobs.is_empty() {
             return;
         }
+        let measure_sharpness = self.settings.culling.enabled;
         let job = cx.background_executor().spawn(async move {
             let counter = AtomicUsize::new(0);
             let mut out = Vec::new();
@@ -742,6 +743,7 @@ impl Workspace {
                     &cache,
                     std::slice::from_ref(&asset),
                     &counter,
+                    measure_sharpness,
                 );
                 if let Some(info) = infos.into_iter().next() {
                     out.push((index, info));

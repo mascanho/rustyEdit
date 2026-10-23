@@ -270,10 +270,14 @@ impl ThumbnailCache {
 /// height)` for each asset that decoded successfully. Intended to be run
 /// inside `cx.background_executor().spawn(..)` so the UI thread is never
 /// blocked while a large folder is being culled.
+///
+/// With `measure_sharpness` off, photos keep whatever score they have and
+/// none are measured (no extra decoding).
 pub fn generate_thumbnails(
     cache: &ThumbnailCache,
     assets: &[Asset],
     progress: &std::sync::atomic::AtomicUsize,
+    measure_sharpness: bool,
 ) -> Vec<ThumbInfo> {
     use rayon::prelude::*;
     use std::sync::atomic::Ordering;
@@ -297,11 +301,12 @@ pub fn generate_thumbnails(
                     // is still missing.
                     let (phash, sharpness) = match (asset.phash, asset.sharpness) {
                         (phash, Some(sharpness)) if phash != 0 => (phash, Some(sharpness)),
+                        (phash, None) if phash != 0 && !measure_sharpness => (phash, None),
                         (phash, known) => {
                             let (fresh_hash, fresh_sharpness) = thumbnail_facts(&thumb);
                             (
                                 if phash != 0 { phash } else { fresh_hash },
-                                known.or(fresh_sharpness),
+                                known.or(fresh_sharpness.filter(|_| measure_sharpness)),
                             )
                         }
                     };
@@ -326,6 +331,7 @@ pub fn generate_thumbnails(
             let result = cache.ensure_rotated(&asset.path, quarters).ok().map(
                 |(thumbnail, width, height)| {
                     let (phash, sharpness) = thumbnail_facts(&thumbnail);
+                    let sharpness = sharpness.filter(|_| measure_sharpness).or(asset.sharpness);
                     ThumbInfo {
                         id: asset.id,
                         thumbnail,
