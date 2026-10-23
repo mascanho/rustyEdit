@@ -277,13 +277,25 @@ impl Workspace {
                         section = section.child(
                             div().flex().flex_col().gap_0p5().pl_3().pb_1().children(
                                 group.rows.iter().map(|(label, value)| {
+                                    // One line per fact, cut with an ellipsis
+                                    // when too long; the tooltip has it all.
                                     div()
+                                        .id(gpui::SharedString::from(format!(
+                                            "info-row-{title}-{label}"
+                                        )))
                                         .flex()
                                         .flex_row()
-                                        .items_start()
+                                        .items_center()
                                         .justify_between()
                                         .gap_3()
+                                        .w_full()
+                                        .min_w(sp(0.0))
+                                        .overflow_hidden()
                                         .text_size(sp(10.5))
+                                        .tooltip(rustyedit_ui::tip(
+                                            format!("{label}: {value}"),
+                                            &theme,
+                                        ))
                                         .child(
                                             div()
                                                 .flex_shrink_0()
@@ -292,7 +304,9 @@ impl Workspace {
                                         )
                                         .child(
                                             div()
+                                                .flex_1()
                                                 .min_w(sp(0.0))
+                                                .truncate()
                                                 .text_right()
                                                 .text_color(theme.text_muted)
                                                 .child(value.clone()),

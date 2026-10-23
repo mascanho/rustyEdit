@@ -44,16 +44,23 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// One "label ... value" line of the overview.
+    /// One "label ... value" line of the overview. The value stays on one
+    /// line and is cut with an ellipsis when it doesn't fit; the whole text
+    /// is in the tooltip.
     fn fact(&self, label: &'static str, value: String) -> AnyElement {
         let theme = self.theme;
         div()
+            .id(gpui::SharedString::from(format!("overview-fact-{label}")))
             .flex()
             .flex_row()
-            .items_start()
+            .items_center()
             .justify_between()
             .gap_3()
+            .w_full()
+            .min_w(sp(0.0))
+            .overflow_hidden()
             .text_size(sp(11.0))
+            .tooltip(rustyedit_ui::tip(format!("{label}: {value}"), &theme))
             .child(
                 div()
                     .flex_shrink_0()
@@ -62,7 +69,9 @@ impl Workspace {
             )
             .child(
                 div()
+                    .flex_1()
                     .min_w(sp(0.0))
+                    .truncate()
                     .text_right()
                     .text_color(theme.text)
                     .child(value),
@@ -85,6 +94,9 @@ impl Workspace {
         // Overview: what the photo is and what has been done to it.
         out.push(self.tab_heading(Icon::Info, "Overview"));
         let mut facts: Vec<AnyElement> = vec![div()
+            .w_full()
+            .min_w(sp(0.0))
+            .overflow_hidden()
             .flex()
             .flex_row()
             .items_center()
@@ -92,9 +104,9 @@ impl Workspace {
             .gap_2()
             .child(
                 div()
+                    .flex_1()
                     .min_w(sp(0.0))
-                    .overflow_hidden()
-                    .whitespace_nowrap()
+                    .truncate()
                     .text_size(sp(13.0))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(theme.text)
