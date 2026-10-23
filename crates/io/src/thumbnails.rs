@@ -293,10 +293,17 @@ pub fn generate_thumbnails(
                         crate::metadata::read_photo_meta(&asset.path)
                     };
                     progress.fetch_add(1, Ordering::Relaxed);
-                    let phash = if asset.phash != 0 {
-                        asset.phash
-                    } else {
-                        thumbnail_hash(&thumb)
+                    // Both come from the thumbnail; decode it only if one
+                    // is still missing.
+                    let (phash, sharpness) = match (asset.phash, asset.sharpness) {
+                        (phash, Some(sharpness)) if phash != 0 => (phash, Some(sharpness)),
+                        (phash, known) => {
+                            let (fresh_hash, fresh_sharpness) = thumbnail_facts(&thumb);
+                            (
+                                if phash != 0 { phash } else { fresh_hash },
+                                known.or(fresh_sharpness),
+                            )
+                        }
                     };
                     let content_hash = if asset.content_hash != 0 {
                         asset.content_hash
@@ -312,12 +319,13 @@ pub fn generate_thumbnails(
                         meta,
                         content_hash,
                         phash,
+                        sharpness,
                     });
                 }
             }
             let result = cache.ensure_rotated(&asset.path, quarters).ok().map(
                 |(thumbnail, width, height)| {
-                    let phash = thumbnail_hash(&thumbnail);
+                    let (phash, sharpness) = thumbnail_facts(&thumbnail);
                     ThumbInfo {
                         id: asset.id,
                         thumbnail,
@@ -327,6 +335,7 @@ pub fn generate_thumbnails(
                         meta: crate::metadata::read_photo_meta(&asset.path),
                         content_hash: sampled_content_hash(&asset.path),
                         phash,
+                        sharpness,
                     }
                 },
             );
@@ -354,10 +363,18 @@ pub fn perceptual_hash(image: &DynamicImage) -> u64 {
     hash
 }
 
-fn thumbnail_hash(path: &Path) -> u64 {
-    image::open(path)
-        .map(|image| perceptual_hash(&image))
-        .unwrap_or(0)
+/// The difference hash and sharpness of a thumbnail, decoding it once.
+fn thumbnail_facts(path: &Path) -> (u64, Option<f32>) {
+    let Ok(image) = image::open(path) else {
+        return (0, None);
+    };
+    let luma = image.to_luma8();
+    let sharpness = rustyedit_core::culling::sharpness(
+        luma.as_raw(),
+        luma.width() as usize,
+        luma.height() as usize,
+    );
+    (perceptual_hash(&image), sharpness)
 }
 
 /// A cheap content fingerprint: file length plus a sample of bytes from the
@@ -438,4 +455,6 @@ pub struct ThumbInfo {
     pub meta: rustyedit_core::PhotoMeta,
     pub content_hash: u64,
     pub phash: u64,
+    /// See `rustyedit_core::culling::sharpness`.
+    pub sharpness: Option<f32>,
 }

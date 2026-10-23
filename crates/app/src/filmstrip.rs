@@ -191,6 +191,7 @@ impl Workspace {
         let last =
             (((scroll_x + viewport) / frame_width).ceil() as usize + OVERSCAN_FRAMES).min(count);
 
+        let culls = self.cull_info();
         let frames: Vec<AnyElement> = (first..last)
             .map(|ix| {
                 let entity = entity.clone();
@@ -204,6 +205,7 @@ impl Workspace {
                     &look,
                     prefs,
                     frame_px,
+                    culls.mark(asset_ix),
                 )
                 .absolute()
                 .top_0()
@@ -380,6 +382,7 @@ fn film_frame(
     look: &FilmLook,
     prefs: &FilmstripSettings,
     frame_width: f32,
+    mark: rustyedit_core::CullMark,
 ) -> gpui::Stateful<gpui::Div> {
     let theme = *theme;
     let look = *look;
@@ -420,9 +423,7 @@ fn film_frame(
             look.picture_border
         })
         .child(image)
-        .when_some(asset.copy_name.clone(), |el, name| {
-            el.child(crate::grid::copy_badge(name, &theme))
-        })
+        .children(crate::cull::corner_badges(asset.copy_name.clone(), mark, &theme))
         .when_some(label_color, |el, color| {
             el.child(
                 div()

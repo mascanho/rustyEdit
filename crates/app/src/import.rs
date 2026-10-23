@@ -192,6 +192,7 @@ impl Workspace {
                     asset.meta = info.meta;
                     asset.content_hash = info.content_hash;
                     asset.phash = info.phash;
+                    asset.sharpness = info.sharpness;
                 }
             }
 

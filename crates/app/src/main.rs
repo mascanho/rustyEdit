@@ -7,6 +7,7 @@ mod albums;
 mod catalogs;
 mod compare;
 mod context_menu;
+mod cull;
 mod cull_bar;
 mod develop;
 mod display_profile;
@@ -58,7 +59,8 @@ use actions::{
     ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
 };
 use actions::{
-    AutoTone, CreateVirtualCopy, MatchLook, PresetFromPhoto, SyncSettings, ToolWhiteBalance,
+    AutoTone, CreateVirtualCopy, MatchLook, PickBestOfBursts, PresetFromPhoto, RejectSoftPhotos,
+    SyncSettings, ToggleCullView, ToolWhiteBalance,
     CycleGridStyle, GridLarger, GridSmaller, ToolLinearGradient, ToolRadialGradient,
     ToolSpotRemoval, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp,
     SelectDown, SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
@@ -117,6 +119,7 @@ fn main() {
             KeyBinding::new("cmd-u", AutoTone, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-shift-s", SyncSettings, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-'", CreateVirtualCopy, Some(KEY_CONTEXT)),
+            KeyBinding::new("shift-f", ToggleCullView, Some(KEY_CONTEXT)),
             // "+" is shift-= on most layouts; bind every way it can arrive.
             KeyBinding::new("ctrl-=", GridLarger, Some(KEY_CONTEXT)),
             KeyBinding::new("ctrl-+", GridLarger, Some(KEY_CONTEXT)),
@@ -179,6 +182,10 @@ fn main() {
                     MenuItem::action("Unstack", Unstack),
                     MenuItem::action("Collapse/Expand Stack", ToggleStack),
                     MenuItem::action("Find Duplicates…", FindDuplicates),
+                    MenuItem::separator(),
+                    MenuItem::action("Full-Screen Cull", ToggleCullView),
+                    MenuItem::action("Pick Best of Each Burst", PickBestOfBursts),
+                    MenuItem::action("Reject Soft Photos", RejectSoftPhotos),
                 ],
             },
             Menu {

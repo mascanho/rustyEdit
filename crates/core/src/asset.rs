@@ -136,6 +136,10 @@ pub struct Asset {
     /// the original (master) photo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copy_name: Option<String>,
+    /// How sharp the photo is (see `culling::sharpness`), measured on its
+    /// thumbnail. `None` until measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sharpness: Option<f32>,
     /// The preset currently making up the photo's look, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applied_preset: Option<AppliedPreset>,
@@ -171,6 +175,7 @@ impl Asset {
             history: Vec::new(),
             snapshots: Vec::new(),
             copy_name: None,
+            sharpness: None,
             applied_preset: None,
             missing: false,
         }
@@ -201,6 +206,9 @@ impl Asset {
         }
         if old.phash != 0 {
             self.phash = old.phash;
+        }
+        if old.sharpness.is_some() {
+            self.sharpness = old.sharpness;
         }
         if old.width > 0 && old.height > 0 {
             self.width = old.width;

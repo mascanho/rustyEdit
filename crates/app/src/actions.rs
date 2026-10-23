@@ -82,5 +82,8 @@ actions!(
         CreateVirtualCopy,
         MatchLook,
         PresetFromPhoto,
+        ToggleCullView,
+        PickBestOfBursts,
+        RejectSoftPhotos,
     ]
 );

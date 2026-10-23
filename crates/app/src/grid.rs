@@ -130,6 +130,7 @@ impl Workspace {
                                 .collect()
                         };
                         this.ensure_edited_thumbnails(&on_screen, cx);
+                        let culls = this.cull_info();
                         let visible = this.catalog.visible_indices();
                         range
                             .map(|row| {
@@ -143,7 +144,12 @@ impl Workspace {
                                     .px_3()
                                     .pb(px(gap))
                                     .children((start..end).map(|i| {
-                                        this.render_grid_card(visible[i], geometry, &entity)
+                                        this.render_grid_card(
+                                            visible[i],
+                                            geometry,
+                                            &entity,
+                                            culls.mark(visible[i]),
+                                        )
                                     }))
                                     .into_any_element()
                             })
@@ -162,6 +168,7 @@ impl Workspace {
         asset_ix: usize,
         geometry: CardGeometry,
         entity: &Entity<Self>,
+        mark: rustyedit_core::CullMark,
     ) -> AnyElement {
         let theme = self.theme;
         let grid = &self.settings.grid;
@@ -213,9 +220,11 @@ impl Workspace {
             .when_some(stack, |el, (id, count, collapsed)| {
                 el.child(stack_badge(asset_ix, id, count, collapsed, entity, &theme))
             })
-            .when_some(asset.copy_name.clone(), |el, name| {
-                el.child(copy_badge(name, &theme))
-            });
+            .children(crate::cull::corner_badges(
+                asset.copy_name.clone(),
+                mark,
+                &theme,
+            ));
 
         let card = div()
             .id(("grid-cell", asset_ix))
@@ -489,26 +498,6 @@ fn minimal_badges(asset: &Asset, theme: &Theme) -> Option<AnyElement> {
             })
             .into_any_element(),
     )
-}
-
-/// Marks a virtual copy, pinned to the thumbnail's bottom-right corner.
-pub(crate) fn copy_badge(name: String, theme: &Theme) -> AnyElement {
-    div()
-        .absolute()
-        .right(px(4.0))
-        .bottom(px(4.0))
-        .h(px(16.0))
-        .px_1p5()
-        .flex()
-        .items_center()
-        .rounded_sm()
-        .bg(theme.background.opacity(0.85))
-        .border_1()
-        .border_color(theme.accent.opacity(0.7))
-        .text_size(px(9.0))
-        .text_color(theme.text)
-        .child(name)
-        .into_any_element()
 }
 
 /// Expand / collapse toggle for a stack, pinned to the thumbnail's

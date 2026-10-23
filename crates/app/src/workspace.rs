@@ -236,6 +236,13 @@ pub struct Workspace {
     /// The scan under way is an import: select the first new photo and
     /// report how many were added.
     pub(crate) import_append: bool,
+
+    /// Smart culling (see `cull.rs`): the cached analysis with the
+    /// fingerprint it was made from, the full-screen cull view, and whether
+    /// entering it made the window full screen (so leaving undoes that).
+    pub(crate) cull_cache: std::cell::RefCell<Option<(u64, Rc<rustyedit_core::CullInfo>)>>,
+    pub(crate) cull_view: bool,
+    pub(crate) cull_made_fullscreen: bool,
 }
 
 impl Workspace {
@@ -371,6 +378,9 @@ impl Workspace {
             sync_choice: crate::sync_settings::default_choice(),
             edited_thumbs: Default::default(),
             import_append: false,
+            cull_cache: Default::default(),
+            cull_view: false,
+            cull_made_fullscreen: false,
         };
         // Pick up where the last session left off.
         if !this.catalog_def.folders.is_empty() {
@@ -544,14 +554,20 @@ impl Workspace {
         self.reveal_in_filmstrip(self.catalog.selected);
         self.request_histogram(cx);
         self.request_loupe(cx);
+        self.prefetch_cull_neighbours(cx);
         if self.info_visible {
             self.request_metadata(cx);
         }
         cx.notify();
     }
 
-    pub fn go_library(&mut self, _: &GoLibrary, _window: &mut Window, cx: &mut Context<Self>) {
-        // Escape first closes a dialog, then a context menu.
+    pub fn go_library(&mut self, _: &GoLibrary, window: &mut Window, cx: &mut Context<Self>) {
+        // Escape first leaves the cull view, then closes a dialog, then a
+        // context menu.
+        if self.cull_view {
+            self.leave_cull_view(window, cx);
+            return;
+        }
         if self.sync_dialog.is_some() {
             self.close_sync_dialog(cx);
             return;
@@ -964,6 +980,9 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::create_virtual_copy))
             .on_action(cx.listener(Self::match_look_action))
             .on_action(cx.listener(Self::preset_from_photo_action))
+            .on_action(cx.listener(Self::toggle_cull_view))
+            .on_action(cx.listener(Self::pick_best_of_bursts))
+            .on_action(cx.listener(Self::reject_soft_photos))
             .on_action(cx.listener(Self::flag_pick))
             .on_action(cx.listener(Self::flag_reject))
             .on_action(cx.listener(Self::flag_unflag))
@@ -1023,5 +1042,6 @@ impl Render for Workspace {
             .when(self.sync_dialog.is_some(), |el| {
                 el.child(self.render_sync_dialog(cx))
             })
+            .when(self.cull_view, |el| el.child(self.render_cull_view(cx)))
     }
 }

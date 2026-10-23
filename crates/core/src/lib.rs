@@ -28,11 +28,13 @@ mod rail;
 mod rating;
 mod retouch;
 mod sections;
+pub mod culling;
 pub mod settings;
 mod snapshot;
 
 pub use albums::{Album, Albums};
 pub use asset::{AppliedPreset, Asset, AssetState, PhotoMeta};
+pub use culling::{CullInfo, CullMark};
 pub use catalog::{Catalog, CatalogCounts, FilterMode, RatingFilter, SortKey, SortOrder};
 pub use catalog_def::CatalogDef;
 pub use collections::{default_keyword_sets, KeywordSet, SmartCollection, SmartCollections};

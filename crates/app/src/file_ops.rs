@@ -766,6 +766,7 @@ impl Workspace {
                     asset.meta = info.meta;
                     asset.content_hash = info.content_hash;
                     asset.phash = info.phash;
+                    asset.sharpness = info.sharpness;
                     let id = asset.id;
                     this.histogram_cache.remove(&id);
                     this.histogram_loading = None;
