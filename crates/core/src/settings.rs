@@ -36,6 +36,9 @@ pub struct AppearanceSettings {
     /// How strongly panels, controls and text stand apart, 0-100.
     /// 50 is the standard look.
     pub contrast: u8,
+    /// Confirmations and problems pop up in a corner (with Undo where it
+    /// applies), not only in the status bar.
+    pub notifications: bool,
 }
 
 impl Default for AppearanceSettings {
@@ -44,6 +47,7 @@ impl Default for AppearanceSettings {
             theme: AppTheme::Dark,
             accent: AccentColor::Blue,
             contrast: 50,
+            notifications: true,
         }
     }
 }
@@ -913,6 +917,19 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                         },
                     },
                 ],
+            },
+            SettingsSection {
+                title: "Notifications",
+                items: &[SettingItem {
+                    label: "Pop-up notifications",
+                    description: "Show confirmations and problems in the corner of the window \
+                                  for a few seconds, with Undo where it applies. They always \
+                                  appear in the status bar too.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.appearance.notifications,
+                        set: |s, v| s.appearance.notifications = v,
+                    },
+                }],
             },
             SettingsSection {
                 title: "Contrast",

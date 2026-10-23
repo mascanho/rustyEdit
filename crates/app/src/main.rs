@@ -40,6 +40,7 @@ mod settings_view;
 mod size_menu;
 mod stacks;
 mod sync_settings;
+mod toasts;
 mod undo;
 mod virtual_copies;
 mod wheel_zoom;

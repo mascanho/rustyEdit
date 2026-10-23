@@ -28,6 +28,54 @@ use crate::file_tree::FileTree;
 use crate::histogram_panel::HistogramUi;
 use crate::selection::CullOp;
 
+/// The window's root element, for styling things while files are dragged
+/// over it.
+const ROOT_GROUP: &str = "workspace-root";
+
+/// "Drop to import", shown over the whole window only while files are
+/// dragged over it. It has no hit area, so it never takes clicks.
+fn drop_overlay(theme: &Theme) -> impl IntoElement {
+    let theme = *theme;
+    div()
+        .absolute()
+        .inset_0()
+        .invisible()
+        .group_drag_over::<gpui::ExternalPaths>(ROOT_GROUP, |style| style.visible())
+        .flex()
+        .items_center()
+        .justify_center()
+        .bg(gpui::black().opacity(0.45))
+        .border_2()
+        .border_color(theme.accent)
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap_1()
+                .px_6()
+                .py_4()
+                .rounded_lg()
+                .bg(theme.surface_elevated)
+                .border_1()
+                .border_color(theme.accent)
+                .shadow_lg()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.text)
+                        .child("Drop to import"),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.text_muted)
+                        .child("Folders are added to this catalog; photos bring their folder"),
+                ),
+        )
+}
+
 /// How long after the last edit the catalog is written to disk.
 const CATALOG_SAVE_DEBOUNCE: Duration = Duration::from_millis(750);
 
@@ -261,6 +309,9 @@ pub struct Workspace {
     /// preset that is.
     pub(crate) preview_override: Option<rustyedit_core::DevelopSettings>,
     pub(crate) preset_hover: Option<String>,
+
+    /// Pop-up notifications (see `toasts.rs`).
+    pub(crate) toasts: crate::toasts::Toasts,
 }
 
 impl Workspace {
@@ -413,7 +464,9 @@ impl Workspace {
             settings_text_item: None,
             preview_override: None,
             preset_hover: None,
+            toasts: Default::default(),
         };
+        this.toasts = crate::toasts::Toasts::starting_with(this.status_message.clone());
         // Pick up where the last session left off.
         if !this.catalog_def.folders.is_empty() {
             this.open_catalog(None, cx);
@@ -980,11 +1033,18 @@ impl Render for Workspace {
         // GPU memory before this frame paints.
         self.live_preview.release_retired(window);
         self.pixel_ratio.set(window.scale_factor());
+        // New status messages pop up as notifications.
+        self.sync_toasts(cx);
         let theme = self.theme;
         let focus_handle = self.focus_handle.clone();
 
         div()
             .id("workspace-root")
+            .group(ROOT_GROUP)
+            // Folders (or photos) dropped on the window are imported.
+            .on_drop(cx.listener(|this, paths: &gpui::ExternalPaths, _w, cx| {
+                this.import_dropped(paths.paths().to_vec(), cx);
+            }))
             .key_context(if self.text_draft.is_some() {
                 "TextEntry"
             } else {
@@ -1111,5 +1171,7 @@ impl Render for Workspace {
                 el.child(self.render_sync_dialog(cx))
             })
             .when(self.cull_view, |el| el.child(self.render_cull_view(cx)))
+            .children(self.render_toasts(cx))
+            .child(drop_overlay(&theme))
     }
 }

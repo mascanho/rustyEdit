@@ -109,6 +109,14 @@ impl Workspace {
         }
     }
 
+    /// Whether the newest undo step was recorded just now (so a message
+    /// about it can offer Undo).
+    pub(crate) fn undo_just_recorded(&self) -> bool {
+        self.undo_stack
+            .last()
+            .is_some_and(|entry| entry.at.elapsed() < Duration::from_millis(1500))
+    }
+
     pub fn undo(&mut self, _: &Undo, _w: &mut Window, cx: &mut Context<Self>) {
         let Some(entry) = self.undo_stack.pop() else {
             self.status_message = Some("Nothing to undo.".into());
