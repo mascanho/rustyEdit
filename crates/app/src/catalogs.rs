@@ -3,6 +3,7 @@
 //! the plumbing to create, switch, and delete them. The data model is
 //! `rustyedit_core::CatalogDef`; storage is `rustyedit_io::registry`.
 
+use rustyedit_ui::sp;
 use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString, Window};
 use rustyedit_core::CatalogDef;
 use rustyedit_io::registry;
@@ -110,7 +111,7 @@ impl Workspace {
                 .pt_2()
                 .pb_1()
                 .px_2()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.text_faint)
                 .child(text)
@@ -122,7 +123,7 @@ impl Workspace {
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .h(px(28.0))
+                .h(sp(28.0))
                 .px_2()
                 .rounded_md()
                 .cursor_pointer()
@@ -140,9 +141,9 @@ impl Workspace {
             .id("catalog-menu")
             .absolute()
             .top(px(TITLE_BAR_HEIGHT + 2.0))
-            .left(px(8.0))
+            .left(sp(8.0))
             .w(px(MENU_WIDTH))
-            .max_h(px(520.0))
+            .max_h(sp(520.0))
             .overflow_y_scroll()
             .occlude()
             .p_1()
@@ -164,19 +165,19 @@ impl Workspace {
                 row(SharedString::from(format!("catalog-{}", def.id)), active)
                     .child(
                         div()
-                            .w(px(12.0))
+                            .w(sp(12.0))
                             .child(if active { "\u{2713}" } else { "" }),
                     )
                     .child(
                         div()
                             .flex_1()
-                            .min_w(px(0.0))
+                            .min_w(sp(0.0))
                             .overflow_hidden()
                             .child(def.name.clone()),
                     )
                     .child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(sp(10.0))
                             .text_color(theme.text_faint)
                             .child(format!(
                                 "{folders} folder{}",
@@ -215,7 +216,7 @@ impl Workspace {
                             .flex()
                             .flex_row()
                             .items_center()
-                            .h(px(26.0))
+                            .h(sp(26.0))
                             .px_2()
                             .rounded_md()
                             .bg(theme.background)
@@ -224,11 +225,11 @@ impl Workspace {
                             .text_sm()
                             .text_color(theme.text)
                             .child(draft.to_string())
-                            .child(div().w(px(1.0)).h(px(14.0)).ml(px(1.0)).bg(theme.accent)),
+                            .child(div().w(sp(1.0)).h(sp(14.0)).ml(sp(1.0)).bg(theme.accent)),
                     )
                     .child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(sp(10.0))
                             .text_color(theme.text_faint)
                             .child(
                                 "Name the catalog \u{00B7} Enter to create \u{00B7} Esc to cancel",
@@ -237,7 +238,7 @@ impl Workspace {
             ),
             None => panel.child(
                 row("catalog-new".into(), false)
-                    .child(div().w(px(12.0)).child("+"))
+                    .child(div().w(sp(12.0)).child("+"))
                     .child("New catalog\u{2026}")
                     .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
                         this.begin_text_draft(TextTarget::NewCatalog, window, cx)
@@ -264,12 +265,12 @@ impl Workspace {
                     .flex_row()
                     .items_center()
                     .gap_2()
-                    .h(px(26.0))
+                    .h(sp(26.0))
                     .px_2()
                     .text_sm()
                     .text_color(theme.text_muted)
-                    .child(div().text_size(px(12.0)).child("\u{25A4}"))
-                    .child(div().flex_1().min_w(px(0.0)).overflow_hidden().child(label))
+                    .child(div().text_size(sp(12.0)).child("\u{25A4}"))
+                    .child(div().flex_1().min_w(sp(0.0)).overflow_hidden().child(label))
                     .child(rustyedit_ui::glyph_button(
                         SharedString::from(format!("catalog-folder-remove-{}", folder.display())),
                         "\u{2715}",
@@ -285,7 +286,7 @@ impl Workspace {
         }
         panel = panel.child(
             row("catalog-add-folder".into(), false)
-                .child(div().w(px(12.0)).child("+"))
+                .child(div().w(sp(12.0)).child("+"))
                 .child("Add folder\u{2026}")
                 .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
                     this.catalog_menu_open = false;

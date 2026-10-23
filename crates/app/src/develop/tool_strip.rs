@@ -7,8 +7,9 @@
 //! sections, Q / M / Shift+M / W) goes through [`Workspace::toggle_photo_tool`],
 //! so only one is ever active and its section is open.
 
+use rustyedit_ui::sp;
 use gpui::{
-    deferred, div, prelude::*, px, AnyElement, App, ClickEvent, Context, MouseDownEvent,
+    deferred, div, prelude::*, AnyElement, App, ClickEvent, Context, MouseDownEvent,
     SharedString, Window,
 };
 use rustyedit_core::{settings::LoupeBackground, GradientKind, SpotKind};
@@ -219,7 +220,7 @@ impl Workspace {
                     .flex_row()
                     .items_center()
                     .gap_0p5()
-                    .child(div().w(px(1.0)).h(px(16.0)).mx_1().bg(theme.border))
+                    .child(div().w(sp(1.0)).h(sp(16.0)).mx_1().bg(theme.border))
                     .child(zoom)
                     .child(self.before_after_menu_button(cx))
                     .child(self.grid_menu_button(cx))
@@ -241,7 +242,7 @@ impl Workspace {
             .items_center()
             .justify_center()
             .gap_0p5()
-            .h(px(28.0))
+            .h(sp(28.0))
             .px_1p5()
             .rounded_md()
             .cursor_pointer()
@@ -281,10 +282,10 @@ impl Workspace {
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .min_h(px(34.0))
+                .min_h(sp(34.0))
                 .px_2()
                 .cursor_pointer()
-                .text_size(px(11.5))
+                .text_size(sp(11.5))
                 .text_color(if current {
                     theme.text
                 } else {
@@ -293,7 +294,7 @@ impl Workspace {
                 .hover(|el| el.bg(theme.surface).text_color(theme.text))
                 .child(
                     div()
-                        .w(px(12.0))
+                        .w(sp(12.0))
                         .text_color(theme.accent)
                         .child(if current { "\u{2713}" } else { "" }),
                 )
@@ -305,7 +306,7 @@ impl Workspace {
                         .child(option.label())
                         .child(
                             div()
-                                .text_size(px(9.5))
+                                .text_size(sp(9.5))
                                 .text_color(theme.text_faint)
                                 .child(option.description()),
                         ),
@@ -321,9 +322,9 @@ impl Workspace {
         let menu = div()
             .id("ba-menu")
             .absolute()
-            .top(px(30.0))
+            .top(sp(30.0))
             .right_0()
-            .w(px(230.0))
+            .w(sp(230.0))
             .py_1()
             .bg(theme.surface_elevated)
             .border_1()
@@ -336,12 +337,12 @@ impl Workspace {
                 cx.notify();
             }))
             .children(rows)
-            .child(div().h(px(1.0)).my_1().bg(theme.border_subtle))
+            .child(div().h(sp(1.0)).my_1().bg(theme.border_subtle))
             .child(
                 div()
                     .px_2()
                     .py_1()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .text_color(theme.text_faint)
                     .child("Press \\ to switch on and off"),
             );
@@ -367,7 +368,7 @@ impl Workspace {
             .items_center()
             .justify_center()
             .gap_0p5()
-            .h(px(28.0))
+            .h(sp(28.0))
             .px_1p5()
             .rounded_md()
             .cursor_pointer()
@@ -406,10 +407,10 @@ impl Workspace {
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .h(px(26.0))
+                .h(sp(26.0))
                 .px_2()
                 .cursor_pointer()
-                .text_size(px(11.5))
+                .text_size(sp(11.5))
                 .text_color(if current {
                     theme.text
                 } else {
@@ -418,7 +419,7 @@ impl Workspace {
                 .hover(|el| el.bg(theme.surface).text_color(theme.text))
                 .child(
                     div()
-                        .w(px(12.0))
+                        .w(sp(12.0))
                         .text_color(theme.accent)
                         .child(if current { "\u{2713}" } else { "" }),
                 )
@@ -435,9 +436,9 @@ impl Workspace {
         let menu = div()
             .id("grid-menu")
             .absolute()
-            .top(px(30.0))
+            .top(sp(30.0))
             .right_0()
-            .w(px(200.0))
+            .w(sp(200.0))
             .py_1()
             .bg(theme.surface_elevated)
             .border_1()
@@ -452,7 +453,7 @@ impl Workspace {
             .children(rows)
             .when(ui.grid_overlay.has_orientations(), |el| {
                 let entity = cx.entity();
-                el.child(div().h(px(1.0)).my_1().bg(theme.border_subtle))
+                el.child(div().h(sp(1.0)).my_1().bg(theme.border_subtle))
                     .child(
                         div()
                             .id("grid-rotate")
@@ -460,13 +461,13 @@ impl Workspace {
                             .flex_row()
                             .items_center()
                             .gap_2()
-                            .h(px(26.0))
+                            .h(sp(26.0))
                             .px_2()
                             .cursor_pointer()
-                            .text_size(px(11.5))
+                            .text_size(sp(11.5))
                             .text_color(theme.text_muted)
                             .hover(|el| el.bg(theme.surface).text_color(theme.text))
-                            .child(div().w(px(12.0)))
+                            .child(div().w(sp(12.0)))
                             .child(div().flex_1().child("Flip orientation"))
                             .on_click(move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
                                 entity.update(cx, |this, cx| {
@@ -498,7 +499,7 @@ impl Workspace {
             .items_center()
             .justify_center()
             .gap_0p5()
-            .h(px(28.0))
+            .h(sp(28.0))
             .px_1p5()
             .rounded_md()
             .cursor_pointer()
@@ -536,13 +537,13 @@ impl Workspace {
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .h(px(26.0))
+                .h(sp(26.0))
                 .px_2()
                 .cursor_pointer()
-                .text_size(px(11.5))
+                .text_size(sp(11.5))
                 .text_color(theme.text_muted)
                 .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
-                .child(div().w(px(12.0)).text_color(theme.accent).child(if on {
+                .child(div().w(sp(12.0)).text_color(theme.accent).child(if on {
                     "\u{2713}"
                 } else {
                     ""
@@ -550,7 +551,7 @@ impl Workspace {
                 .child(div().flex_1().child(label))
                 .child(
                     div()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .text_color(theme.text_faint)
                         .child(hint),
                 )
@@ -568,9 +569,9 @@ impl Workspace {
         let menu = div()
             .id("view-menu")
             .absolute()
-            .top(px(30.0))
+            .top(sp(30.0))
             .right_0()
-            .w(px(220.0))
+            .w(sp(220.0))
             .py_1()
             .bg(theme.surface_elevated)
             .border_1()
@@ -606,12 +607,12 @@ impl Workspace {
                     this.request_preview_update(cx);
                 },
             ))
-            .child(div().h(px(1.0)).my_1().bg(theme.border_subtle))
+            .child(div().h(sp(1.0)).my_1().bg(theme.border_subtle))
             .child(
                 div()
                     .px_2()
                     .pb_1()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_faint)
                     .child("BACKGROUND (B)"),
@@ -629,10 +630,10 @@ impl Workspace {
                     .flex_row()
                     .items_center()
                     .gap_2()
-                    .h(px(26.0))
+                    .h(sp(26.0))
                     .px_2()
                     .cursor_pointer()
-                    .text_size(px(11.5))
+                    .text_size(sp(11.5))
                     .text_color(if current {
                         theme.text
                     } else {
@@ -641,13 +642,13 @@ impl Workspace {
                     .hover(|el| el.bg(theme.surface).text_color(theme.text))
                     .child(
                         div()
-                            .w(px(12.0))
+                            .w(sp(12.0))
                             .text_color(theme.accent)
                             .child(if current { "\u{2713}" } else { "" }),
                     )
                     .child(
                         div()
-                            .size(px(14.0))
+                            .size(sp(14.0))
                             .rounded_sm()
                             .bg(swatch)
                             .border_1()
@@ -660,7 +661,7 @@ impl Workspace {
                         });
                     })
             }))
-            .child(div().h(px(1.0)).my_1().bg(theme.border_subtle))
+            .child(div().h(sp(1.0)).my_1().bg(theme.border_subtle))
             .child(item(
                 "view-before-after",
                 "Before / After",
@@ -719,7 +720,7 @@ impl Workspace {
             .flex()
             .items_center()
             .justify_center()
-            .size(px(28.0))
+            .size(sp(28.0))
             .rounded_md()
             .cursor_pointer()
             .when(active, |el| el.bg(theme.accent_muted))

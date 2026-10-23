@@ -39,6 +39,8 @@ pub struct AppearanceSettings {
     /// Confirmations and problems pop up in a corner (with Undo where it
     /// applies), not only in the status bar.
     pub notifications: bool,
+    /// Size of text and controls, as a percentage (100 = standard).
+    pub ui_scale: u16,
 }
 
 impl Default for AppearanceSettings {
@@ -48,6 +50,7 @@ impl Default for AppearanceSettings {
             accent: AccentColor::Blue,
             contrast: 50,
             notifications: true,
+            ui_scale: 100,
         }
     }
 }
@@ -917,6 +920,22 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                         },
                     },
                 ],
+            },
+            SettingsSection {
+                title: "Size",
+                items: &[SettingItem {
+                    label: "Interface scale",
+                    description: "Make text and controls larger (for high-resolution or far-away \
+                                  screens) or smaller. Photos keep their size.",
+                    control: SettingControl::Stepper {
+                        min: 90,
+                        max: 130,
+                        step: 5,
+                        unit: "%",
+                        get: |s| s.appearance.ui_scale as i64,
+                        set: |s, v| s.appearance.ui_scale = v.clamp(90, 130) as u16,
+                    },
+                }],
             },
             SettingsSection {
                 title: "Notifications",

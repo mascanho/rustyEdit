@@ -8,7 +8,8 @@
 //! Zoom is mapped logarithmically (each stretch of the slider multiplies
 //! the scale by the same amount), so it feels even from Fit to the top.
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context};
+use rustyedit_ui::sp;
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context};
 use rustyedit_core::settings::{GRID_CARD_MAX, GRID_CARD_MIN, GRID_CARD_STEP};
 use rustyedit_ui::Icon;
 
@@ -146,7 +147,7 @@ impl Workspace {
                 .flex()
                 .items_center()
                 .justify_center()
-                .size(px(18.0))
+                .size(sp(18.0))
                 .rounded_sm()
                 .cursor_pointer()
                 .hover(|el| el.bg(theme.surface_elevated))
@@ -175,7 +176,7 @@ impl Workspace {
                 .child(button("footer-zoom-in", Icon::Plus).on_click(zoom_in))
                 .child(
                     div()
-                        .w(px(44.0))
+                        .w(sp(44.0))
                         .text_color(theme.text)
                         .child(self.footer_zoom_label(target)),
                 )

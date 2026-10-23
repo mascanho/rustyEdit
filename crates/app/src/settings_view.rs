@@ -1,3 +1,4 @@
+use rustyedit_ui::sp;
 use gpui::{
     div, hsla, linear_color_stop, linear_gradient, prelude::*, px, AnyElement, ClickEvent, Context,
     MouseButton, SharedString, Window,
@@ -138,7 +139,7 @@ impl Workspace {
                     .child(page.title)
                     .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
                         this.settings_scroll
-                            .set_offset(gpui::point(px(0.0), px(0.0)));
+                            .set_offset(gpui::point(sp(0.0), sp(0.0)));
                         this.settings_page = ix;
                         cx.notify();
                     }))
@@ -196,7 +197,7 @@ impl Workspace {
             .items_center()
             .justify_between()
             .flex_shrink_0()
-            .h(px(40.0))
+            .h(sp(40.0))
             .px_4()
             .border_b_1()
             .border_color(theme.border_subtle)
@@ -222,7 +223,7 @@ impl Workspace {
             .items_center()
             .justify_between()
             .flex_shrink_0()
-            .h(px(36.0))
+            .h(sp(36.0))
             .px_4()
             .border_t_1()
             .border_color(theme.border_subtle)
@@ -263,13 +264,13 @@ impl Workspace {
                     .flex()
                     .flex_row()
                     .flex_1()
-                    .min_h(px(0.0))
+                    .min_h(sp(0.0))
                     .child(sidebar)
                     .child(
                         div()
                             .relative()
                             .flex_1()
-                            .min_w(px(0.0))
+                            .min_w(sp(0.0))
                             .child(content)
                             .child(rustyedit_ui::vertical_scrollbar(
                                 "settings-content-scrollbar",
@@ -392,8 +393,8 @@ impl Workspace {
                     .flex_row()
                     .items_center()
                     .flex_shrink_0()
-                    .w(px(220.0))
-                    .h(px(26.0))
+                    .w(sp(220.0))
+                    .h(sp(26.0))
                     .px_2()
                     .rounded_md()
                     .bg(theme.background)
@@ -405,7 +406,7 @@ impl Workspace {
                         .border_color(theme.accent)
                         .text_color(theme.text)
                         .child(draft.to_string())
-                        .child(div().w(px(1.0)).h(px(14.0)).ml(px(1.0)).bg(theme.accent))
+                        .child(div().w(sp(1.0)).h(sp(14.0)).ml(sp(1.0)).bg(theme.accent))
                         .into_any_element(),
                     None => {
                         let value = get(settings);
@@ -451,7 +452,7 @@ impl Workspace {
                     .flex()
                     .flex_col()
                     .gap_0p5()
-                    .min_w(px(0.0))
+                    .min_w(sp(0.0))
                     .child(div().text_sm().text_color(theme.text).child(item.label))
                     .child(
                         div()
@@ -577,9 +578,9 @@ impl Workspace {
 fn check_badge(theme: &Theme) -> impl IntoElement {
     div()
         .absolute()
-        .top(px(6.0))
-        .right(px(6.0))
-        .size(px(18.0))
+        .top(sp(6.0))
+        .right(sp(6.0))
+        .size(sp(18.0))
         .flex()
         .items_center()
         .justify_center()
@@ -587,7 +588,7 @@ fn check_badge(theme: &Theme) -> impl IntoElement {
         .bg(theme.accent)
         .border_2()
         .border_color(theme.surface)
-        .text_size(px(10.0))
+        .text_size(sp(10.0))
         .font_weight(gpui::FontWeight::BOLD)
         .text_color(theme.background)
         .child("\u{2713}")
@@ -606,8 +607,8 @@ fn layout_preview(
 
     let photo = div()
         .flex_1()
-        .min_w(px(0.0))
-        .p(px(5.0))
+        .min_w(sp(0.0))
+        .p(sp(5.0))
         .child(div().size_full().rounded_sm().bg(linear_gradient(
             180.0,
             linear_color_stop(theme.label_blue.opacity(0.55), 0.0),
@@ -618,7 +619,7 @@ fn layout_preview(
         .flex()
         .flex_row()
         .flex_1()
-        .min_h(px(0.0))
+        .min_h(sp(0.0))
         .when(!arrangement.left.is_empty(), |el| {
             el.child(mini_dock(arrangement.left, true, theme))
         })
@@ -645,15 +646,15 @@ fn layout_preview(
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(2.0))
+                .gap(sp(2.0))
                 .flex_shrink_0()
-                .h(px(8.0))
-                .px(px(3.0))
+                .h(sp(8.0))
+                .px(sp(3.0))
                 .bg(theme.surface_elevated)
                 .children(
                     [theme.label_red, theme.label_yellow, theme.label_green]
                         .into_iter()
-                        .map(|color| div().size(px(3.0)).rounded_full().bg(color.opacity(0.8))),
+                        .map(|color| div().size(sp(3.0)).rounded_full().bg(color.opacity(0.8))),
                 ),
         )
         .when(at_top, |el| el.child(mini_filmstrip(look, theme)))
@@ -667,9 +668,9 @@ fn mini_dock(panels: &'static [PanelKind], is_left: bool, theme: &Theme) -> impl
         .flex()
         .flex_col()
         .flex_shrink_0()
-        .gap(px(2.0))
-        .w(px(38.0))
-        .p(px(2.0))
+        .gap(sp(2.0))
+        .w(sp(38.0))
+        .p(sp(2.0))
         .bg(theme.surface)
         .border_color(theme.border)
         .when(is_left, |el| el.border_r_1())
@@ -682,7 +683,7 @@ fn mini_dock(panels: &'static [PanelKind], is_left: bool, theme: &Theme) -> impl
 fn mini_panel(panel: PanelKind, theme: &Theme) -> impl IntoElement {
     let line = |width: f32| {
         div()
-            .h(px(2.0))
+            .h(sp(2.0))
             .w(px(width))
             .rounded_full()
             .bg(theme.text_faint.opacity(0.7))
@@ -692,8 +693,8 @@ fn mini_panel(panel: PanelKind, theme: &Theme) -> impl IntoElement {
         .flex()
         .flex_col()
         .flex_1()
-        .gap(px(3.0))
-        .p(px(3.0))
+        .gap(sp(3.0))
+        .p(sp(3.0))
         .rounded_sm();
 
     match panel {
@@ -707,8 +708,8 @@ fn mini_panel(panel: PanelKind, theme: &Theme) -> impl IntoElement {
                     .flex()
                     .flex_row()
                     .items_end()
-                    .gap(px(1.0))
-                    .h(px(12.0))
+                    .gap(sp(1.0))
+                    .h(sp(12.0))
                     .children(
                         [
                             (theme.label_red, 5.0),
@@ -719,7 +720,7 @@ fn mini_panel(panel: PanelKind, theme: &Theme) -> impl IntoElement {
                             (theme.label_blue, 4.0),
                         ]
                         .map(|(color, height)| {
-                            div().w(px(3.0)).h(px(height)).bg(color.opacity(0.75))
+                            div().w(sp(3.0)).h(px(height)).bg(color.opacity(0.75))
                         }),
                     ),
             )
@@ -739,14 +740,14 @@ fn mini_filmstrip(look: &FilmLook, theme: &Theme) -> impl IntoElement {
         .flex_row()
         .items_center()
         .flex_shrink_0()
-        .gap(px(2.0))
-        .h(px(13.0))
-        .px(px(3.0))
+        .gap(sp(2.0))
+        .h(sp(13.0))
+        .px(sp(3.0))
         .bg(look.base_bottom)
         .children((0..9).map(move |ix| {
             div()
-                .w(px(13.0))
-                .h(px(8.0))
+                .w(sp(13.0))
+                .h(sp(8.0))
                 .rounded(px(look.picture_radius.min(2.0)))
                 .bg(if ix == 2 {
                     look.selected.opacity(0.9)
@@ -791,7 +792,7 @@ fn filmstrip_preview(look: &FilmLook) -> impl IntoElement {
 
             let picture = div()
                 .flex_1()
-                .min_h(px(0.0))
+                .min_h(sp(0.0))
                 .mx(px(look.picture_inset * 0.5))
                 .rounded(px(look.picture_radius * 0.6))
                 .border_1()
@@ -808,9 +809,9 @@ fn filmstrip_preview(look: &FilmLook) -> impl IntoElement {
 
             let stars = div()
                 .flex_shrink_0()
-                .h(px(9.0))
-                .px(px(3.0))
-                .text_size(px(6.0))
+                .h(sp(9.0))
+                .px(sp(3.0))
+                .text_size(sp(6.0))
                 .text_color(look.star_filled)
                 .child(
                     [
@@ -825,10 +826,10 @@ fn filmstrip_preview(look: &FilmLook) -> impl IntoElement {
                     .flex()
                     .flex_col()
                     .flex_1()
-                    .min_h(px(0.0))
-                    .m(px(4.0))
-                    .pt(px(3.0))
-                    .px(px(3.0))
+                    .min_h(sp(0.0))
+                    .m(sp(4.0))
+                    .pt(sp(3.0))
+                    .px(sp(3.0))
                     .bg(mat)
                     .border_1()
                     .border_color(if selected { look.selected } else { mat })
@@ -839,7 +840,7 @@ fn filmstrip_preview(look: &FilmLook) -> impl IntoElement {
                     .flex()
                     .flex_col()
                     .flex_1()
-                    .min_h(px(0.0))
+                    .min_h(sp(0.0))
                     .child(picture)
                     .child(stars),
             };
@@ -852,7 +853,7 @@ fn filmstrip_preview(look: &FilmLook) -> impl IntoElement {
                         .flex_shrink_0()
                         .items_center()
                         .justify_around()
-                        .h(px(8.0))
+                        .h(sp(8.0))
                         .children((0..s.per_frame).map(move |_| {
                             div()
                                 .w(px(s.width * 0.5))
@@ -867,9 +868,9 @@ fn filmstrip_preview(look: &FilmLook) -> impl IntoElement {
                 let (left, _) = (edge.label)(ix + 11);
                 div()
                     .flex_shrink_0()
-                    .h(px(8.0))
-                    .px(px(3.0))
-                    .text_size(px(6.0))
+                    .h(sp(8.0))
+                    .px(sp(3.0))
+                    .text_size(sp(6.0))
                     .when(look.monospace, |el| el.font_family("Menlo"))
                     .text_color(if selected {
                         edge.selected_color
@@ -883,12 +884,12 @@ fn filmstrip_preview(look: &FilmLook) -> impl IntoElement {
                 .flex()
                 .flex_col()
                 .flex_1()
-                .min_w(px(0.0))
+                .min_w(sp(0.0))
                 .when(selected, |el| el.bg(look.frame_selected_bg))
                 .when_some(look.frame_line, |el, color| {
                     el.border_r_1().border_color(color)
                 })
-                .when(look.sprockets.is_none(), |el| el.py(px(2.0)))
+                .when(look.sprockets.is_none(), |el| el.py(sp(2.0)))
                 .children(sprockets())
                 .children(edge)
                 .child(body)
@@ -912,10 +913,10 @@ fn filmstrip_preview(look: &FilmLook) -> impl IntoElement {
         .child(
             div()
                 .flex_shrink_0()
-                .h(px(11.0))
-                .px(px(4.0))
+                .h(sp(11.0))
+                .px(sp(4.0))
                 .bg(look.chrome_bg)
-                .text_size(px(6.5))
+                .text_size(sp(6.5))
                 .when(look.monospace, |el| el.font_family("Menlo"))
                 .text_color(look.chrome_text)
                 .child(look.title),
@@ -925,7 +926,7 @@ fn filmstrip_preview(look: &FilmLook) -> impl IntoElement {
                 .flex()
                 .flex_row()
                 .flex_1()
-                .min_h(px(0.0))
+                .min_h(sp(0.0))
                 .children(frames),
         )
 }
@@ -957,14 +958,14 @@ fn grid_preview(style: GridStyle, theme: &Theme) -> impl IntoElement {
         GridStyle::Bare => (None, 3.0),
     };
     let line =
-        |width: f32, color: gpui::Hsla| div().h(px(2.0)).w(px(width)).rounded_full().bg(color);
+        |width: f32, color: gpui::Hsla| div().h(sp(2.0)).w(px(width)).rounded_full().bg(color);
 
     let card = move |ix: usize| {
         let (sky, ground) = scenes[ix];
         let photo = div()
             .flex_1()
-            .min_h(px(0.0))
-            .rounded(px(1.5))
+            .min_h(sp(0.0))
+            .rounded(sp(1.5))
             .bg(linear_gradient(
                 180.0,
                 linear_color_stop(hsla(sky / 360.0, 0.5, 0.6, 1.0), 0.0),
@@ -973,10 +974,10 @@ fn grid_preview(style: GridStyle, theme: &Theme) -> impl IntoElement {
         let stars = div()
             .flex()
             .flex_row()
-            .gap(px(1.0))
+            .gap(sp(1.0))
             .children((0..5).map(move |star| {
                 div()
-                    .size(px(2.5))
+                    .size(sp(2.5))
                     .rounded_full()
                     .bg(if star < ratings[ix] {
                         theme.star
@@ -989,23 +990,23 @@ fn grid_preview(style: GridStyle, theme: &Theme) -> impl IntoElement {
             .flex_row()
             .items_center()
             .justify_between()
-            .h(px(7.0))
-            .px(px(2.0))
+            .h(sp(7.0))
+            .px(sp(2.0))
             .child(stars)
-            .children(labels[ix].map(|color| div().size(px(3.0)).rounded_full().bg(color)));
+            .children(labels[ix].map(|color| div().size(sp(3.0)).rounded_full().bg(color)));
         let badge = (style == GridStyle::Minimal && (ratings[ix] >= 4 || labels[ix].is_some()))
             .then(|| {
                 div()
                     .absolute()
-                    .top(px(2.0))
-                    .left(px(2.0))
-                    .w(px(9.0))
-                    .h(px(4.0))
+                    .top(sp(2.0))
+                    .left(sp(2.0))
+                    .w(sp(9.0))
+                    .h(sp(4.0))
                     .rounded_full()
                     .bg(theme.background.opacity(0.85))
                     .child(
                         div()
-                            .size(px(4.0))
+                            .size(sp(4.0))
                             .rounded_full()
                             .bg(labels[ix].unwrap_or(theme.star)),
                     )
@@ -1016,10 +1017,10 @@ fn grid_preview(style: GridStyle, theme: &Theme) -> impl IntoElement {
             .flex()
             .flex_col()
             .flex_1()
-            .min_w(px(0.0))
-            .rounded(px(2.0))
+            .min_w(sp(0.0))
+            .rounded(sp(2.0))
             .overflow_hidden()
-            .when_some(tile, |el, bg| el.bg(bg).p(px(1.5)))
+            .when_some(tile, |el, bg| el.bg(bg).p(sp(1.5)))
             .when(
                 matches!(style, GridStyle::Detailed | GridStyle::Compact),
                 |el| el.child(header),
@@ -1030,9 +1031,9 @@ fn grid_preview(style: GridStyle, theme: &Theme) -> impl IntoElement {
                     div()
                         .flex()
                         .flex_col()
-                        .gap(px(2.0))
-                        .px(px(2.0))
-                        .py(px(3.0))
+                        .gap(sp(2.0))
+                        .px(sp(2.0))
+                        .py(sp(3.0))
                         .child(line(26.0, theme.text_muted))
                         .child(line(18.0, theme.text_faint.opacity(0.7))),
                 )
@@ -1045,7 +1046,7 @@ fn grid_preview(style: GridStyle, theme: &Theme) -> impl IntoElement {
             .flex()
             .flex_row()
             .flex_1()
-            .min_h(px(0.0))
+            .min_h(sp(0.0))
             .gap(px(gap))
             .children((start..start + 3).map(card))
     };
@@ -1056,7 +1057,7 @@ fn grid_preview(style: GridStyle, theme: &Theme) -> impl IntoElement {
         .gap(px(gap))
         .w_full()
         .h(px(CARD_PREVIEW_HEIGHT))
-        .p(px(6.0))
+        .p(sp(6.0))
         .rounded_md()
         .overflow_hidden()
         .bg(theme.background)

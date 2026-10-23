@@ -3,6 +3,7 @@
 //! so while fitted zooms to 100% there. It's always on screen, pinned at
 //! the top of the tools column rather than in a foldable section.
 
+use rustyedit_ui::sp;
 use gpui::{
     canvas, div, img, prelude::*, px, AnyElement, Context, MouseButton, MouseDownEvent, ObjectFit,
     Pixels, Point,
@@ -30,14 +31,14 @@ impl Workspace {
             .pb_1p5()
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(theme.text_muted)
                     .child("NAVIGATOR"),
             )
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .text_color(theme.text)
                     .child(self.develop_zoom_label()),
             );
@@ -106,7 +107,7 @@ impl Workspace {
 
         let caption = div()
             .pt_1()
-            .text_size(px(9.5))
+            .text_size(sp(9.5))
             .text_color(theme.text_faint)
             .text_center()
             .child(match self.develop_ui.zoom.scale {

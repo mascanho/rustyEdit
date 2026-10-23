@@ -2,6 +2,7 @@
 //! or grid card size) and the loupe's background. Each is a menu of
 //! icon + label rows floating just above the bar.
 
+use rustyedit_ui::sp;
 use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString, Window};
 use rustyedit_core::{
     settings::{LoupeBackground, GRID_CARD_MAX, GRID_CARD_MIN, GRID_CARD_STEP},
@@ -182,7 +183,7 @@ impl Workspace {
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .h(px(28.0))
+                .h(sp(28.0))
                 .px_2()
                 .rounded_md()
                 .cursor_pointer()
@@ -196,7 +197,7 @@ impl Workspace {
                 })
                 .child(
                     div()
-                        .w(px(16.0))
+                        .w(sp(16.0))
                         .text_center()
                         .text_color(color)
                         .child(filter_glyph(mode)),
@@ -204,13 +205,13 @@ impl Workspace {
                 .child(div().flex_1().child(mode.label()))
                 .child(
                     div()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .text_color(theme.text_faint)
                         .child(count.to_string()),
                 )
                 .child(
                     div()
-                        .w(px(12.0))
+                        .w(sp(12.0))
                         .text_xs()
                         .child(if active { "\u{2713}" } else { "" }),
                 )
@@ -235,7 +236,7 @@ impl Workspace {
                 .px_2()
                 .pt_2()
                 .pb_1()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.text_faint)
                 .child("RATING")
@@ -263,7 +264,7 @@ impl Workspace {
                     .flex_row()
                     .items_center()
                     .gap_2()
-                    .h(px(28.0))
+                    .h(sp(28.0))
                     .px_2()
                     .rounded_md()
                     .cursor_pointer()
@@ -277,7 +278,7 @@ impl Workspace {
                     })
                     .child(
                         div()
-                            .w(px(16.0))
+                            .w(sp(16.0))
                             .text_center()
                             .text_color(theme.star)
                             .child(if option == RatingFilter::Any {
@@ -289,13 +290,13 @@ impl Workspace {
                     .child(div().flex_1().child(option.label()))
                     .child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(sp(10.0))
                             .text_color(theme.text_faint)
                             .child(count.to_string()),
                     )
                     .child(
                         div()
-                            .w(px(12.0))
+                            .w(sp(12.0))
                             .text_xs()
                             .child(if active { "\u{2713}" } else { "" }),
                     )
@@ -314,7 +315,7 @@ impl Workspace {
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .h(px(28.0))
+                .h(sp(28.0))
                 .mt_1()
                 .px_2()
                 .rounded_md()
@@ -322,7 +323,7 @@ impl Workspace {
                 .text_sm()
                 .text_color(theme.accent)
                 .hover(|el| el.bg(theme.surface))
-                .child(div().w(px(16.0)).text_center().child("\u{2630}"))
+                .child(div().w(sp(16.0)).text_center().child("\u{2630}"))
                 .child(div().flex_1().child("More filters\u{2026}"))
                 .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
                     this.bottom_menu = None;
@@ -382,7 +383,7 @@ impl Workspace {
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .h(px(28.0))
+                .h(sp(28.0))
                 .px_2()
                 .rounded_md()
                 .cursor_pointer()
@@ -394,11 +395,11 @@ impl Workspace {
                     el.text_color(theme.text_muted)
                         .hover(|el| el.bg(theme.surface).text_color(theme.text))
                 })
-                .child(div().w(px(16.0)).text_center().child(icon))
+                .child(div().w(sp(16.0)).text_center().child(icon))
                 .child(div().flex_1().child(label))
                 .child(
                     div()
-                        .w(px(12.0))
+                        .w(sp(12.0))
                         .text_xs()
                         .child(if active { "\u{2713}" } else { "" }),
                 )
@@ -437,7 +438,7 @@ impl Workspace {
                 .px_2()
                 .pt_2()
                 .pb_1()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.text_faint)
                 .child("ORDER")
@@ -485,7 +486,7 @@ impl Workspace {
                     .flex_row()
                     .items_center()
                     .gap_2()
-                    .h(px(28.0))
+                    .h(sp(28.0))
                     .px_2()
                     .rounded_md()
                     .cursor_pointer()
@@ -499,7 +500,7 @@ impl Workspace {
                     })
                     .child(
                         div()
-                            .size(px(14.0))
+                            .size(sp(14.0))
                             .rounded_full()
                             .bg(swatch)
                             .border_1()
@@ -508,7 +509,7 @@ impl Workspace {
                     .child(div().flex_1().child(option.label()))
                     .child(
                         div()
-                            .w(px(12.0))
+                            .w(sp(12.0))
                             .text_xs()
                             .child(if active { "\u{2713}" } else { "" }),
                     )
@@ -531,7 +532,7 @@ impl Workspace {
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .h(px(28.0))
+                .h(sp(28.0))
                 .px_2()
                 .rounded_md()
                 .cursor_pointer()
@@ -543,12 +544,12 @@ impl Workspace {
                     el.text_color(theme.text_muted)
                         .hover(|el| el.bg(theme.surface).text_color(theme.text))
                 })
-                .child(div().w(px(16.0)).text_center().child(icon))
+                .child(div().w(sp(16.0)).text_center().child(icon))
                 .child(div().flex_1().child(label))
         };
         let check = |on: bool| {
             div()
-                .w(px(12.0))
+                .w(sp(12.0))
                 .text_xs()
                 .child(if on { "\u{2713}" } else { "" })
         };

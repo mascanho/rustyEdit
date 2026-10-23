@@ -7,6 +7,7 @@
 //!   that follow the current one) in an auto-sized grid.
 //! * **Zoom** magnifies the loupe photo to a pixel scale and lets you pan.
 
+use rustyedit_ui::sp;
 use gpui::{
     div, img, point, prelude::*, px, AnyElement, ClickEvent, Context, MouseButton, MouseDownEvent,
     ObjectFit, SharedString, Window,
@@ -93,8 +94,8 @@ impl Workspace {
         div()
             .id("library-compare")
             .flex_1()
-            .min_h(px(0.0))
-            .min_w(px(0.0))
+            .min_h(sp(0.0))
+            .min_w(sp(0.0))
             .overflow_hidden()
             .flex()
             .flex_row()
@@ -116,8 +117,8 @@ impl Workspace {
         div()
             .id(SharedString::from(format!("compare-pane-{is_left}")))
             .flex_1()
-            .min_w(px(0.0))
-            .min_h(px(0.0))
+            .min_w(sp(0.0))
+            .min_h(sp(0.0))
             .flex()
             .flex_col()
             .rounded_lg()
@@ -131,7 +132,7 @@ impl Workspace {
             })
             .cursor_pointer()
             .child(
-                div().flex_1().min_h(px(0.0)).p_2().child(
+                div().flex_1().min_h(sp(0.0)).p_2().child(
                     img(self.loupe_source(asset))
                         .object_fit(ObjectFit::Contain)
                         .size_full(),
@@ -144,7 +145,7 @@ impl Workspace {
                     .items_center()
                     .justify_between()
                     .flex_shrink_0()
-                    .h(px(26.0))
+                    .h(sp(26.0))
                     .px_3()
                     .border_t_1()
                     .border_color(theme.border_subtle)
@@ -227,7 +228,7 @@ impl Workspace {
                     .flex()
                     .flex_row()
                     .flex_1()
-                    .min_h(px(0.0))
+                    .min_h(sp(0.0))
                     .gap_2()
                     .children(tiles)
                     .into_any_element()
@@ -237,8 +238,8 @@ impl Workspace {
         div()
             .id("library-survey")
             .flex_1()
-            .min_h(px(0.0))
-            .min_w(px(0.0))
+            .min_h(sp(0.0))
+            .min_w(sp(0.0))
             .overflow_hidden()
             .flex()
             .flex_col()
@@ -258,8 +259,8 @@ impl Workspace {
             .id(("survey-tile", ix))
             .relative()
             .flex_1()
-            .min_w(px(0.0))
-            .min_h(px(0.0))
+            .min_w(sp(0.0))
+            .min_h(sp(0.0))
             .rounded_lg()
             .overflow_hidden()
             .bg(theme.surface)
@@ -288,15 +289,15 @@ impl Workspace {
                     .items_center()
                     .justify_between()
                     .px_2()
-                    .h(px(20.0))
+                    .h(sp(20.0))
                     .bg(theme.background.opacity(0.7))
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .text_color(theme.text_muted)
                     .child(asset.display_name())
                     .child(rustyedit_ui::flag_badge(asset.flag, &theme)),
             )
             .when(removable, |el| {
-                el.child(div().absolute().top(px(4.0)).right(px(4.0)).child(
+                el.child(div().absolute().top(sp(4.0)).right(sp(4.0)).child(
                     rustyedit_ui::glyph_button(
                         SharedString::from(format!("survey-remove-{ix}")),
                         "\u{2715}",
@@ -375,7 +376,7 @@ impl Workspace {
         // Centre the photo the first frame after zooming, once the
         // viewport's size is known.
         let bounds = self.loupe_scroll.bounds();
-        if self.loupe_center_pending.get() && bounds.size.width > px(0.0) {
+        if self.loupe_center_pending.get() && bounds.size.width > sp(0.0) {
             let off_x = ((w - f32::from(bounds.size.width)) / 2.0).max(0.0);
             let off_y = ((h - f32::from(bounds.size.height)) / 2.0).max(0.0);
             self.loupe_scroll.set_offset(point(px(-off_x), px(-off_y)));

@@ -6,6 +6,7 @@
 //! Feather and Opacity set new spots, or change the selected one. Delete
 //! (Backspace) removes the selected spot. Holding Space still pans.
 
+use rustyedit_ui::sp;
 use gpui::{
     canvas, div, point, prelude::*, px, AnyElement, Bounds, ClickEvent, Context, Hsla, MouseButton,
     MouseDownEvent, MouseMoveEvent, PathBuilder, Pixels, Point, SharedString, Window,
@@ -168,7 +169,7 @@ impl Workspace {
         let mut rows = vec![
             tools.into_any_element(),
             div()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .text_color(theme.text_faint)
                 .child(hint)
                 .into_any_element(),
@@ -187,11 +188,11 @@ impl Workspace {
             .flex()
             .items_center()
             .justify_center()
-            .h(px(30.0))
+            .h(sp(30.0))
             .rounded_md()
             .border_1()
             .cursor_pointer()
-            .text_size(px(11.5))
+            .text_size(sp(11.5))
             .when(active, |el| {
                 el.bg(theme.accent_muted)
                     .border_color(theme.accent)
@@ -235,7 +236,7 @@ impl Workspace {
             .flex_row()
             .justify_between()
             .pt_1()
-            .text_size(px(10.0))
+            .text_size(sp(10.0))
             .text_color(theme.text_faint)
             .child(format!("{} of {MAX_SPOTS} spots", spots.len()))
             .child(

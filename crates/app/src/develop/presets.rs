@@ -3,8 +3,9 @@
 //! mix of sections, with saving, updating, renaming, duplicating, reordering
 //! and importing / exporting of the user's own.
 
+use rustyedit_ui::sp;
 use gpui::{
-    deferred, div, hsla, linear_color_stop, linear_gradient, prelude::*, px, AnyElement, App,
+    deferred, div, hsla, linear_color_stop, linear_gradient, prelude::*, AnyElement, App,
     ClickEvent, Context, MouseDownEvent, SharedString, Window,
 };
 use rustyedit_core::{
@@ -96,23 +97,23 @@ impl Workspace {
         let save = match self.draft_for(TextTarget::PresetName) {
             Some(draft) => div()
                 .flex_1()
-                .min_w(px(0.0))
+                .min_w(sp(0.0))
                 .child(name_field(&theme, draft, "Preset name, then \u{23CE}"))
                 .into_any_element(),
             None => div()
                 .id("preset-save")
                 .flex_1()
-                .min_w(px(0.0))
+                .min_w(sp(0.0))
                 .flex()
                 .flex_row()
                 .items_center()
                 .justify_center()
                 .gap_1p5()
-                .h(px(28.0))
+                .h(sp(28.0))
                 .border_1()
                 .border_color(theme.accent)
                 .bg(theme.accent_muted)
-                .text_size(px(11.5))
+                .text_size(sp(11.5))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text)
                 .when(has_photo, |el| {
@@ -150,10 +151,10 @@ impl Workspace {
                 .id(id)
                 .flex()
                 .flex_1()
-                .min_w(px(22.0))
+                .min_w(sp(22.0))
                 .items_center()
                 .justify_center()
-                .h(px(28.0))
+                .h(sp(28.0))
                 .border_1()
                 .when(active, |el| {
                     el.bg(theme.accent_muted).border_color(theme.accent)
@@ -298,7 +299,7 @@ impl Workspace {
                             .relative()
                             .flex()
                             .flex_1()
-                            .min_w(px(22.0))
+                            .min_w(sp(22.0))
                             .child(options)
                             .when(popup_open, |el| {
                                 el.child(deferred(self.presets_options_popup(cx)).with_priority(1))
@@ -335,9 +336,9 @@ impl Workspace {
         div()
             .id("preset-popup")
             .absolute()
-            .top(px(32.0))
+            .top(sp(32.0))
             .right_0()
-            .w(px(280.0))
+            .w(sp(280.0))
             .flex()
             .flex_col()
             .gap_1()
@@ -478,7 +479,7 @@ impl Workspace {
             out.push(
                 div()
                     .pt_2()
-                    .text_size(px(10.5))
+                    .text_size(sp(10.5))
                     .text_color(theme.text_faint)
                     .child("Select a photo to apply presets.")
                     .into_any_element(),
@@ -507,7 +508,7 @@ impl Workspace {
             out.push(
                 div()
                     .pt_3()
-                    .text_size(px(11.0))
+                    .text_size(sp(11.0))
                     .text_color(theme.text_faint)
                     .child("No presets.")
                     .into_any_element(),
@@ -565,14 +566,14 @@ impl Workspace {
                             .bg(theme.surface_elevated)
                             .child(
                                 div()
-                                    .text_size(px(10.0))
+                                    .text_size(sp(10.0))
                                     .font_weight(gpui::FontWeight::BOLD)
                                     .text_color(theme.text_muted)
                                     .child(title.to_uppercase()),
                             )
                             .child(
                                 div()
-                                    .text_size(px(9.5))
+                                    .text_size(sp(9.5))
                                     .text_color(theme.text_faint)
                                     .child(count.to_string()),
                             ),
@@ -594,7 +595,7 @@ impl Workspace {
                     .into_any_element(),
             );
         }
-        out.push(div().h(px(12.0)).into_any_element());
+        out.push(div().h(sp(12.0)).into_any_element());
         // Side padding for the whole panel; the list rows stay edge to edge
         // inside it.
         vec![div()
@@ -652,7 +653,7 @@ impl Workspace {
                     .id(SharedString::from(id))
                     .flex_shrink_0()
                     .px_1()
-                    .text_size(px(10.5))
+                    .text_size(sp(10.5))
                     .text_color(theme.text_faint)
                     .cursor_pointer()
                     .hover(|el| el.text_color(if danger { theme.danger } else { theme.text }))
@@ -671,7 +672,7 @@ impl Workspace {
                 .id(SharedString::from(format!("preset-star-{uid}")))
                 .flex_shrink_0()
                 .px_0p5()
-                .text_size(px(11.0))
+                .text_size(sp(11.0))
                 .text_color(if favorite {
                     theme.star
                 } else {
@@ -772,11 +773,11 @@ impl Workspace {
             .flex_row()
             .items_center()
             .gap_1p5()
-            .h(px(30.0))
+            .h(sp(30.0))
             .pl_2()
             .pr_1()
             .cursor_pointer()
-            .text_size(px(11.5))
+            .text_size(sp(11.5))
             .when(active, |el| {
                 el.bg(theme.accent_muted.opacity(0.6))
                     .text_color(theme.text)
@@ -792,7 +793,7 @@ impl Workspace {
                         .left_0()
                         .top_0()
                         .bottom_0()
-                        .w(px(2.0))
+                        .w(sp(2.0))
                         .bg(theme.accent),
                 )
             })
@@ -800,7 +801,7 @@ impl Workspace {
             .child(
                 div()
                     .flex_1()
-                    .min_w(px(0.0))
+                    .min_w(sp(0.0))
                     .truncate()
                     .child(preset.name.clone()),
             )
@@ -810,7 +811,7 @@ impl Workspace {
                 el.child(
                     div()
                         .absolute()
-                        .right(px(22.0))
+                        .right(sp(22.0))
                         .top_0()
                         .bottom_0()
                         .flex()
@@ -829,7 +830,7 @@ impl Workspace {
                 el.child(
                     div()
                         .flex_shrink_0()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .text_color(theme.accent)
                         .child("\u{2713}"),
                 )
@@ -1180,7 +1181,7 @@ impl Workspace {
 
 fn small_caption(theme: &Theme, text: &str) -> AnyElement {
     div()
-        .text_size(px(9.5))
+        .text_size(sp(9.5))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .text_color(theme.text_muted)
         .child(text.to_string())
@@ -1210,9 +1211,9 @@ fn look_chip(look: &DevelopSettings) -> AnyElement {
 
     div()
         .flex_shrink_0()
-        .w(px(22.0))
-        .h(px(16.0))
-        .rounded(px(3.0))
+        .w(sp(22.0))
+        .h(sp(16.0))
+        .rounded(sp(3.0))
         .border_1()
         .border_color(gpui::black().opacity(0.25))
         .bg(linear_gradient(

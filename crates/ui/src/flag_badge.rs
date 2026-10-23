@@ -1,4 +1,5 @@
-use gpui::{div, prelude::*, px};
+use crate::sp;
+use gpui::{div, prelude::*};
 use rustyedit_core::Flag;
 
 use crate::theme::Theme;
@@ -17,8 +18,8 @@ pub fn flag_badge(flag: Flag, theme: &Theme) -> impl IntoElement {
         .flex()
         .items_center()
         .justify_center()
-        .size(px(16.0))
-        .text_size(px(12.0))
+        .size(sp(16.0))
+        .text_size(sp(12.0))
         .text_color(color)
         .child(glyph)
 }

@@ -1,6 +1,7 @@
 //! The `i` metadata overlay on the loupe: exposure headline up top, then
 //! File / Camera / Exposure / Image groups read from the photo's EXIF.
 
+use rustyedit_ui::sp;
 use std::sync::Arc;
 
 use gpui::{div, prelude::*, px, relative, AnyElement, Context};
@@ -120,7 +121,7 @@ impl Workspace {
         if !asset.keywords.is_empty() {
             header = header.child(
                 div()
-                    .text_size(px(10.5))
+                    .text_size(sp(10.5))
                     .text_color(theme.accent)
                     .child(asset.keywords.join(" \u{00B7} ")),
             );
@@ -213,7 +214,7 @@ impl Workspace {
                                 |(i, (label, value))| {
                                     div()
                                         .flex_1()
-                                        .min_w(px(0.0))
+                                        .min_w(sp(0.0))
                                         .flex()
                                         .flex_col()
                                         .items_center()
@@ -223,13 +224,13 @@ impl Workspace {
                                         })
                                         .child(
                                             div()
-                                                .text_size(px(12.5))
+                                                .text_size(sp(12.5))
                                                 .text_color(theme.text)
                                                 .child(value.clone()),
                                         )
                                         .child(
                                             div()
-                                                .text_size(px(8.0))
+                                                .text_size(sp(8.0))
                                                 .text_color(theme.text_faint)
                                                 .child(label.to_uppercase()),
                                         )
@@ -264,7 +265,7 @@ impl Workspace {
                             ))
                             .child(
                                 div()
-                                    .text_size(px(9.5))
+                                    .text_size(sp(9.5))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .child(title.to_uppercase()),
                             )
@@ -282,7 +283,7 @@ impl Workspace {
                                         .items_start()
                                         .justify_between()
                                         .gap_3()
-                                        .text_size(px(10.5))
+                                        .text_size(sp(10.5))
                                         .child(
                                             div()
                                                 .flex_shrink_0()
@@ -291,7 +292,7 @@ impl Workspace {
                                         )
                                         .child(
                                             div()
-                                                .min_w(px(0.0))
+                                                .min_w(sp(0.0))
                                                 .text_right()
                                                 .text_color(theme.text_muted)
                                                 .child(value.clone()),
@@ -321,8 +322,8 @@ impl Workspace {
             div()
                 .id("info-overlay")
                 .absolute()
-                .top(px(12.0))
-                .left(px(12.0))
+                .top(sp(12.0))
+                .left(sp(12.0))
                 .max_h(relative(1.0))
                 .w(px(OVERLAY_WIDTH))
                 .occlude()

@@ -1,3 +1,4 @@
+use crate::sp;
 use gpui::{
     div, prelude::*, px, AnyElement, App, ClickEvent, ElementId, ScrollHandle, SharedString, Window,
 };
@@ -38,7 +39,7 @@ fn section_header(theme: &Theme, title: SharedString, chevron: Option<bool>) -> 
         .gap_2()
         .h(px(SECTION_HEADER_HEIGHT))
         .px_2()
-        .text_size(px(12.0))
+        .text_size(sp(12.0))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .when(open, |el| {
             el.bg(theme.surface_elevated).text_color(theme.text)
@@ -221,14 +222,14 @@ pub fn side_panel(
             div()
                 .relative()
                 .flex_1()
-                .min_h(px(0.0))
+                .min_h(sp(0.0))
                 .child(
                     div()
                         .id(id)
                         .flex()
                         .flex_col()
                         .size_full()
-                        .min_w(px(0.0))
+                        .min_w(sp(0.0))
                         .overflow_y_scroll()
                         .track_scroll(scroll)
                         .children(children),
@@ -316,7 +317,7 @@ pub fn collapsible_panel_pinned(
         return container
             .w(px(COLLAPSED_PANEL_WIDTH))
             .items_center()
-            .pt(px(2.0))
+            .pt(sp(2.0))
             .child(toggle)
             .into_any_element();
     }
@@ -360,15 +361,15 @@ pub fn collapsible_panel_pinned(
                 .relative()
                 .flex_1()
                 .w_full()
-                .min_w(px(0.0))
-                .min_h(px(0.0))
+                .min_w(sp(0.0))
+                .min_h(sp(0.0))
                 .child(
                     div()
                         .id(id)
                         .flex()
                         .flex_col()
                         .size_full()
-                        .min_w(px(0.0))
+                        .min_w(sp(0.0))
                         .overflow_y_scroll()
                         .track_scroll(scroll)
                         .children(children),
@@ -417,11 +418,11 @@ pub fn footer_button(
         .flex()
         .items_center()
         .justify_center()
-        .h(px(26.0))
+        .h(sp(26.0))
         .border_1()
         .border_color(theme.border)
         .bg(theme.surface_elevated.opacity(0.5))
-        .text_size(px(11.5))
+        .text_size(sp(11.5))
         .text_color(theme.text)
         .when(enabled, |el| {
             el.cursor_pointer()

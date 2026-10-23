@@ -3,9 +3,10 @@
 //! the Search and Filters rail tools. The matching itself is
 //! `rustyedit_core::FilterSet`; this is the UI and the plumbing to apply it.
 
+use rustyedit_ui::sp;
 use std::collections::HashMap;
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString, Window};
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString, Window};
 use rustyedit_core::{
     Catalog, ColorLabel, FilterMode, FilterSet, FocalBand, IsoBand, RatingFilter,
 };
@@ -139,15 +140,15 @@ impl Workspace {
             div()
                 .id("search-chip")
                 .absolute()
-                .top(px(12.0))
-                .right(px(12.0))
-                .max_w(px(260.0))
+                .top(sp(12.0))
+                .right(sp(12.0))
+                .max_w(sp(260.0))
                 .occlude()
                 .flex()
                 .flex_row()
                 .items_center()
                 .gap_2()
-                .h(px(28.0))
+                .h(sp(28.0))
                 .pl_3()
                 .pr_1()
                 .rounded_full()
@@ -166,7 +167,7 @@ impl Workspace {
                 )
                 .child(
                     div()
-                        .min_w(px(0.0))
+                        .min_w(sp(0.0))
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .child(query),
@@ -208,7 +209,7 @@ impl Workspace {
             .flex()
             .flex_row()
             .items_center()
-            .h(px(28.0))
+            .h(sp(28.0))
             .px_2()
             .bg(theme.background)
             .border_1()
@@ -233,7 +234,7 @@ impl Workspace {
                     }),
             )
             .when(editing.is_some(), |el| {
-                el.child(div().w(px(1.0)).h(px(14.0)).ml(px(1.0)).bg(theme.accent))
+                el.child(div().w(sp(1.0)).h(sp(14.0)).ml(sp(1.0)).bg(theme.accent))
             })
             .on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.begin_search(window, cx)))
             .into_any_element();
@@ -242,7 +243,7 @@ impl Workspace {
             div()
                 .pt_3()
                 .pb_1()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.accent)
                 .child("SEARCH")
@@ -254,7 +255,7 @@ impl Workspace {
                 .items_center()
                 .justify_between()
                 .pt_2()
-                .text_size(px(10.5))
+                .text_size(sp(10.5))
                 .text_color(theme.text_faint)
                 .child(if self.catalog.filters().search.trim().is_empty() {
                     format!("{total} photos")
@@ -276,7 +277,7 @@ impl Workspace {
                 .into_any_element(),
             div()
                 .pt_2()
-                .text_size(px(10.5))
+                .text_size(sp(10.5))
                 .text_color(theme.text_faint)
                 .child(
                     "Every word must appear in the file name, camera, lens, file type, \
@@ -347,7 +348,7 @@ impl Workspace {
                 .pb_1()
                 .child(
                     div()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.accent)
                         .child(if filters.has_facets() {
@@ -672,7 +673,7 @@ impl Workspace {
                     .px_2()
                     .py_1()
                     .bg(theme.surface_elevated)
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_muted)
                     .child(title),
@@ -724,10 +725,10 @@ impl Workspace {
             .flex_row()
             .items_center()
             .gap_2()
-            .h(px(24.0))
+            .h(sp(24.0))
             .px_2()
             .cursor_pointer()
-            .text_size(px(11.5))
+            .text_size(sp(11.5))
             .when(active, |el| {
                 el.bg(theme.accent_muted).text_color(theme.text)
             })
@@ -736,24 +737,24 @@ impl Workspace {
                     .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
             })
             .when_some(swatch, |el, color| {
-                el.child(div().size(px(9.0)).rounded_full().bg(color))
+                el.child(div().size(sp(9.0)).rounded_full().bg(color))
             })
             .child(
                 div()
                     .flex_1()
-                    .min_w(px(0.0))
+                    .min_w(sp(0.0))
                     .overflow_hidden()
                     .child(label.into()),
             )
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .text_color(theme.text_faint)
                     .child(count.to_string()),
             )
             .child(
                 div()
-                    .w(px(10.0))
+                    .w(sp(10.0))
                     .text_xs()
                     .child(if active { "\u{2713}" } else { "" }),
             )

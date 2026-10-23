@@ -8,8 +8,9 @@
 //!   preference (it applies to every photo) and can be reset from the
 //!   bottom of the panel.
 
+use rustyedit_ui::sp;
 use gpui::{
-    div, prelude::*, px, AnyElement, ClickEvent, Context, MouseButton, SharedString, Window,
+    div, prelude::*, AnyElement, ClickEvent, Context, MouseButton, SharedString, Window,
 };
 use rustyedit_core::DevelopSection;
 use rustyedit_ui::{Icon, SectionExtras, Theme};
@@ -34,14 +35,14 @@ impl Render for SectionGhost {
             .flex_row()
             .items_center()
             .gap_2()
-            .h(px(28.0))
+            .h(sp(28.0))
             .px_3()
             .rounded_md()
             .bg(theme.surface_elevated)
             .border_1()
             .border_color(theme.accent)
             .shadow_lg()
-            .text_size(px(12.0))
+            .text_size(sp(12.0))
             .font_weight(gpui::FontWeight::SEMIBOLD)
             .text_color(theme.text)
             .child(rustyedit_ui::icon(Icon::Grip, 12.0, theme.accent))
@@ -148,7 +149,7 @@ impl Workspace {
                         .flex_row()
                         .items_center()
                         .gap_1()
-                        .text_size(px(10.5))
+                        .text_size(sp(10.5))
                         .text_color(theme.text_faint)
                         .cursor_pointer()
                         .hover(|el| el.text_color(theme.accent))
@@ -214,7 +215,7 @@ fn grip(section: DevelopSection, key: &'static str, theme: &Theme) -> AnyElement
         .flex()
         .items_center()
         .justify_center()
-        .size(px(18.0))
+        .size(sp(18.0))
         .rounded_sm()
         .cursor_grab()
         .hover(|el| el.bg(theme.surface_elevated))

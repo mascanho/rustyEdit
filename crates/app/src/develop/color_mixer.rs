@@ -1,7 +1,8 @@
 //! The Color Mixer section: Hue / Saturation / Luminance tabs, each with a
 //! slider per colour range whose track shows the colours it moves between.
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context};
+use rustyedit_ui::sp;
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context};
 use rustyedit_core::{Adjustment, ColorBand, MixerProp};
 
 use crate::workspace::Workspace;
@@ -18,11 +19,11 @@ impl Workspace {
                 .flex_1()
                 .flex()
                 .justify_center()
-                .h(px(20.0))
+                .h(sp(20.0))
                 .items_center()
                 .rounded_sm()
                 .cursor_pointer()
-                .text_size(px(10.5))
+                .text_size(sp(10.5))
                 .when(active, |el| {
                     el.bg(theme.surface_elevated).text_color(theme.text)
                 })

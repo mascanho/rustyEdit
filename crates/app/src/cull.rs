@@ -10,12 +10,13 @@
 //! The analysis is cached and only redone when photos, stacks or sharpness
 //! scores change, so drawing the grid doesn't pay for it.
 
+use rustyedit_ui::sp;
 use std::{
     hash::{Hash, Hasher},
     rc::Rc,
 };
 
-use gpui::{div, img, prelude::*, px, AnyElement, Context, ObjectFit, Window};
+use gpui::{div, img, prelude::*, AnyElement, Context, ObjectFit, Window};
 use rustyedit_core::{CullInfo, CullMark, Flag};
 use rustyedit_ui::Theme;
 
@@ -298,9 +299,9 @@ impl Workspace {
             .flex_row()
             .items_center()
             .justify_between()
-            .h(px(40.0))
+            .h(sp(40.0))
             .px_4()
-            .text_size(px(12.0))
+            .text_size(sp(12.0))
             .text_color(gpui::white().opacity(0.85))
             .child(
                 div()
@@ -330,9 +331,9 @@ impl Workspace {
         let hint = div()
             .flex()
             .justify_center()
-            .h(px(32.0))
+            .h(sp(32.0))
             .items_center()
-            .text_size(px(11.0))
+            .text_size(sp(11.0))
             .text_color(gpui::white().opacity(0.45))
             .child(
                 "P pick \u{00B7} X reject \u{00B7} U unflag \u{00B7} 0\u{2013}5 rate \u{00B7} \
@@ -350,7 +351,7 @@ impl Workspace {
             .map(|a| {
                 img(self.loupe_source(a))
                     .absolute()
-                    .size(px(2.0))
+                    .size(sp(2.0))
                     .opacity(0.0)
                     .into_any_element()
             })
@@ -369,7 +370,7 @@ impl Workspace {
                 div()
                     .relative()
                     .flex_1()
-                    .min_h(px(0.0))
+                    .min_h(sp(0.0))
                     .p_2()
                     .child(
                         img(self.loupe_source(asset))
@@ -386,14 +387,14 @@ impl Workspace {
 /// A small outlined label in the cull view's top bar.
 fn cull_pill(text: &str, color: gpui::Hsla, _theme: &Theme) -> AnyElement {
     div()
-        .h(px(20.0))
+        .h(sp(20.0))
         .px_2()
         .flex()
         .items_center()
         .rounded_sm()
         .border_1()
         .border_color(color.opacity(0.8))
-        .text_size(px(10.0))
+        .text_size(sp(10.0))
         .text_color(color)
         .child(text.to_string())
         .into_any_element()
@@ -408,7 +409,7 @@ pub(crate) fn corner_badges(
 ) -> Option<AnyElement> {
     let pill = |text: String, color: gpui::Hsla| {
         div()
-            .h(px(16.0))
+            .h(sp(16.0))
             .px_1p5()
             .flex()
             .items_center()
@@ -416,7 +417,7 @@ pub(crate) fn corner_badges(
             .bg(theme.background.opacity(0.85))
             .border_1()
             .border_color(color.opacity(0.7))
-            .text_size(px(9.0))
+            .text_size(sp(9.0))
             .text_color(theme.text)
             .child(text)
             .into_any_element()
@@ -434,8 +435,8 @@ pub(crate) fn corner_badges(
     (!pills.is_empty()).then(|| {
         div()
             .absolute()
-            .right(px(4.0))
-            .bottom(px(4.0))
+            .right(sp(4.0))
+            .bottom(sp(4.0))
             .flex()
             .flex_row()
             .gap_1()

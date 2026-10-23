@@ -20,6 +20,7 @@ mod status_bar;
 mod theme;
 mod title_bar;
 mod tooltip;
+mod scale;
 
 pub use button::{chrome_button, chrome_icon_button, glyph_button};
 pub use controls::{mini_toggle_switch, stepper, toggle_switch};
@@ -50,3 +51,4 @@ pub use status_bar::{status_bar, status_divider, STATUS_BAR_HEIGHT};
 pub use theme::Theme;
 pub use title_bar::{title_bar, TITLE_BAR_HEIGHT};
 pub use tooltip::tip;
+pub use scale::{set_ui_scale, sp, ui_scale};

@@ -1,3 +1,4 @@
+use crate::sp;
 use gpui::{
     div, prelude::*, px, AnyElement, App, ClickEvent, ElementId, Hsla, SharedString, Window,
 };
@@ -21,7 +22,7 @@ pub fn cull_bar(
             .flex()
             .flex_row()
             .flex_1()
-            .min_w(px(0.0))
+            .min_w(sp(0.0))
             .overflow_hidden()
             .items_center()
             .gap_3()
@@ -65,7 +66,7 @@ pub fn cull_group(theme: &Theme, children: Vec<AnyElement>) -> impl IntoElement 
         .flex_row()
         .items_center()
         .gap_1()
-        .h(px(36.0))
+        .h(sp(36.0))
         .px_1()
         .rounded_xl()
         .bg(theme.background)
@@ -93,7 +94,7 @@ pub fn cull_button(
         .flex_row()
         .items_center()
         .gap_2()
-        .h(px(28.0))
+        .h(sp(28.0))
         .px_3()
         .rounded_lg()
         .text_sm()
@@ -110,7 +111,7 @@ pub fn cull_button(
                 .border_color(gpui::transparent_black())
                 .hover(|el| el.bg(theme.surface_elevated).text_color(color))
         })
-        .child(div().text_size(px(14.0)).child(glyph.into()))
+        .child(div().text_size(sp(14.0)).child(glyph.into()))
         .child(label.into())
         .tooltip(crate::tooltip::tip(tooltip, &theme))
         .on_click(on_click)
@@ -131,7 +132,7 @@ pub fn label_swatch(
         .flex()
         .items_center()
         .justify_center()
-        .size(px(24.0))
+        .size(sp(24.0))
         .rounded_full()
         .cursor_pointer()
         .border_2()
@@ -141,7 +142,7 @@ pub fn label_swatch(
             gpui::transparent_black()
         })
         .hover(|el| el.bg(theme.surface_elevated))
-        .child(div().size(px(12.0)).rounded_full().bg(color))
+        .child(div().size(sp(12.0)).rounded_full().bg(color))
         .tooltip(crate::tooltip::tip(tooltip, &theme))
         .on_click(on_click)
 }
@@ -161,9 +162,9 @@ pub fn cull_nav_button(
         .flex()
         .items_center()
         .justify_center()
-        .size(px(28.0))
+        .size(sp(28.0))
         .rounded_lg()
-        .text_size(px(16.0))
+        .text_size(sp(16.0))
         .tooltip(crate::tooltip::tip(tooltip, &theme))
         .when(enabled, |el| {
             el.cursor_pointer()

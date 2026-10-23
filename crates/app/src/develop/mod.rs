@@ -46,6 +46,7 @@ mod viewer;
 mod zoom;
 
 pub(crate) use adjustments::HistoryNote;
+use rustyedit_ui::sp;
 use gradients::GradientUi;
 pub(crate) use preview::LivePreview;
 use retouch::RetouchUi;
@@ -53,7 +54,7 @@ use zoom::DevelopZoom;
 
 use std::{cell::Cell, rc::Rc};
 
-use gpui::{div, prelude::*, px, AnyElement, Bounds, Context, Pixels, ScrollHandle, Window};
+use gpui::{div, prelude::*, AnyElement, Bounds, Context, Pixels, ScrollHandle, Window};
 use rustyedit_core::{
     settings::DockSide, Adjustment, CurveChannel, DevelopSection, MixerProp, Presets, Settings,
 };
@@ -204,7 +205,7 @@ impl Workspace {
             .flex()
             .flex_row()
             .flex_1()
-            .min_h(px(0.0))
+            .min_h(sp(0.0))
             .children(left)
             .child(viewer)
             .children(right);

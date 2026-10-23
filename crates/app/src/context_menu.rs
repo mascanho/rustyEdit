@@ -3,6 +3,7 @@
 //! Develop viewer. Entries act on the whole multi-selection when the clicked
 //! photo is part of one, otherwise on the clicked photo.
 
+use rustyedit_ui::sp;
 use std::rc::Rc;
 
 use gpui::{
@@ -505,14 +506,14 @@ impl Workspace {
                     .h(px(SEPARATOR_HEIGHT))
                     .flex()
                     .items_center()
-                    .child(div().h(px(1.0)).w_full().bg(theme.border_subtle))
+                    .child(div().h(sp(1.0)).w_full().bg(theme.border_subtle))
                     .into_any_element(),
                 Entry::Heading(text) => div()
                     .h(px(HEADING_HEIGHT))
                     .px_2()
                     .flex()
                     .items_end()
-                    .text_size(px(9.5))
+                    .text_size(sp(9.5))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_faint)
                     .child(text)
@@ -537,7 +538,7 @@ impl Workspace {
                     .text_sm()
                     .text_color(theme.text_muted)
                     .hover(|el| el.bg(theme.accent_muted).text_color(theme.text))
-                    .child(div().w(px(16.0)).text_center().child(icon))
+                    .child(div().w(sp(16.0)).text_center().child(icon))
                     .child(
                         div()
                             .flex_1()
@@ -548,14 +549,14 @@ impl Workspace {
                     .when_some(hint, |el, hint| {
                         el.child(
                             div()
-                                .text_size(px(10.0))
+                                .text_size(sp(10.0))
                                 .text_color(theme.text_faint)
                                 .child(hint),
                         )
                     })
                     .child(
                         div()
-                            .w(px(12.0))
+                            .w(sp(12.0))
                             .text_xs()
                             .child(if checked { "\u{2713}" } else { "" }),
                     )
@@ -574,7 +575,7 @@ impl Workspace {
                     .px_2()
                     .child(
                         div()
-                            .w(px(16.0))
+                            .w(sp(16.0))
                             .text_center()
                             .text_color(theme.text_muted)
                             .child("\u{2605}"),
@@ -584,7 +585,7 @@ impl Workspace {
                         div()
                             .id(SharedString::from(format!("ctx-star-{star}")))
                             .cursor_pointer()
-                            .text_size(px(16.0))
+                            .text_size(sp(16.0))
                             .text_color(if filled { theme.star } else { theme.text_faint })
                             .hover(|el| el.text_color(theme.star))
                             .child(if filled { "\u{2605}" } else { "\u{2606}" })
@@ -617,7 +618,7 @@ impl Workspace {
                     .px_2()
                     .child(
                         div()
-                            .w(px(16.0))
+                            .w(sp(16.0))
                             .text_center()
                             .text_color(theme.text_muted)
                             .child("\u{25CF}"),
@@ -628,7 +629,7 @@ impl Workspace {
                         Some(
                             div()
                                 .id(SharedString::from(format!("ctx-label-{}", label.label())))
-                                .size(px(14.0))
+                                .size(sp(14.0))
                                 .rounded_full()
                                 .bg(color)
                                 .border_2()

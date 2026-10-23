@@ -1,6 +1,7 @@
 //! The photo in Develop: fitted to the viewer, or zoomed (see `zoom`) in a
 //! scrollable view that pans by dragging, with Space held or not.
 
+use rustyedit_ui::sp;
 use gpui::{
     canvas, div, img, prelude::*, px, AnyElement, ClickEvent, Context, ImageSource, MouseButton,
     MouseDownEvent, MouseMoveEvent, ObjectFit, Window,
@@ -53,7 +54,7 @@ impl Workspace {
                 Self::right_click_listener(cx.entity(), self.catalog.selected),
             )
             .flex_1()
-            .min_w(px(0.0))
+            .min_w(sp(0.0))
             .overflow_hidden()
             .flex()
             .items_center()
@@ -211,9 +212,9 @@ impl Workspace {
         div()
             .id("develop-zoom-badge")
             .absolute()
-            .left(px(10.0))
-            .bottom(px(10.0))
-            .h(px(22.0))
+            .left(sp(10.0))
+            .bottom(sp(10.0))
+            .h(sp(22.0))
             .px_2()
             .flex()
             .items_center()
@@ -221,7 +222,7 @@ impl Workspace {
             .bg(theme.surface.opacity(0.85))
             .border_1()
             .border_color(theme.border)
-            .text_size(px(11.0))
+            .text_size(sp(11.0))
             .text_color(theme.text)
             .cursor_pointer()
             .hover(|el| el.bg(theme.surface_elevated))

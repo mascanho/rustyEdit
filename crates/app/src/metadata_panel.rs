@@ -3,7 +3,8 @@
 //! edit is a single undo step. Text is entered with the workspace's shared
 //! inline draft system (see `albums.rs`).
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString, Window};
+use rustyedit_ui::sp;
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString, Window};
 use rustyedit_core::AssetState;
 
 use crate::workspace::{TextTarget, Workspace};
@@ -43,7 +44,7 @@ impl Workspace {
                 .child(
                     div()
                         .flex_1()
-                        .min_w(px(0.0))
+                        .min_w(sp(0.0))
                         .flex()
                         .flex_col()
                         .gap_0p5()
@@ -73,7 +74,7 @@ impl Workspace {
             children.push(
                 div()
                     .pt_1()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .text_color(theme.accent)
                     .child(format!("Changes apply to all {count} selected photos."))
                     .into_any_element(),
@@ -100,7 +101,7 @@ impl Workspace {
             .flex()
             .flex_row()
             .items_center()
-            .min_h(px(26.0))
+            .min_h(sp(26.0))
             .px_2()
             .when(editing, |el| {
                 el.bg(theme.background)
@@ -112,7 +113,7 @@ impl Workspace {
             })
             .child(
                 div()
-                    .min_w(px(0.0))
+                    .min_w(sp(0.0))
                     .flex_1()
                     .overflow_hidden()
                     .text_sm()
@@ -128,7 +129,7 @@ impl Workspace {
                     }),
             )
             .when(editing, |el| {
-                el.child(div().w(px(1.0)).h(px(14.0)).ml(px(1.0)).bg(theme.accent))
+                el.child(div().w(sp(1.0)).h(sp(14.0)).ml(sp(1.0)).bg(theme.accent))
             });
 
         let field = if editing {
@@ -151,7 +152,7 @@ impl Workspace {
             .when(editing, |el| {
                 el.child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(sp(9.5))
                         .text_color(theme.text_faint)
                         .child("Enter to apply \u{00B7} Esc to cancel"),
                 )

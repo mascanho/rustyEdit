@@ -5,8 +5,9 @@
 //! The wheel is intercepted in the capture phase, before any scroll
 //! container sees it, so zooming never scrolls the list underneath.
 
+use rustyedit_ui::sp;
 use gpui::{
-    canvas, prelude::*, px, AnyElement, Context, DispatchPhase, Pixels, Point, ScrollWheelEvent,
+    canvas, prelude::*, AnyElement, Context, DispatchPhase, Pixels, Point, ScrollWheelEvent,
     Window,
 };
 use rustyedit_core::settings::{GRID_CARD_MAX, GRID_CARD_MIN, GRID_CARD_STEP};
@@ -45,7 +46,7 @@ impl Workspace {
             },
         )
         .absolute()
-        .size(px(0.0))
+        .size(sp(0.0))
         .into_any_element()
     }
 

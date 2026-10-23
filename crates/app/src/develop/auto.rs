@@ -10,8 +10,9 @@
 //! Both measure renders of the photo (see `rustyedit_processing::auto`),
 //! so they run on a background thread.
 
+use rustyedit_ui::sp;
 use gpui::{
-    div, prelude::*, px, AnyElement, App, ClickEvent, Context, MouseButton, MouseDownEvent,
+    div, prelude::*, AnyElement, App, ClickEvent, Context, MouseButton, MouseDownEvent,
     Pixels, Point, SharedString, Window,
 };
 use rustyedit_core::{DevelopSection, DevelopSettings};
@@ -242,7 +243,7 @@ impl Workspace {
                 .child(
                     div()
                         .absolute()
-                        .top(px(8.0))
+                        .top(sp(8.0))
                         .left_0()
                         .right_0()
                         .flex()
@@ -253,13 +254,13 @@ impl Workspace {
                                 .flex_row()
                                 .items_center()
                                 .gap_1p5()
-                                .h(px(24.0))
+                                .h(sp(24.0))
                                 .px_2()
                                 .rounded_md()
                                 .bg(theme.surface.opacity(0.9))
                                 .border_1()
                                 .border_color(theme.border)
-                                .text_size(px(11.0))
+                                .text_size(sp(11.0))
                                 .text_color(theme.text)
                                 .child(rustyedit_ui::icon(Icon::Eyedropper, 12.0, theme.accent))
                                 .child(hint),
@@ -366,13 +367,13 @@ fn small_button(
         .flex_row()
         .items_center()
         .gap_1()
-        .h(px(20.0))
+        .h(sp(20.0))
         .px_1p5()
         .rounded_md()
         .border_1()
         .border_color(if active { theme.accent } else { theme.border })
         .when(active, |el| el.bg(theme.accent_muted))
-        .text_size(px(11.0))
+        .text_size(sp(11.0))
         .text_color(color)
         .child(rustyedit_ui::icon(icon, 11.0, color))
         .child(label)

@@ -1,3 +1,4 @@
+use rustyedit_ui::sp;
 use gpui::{
     canvas, div, img, linear_color_stop, linear_gradient, prelude::*, px, AnyElement, Context,
     ObjectFit, ScrollWheelEvent, SharedString,
@@ -101,7 +102,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let filmstrip = self.render_filmstrip(cx);
-        let column = div().flex().flex_col().flex_1().min_h(px(0.0));
+        let column = div().flex().flex_col().flex_1().min_h(sp(0.0));
         match self.settings.layout.filmstrip_position {
             FilmstripPosition::Bottom => column.child(main).child(filmstrip),
             FilmstripPosition::Top => column.child(filmstrip).child(main),
@@ -133,7 +134,7 @@ impl Workspace {
             .when(!at_top, |el| el.border_t_1())
             .border_color(look.divider)
             .when(look.monospace, |el| el.font_family(EDGE_PRINT_FONT))
-            .text_size(px(9.0))
+            .text_size(sp(9.0))
             .text_color(look.chrome_text)
             .cursor_pointer()
             .hover(|el| el.bg(look.chrome_hover))
@@ -241,7 +242,7 @@ impl Workspace {
             .id("filmstrip")
             .relative()
             .flex_1()
-            .min_w(px(0.0))
+            .min_w(sp(0.0))
             .h_full()
             .overflow_hidden()
             .child(measure)
@@ -249,7 +250,7 @@ impl Workspace {
             .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _window, cx| {
                 let delta = event.delta.pixel_delta(px(WHEEL_LINE_PX));
                 // Plain vertical mouse wheels scroll the strip sideways too.
-                let dx = if delta.x != px(0.0) { delta.x } else { delta.y };
+                let dx = if delta.x != sp(0.0) { delta.x } else { delta.y };
                 this.filmstrip_scroll_x -= f32::from(dx) as f64;
                 this.clamp_filmstrip_scroll();
                 cx.notify();
@@ -342,7 +343,7 @@ impl Workspace {
             .w(px(ARROW_WIDTH))
             .h_full()
             .bg(look.chrome_bg)
-            .text_size(px(12.0))
+            .text_size(sp(12.0))
             .when(direction < 0.0, |el| el.border_r_1())
             .when(direction > 0.0, |el| el.border_l_1())
             .border_color(look.divider)
@@ -411,7 +412,7 @@ fn film_frame(
     let picture = div()
         .relative()
         .flex_1()
-        .min_h(px(0.0))
+        .min_h(sp(0.0))
         .mx(px(look.picture_inset))
         .rounded(px(look.picture_radius))
         .overflow_hidden()
@@ -431,7 +432,7 @@ fn film_frame(
                     .left_0()
                     .right_0()
                     .bottom_0()
-                    .h(px(4.0))
+                    .h(sp(4.0))
                     .bg(color),
             )
         });
@@ -454,7 +455,7 @@ fn film_frame(
                 .items_center()
                 .gap_1()
                 .when_some(label_color, |el, color| {
-                    el.child(div().size(px(7.0)).rounded_full().bg(color))
+                    el.child(div().size(sp(7.0)).rounded_full().bg(color))
                 })
                 .child(rustyedit_ui::flag_badge(asset.flag, &theme)),
         );
@@ -466,12 +467,12 @@ fn film_frame(
             .flex()
             .flex_col()
             .flex_1()
-            .min_h(px(0.0))
-            .mx(px(8.0))
-            .my(px(8.0))
-            .pt(px(5.0))
-            .px(px(5.0))
-            .rounded(px(2.0))
+            .min_h(sp(0.0))
+            .mx(sp(8.0))
+            .my(sp(8.0))
+            .pt(sp(5.0))
+            .px(sp(5.0))
+            .rounded(sp(2.0))
             .bg(mat)
             .shadow_md()
             .border_2()
@@ -483,7 +484,7 @@ fn film_frame(
             .flex()
             .flex_col()
             .flex_1()
-            .min_h(px(0.0))
+            .min_h(sp(0.0))
             .child(picture)
             .child(meta)
             .into_any_element(),
@@ -500,9 +501,9 @@ fn film_frame(
                 .flex_shrink_0()
                 .justify_between()
                 .h(px(EDGE_PRINT_HEIGHT))
-                .px(px(8.0))
+                .px(sp(8.0))
                 .when(look.monospace, |el| el.font_family(EDGE_PRINT_FONT))
-                .text_size(px(8.0))
+                .text_size(sp(8.0))
                 .text_color(if is_selected {
                     edge.selected_color
                 } else {
@@ -526,7 +527,7 @@ fn film_frame(
         .when_some(look.frame_line, |el, color| {
             el.border_r_1().border_color(color)
         })
-        .when(look.sprockets.is_none(), |el| el.py(px(4.0)))
+        .when(look.sprockets.is_none(), |el| el.py(sp(4.0)))
         .children(look.sprockets.map(sprocket_row))
         .children(edge_print)
         .child(body)
@@ -557,7 +558,7 @@ fn film_stars(value: u8, look: &FilmLook) -> impl IntoElement {
     div()
         .flex()
         .flex_row()
-        .text_size(px(10.0))
+        .text_size(sp(10.0))
         .children((1..=5u8).map(move |star| {
             let filled = star <= value;
             div()

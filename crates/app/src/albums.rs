@@ -2,10 +2,11 @@
 //! model is `rustyedit_core::Albums`; this file is the panel, the inline
 //! "new album" text entry, and applying an album as the catalog's view.
 
+use rustyedit_ui::sp;
 use std::collections::HashSet;
 
 use gpui::{
-    div, prelude::*, px, AnyElement, ClickEvent, Context, KeyDownEvent, SharedString, Window,
+    div, prelude::*, AnyElement, ClickEvent, Context, KeyDownEvent, SharedString, Window,
 };
 
 use crate::workspace::{TextTarget, Workspace};
@@ -24,7 +25,7 @@ impl Workspace {
             .pb_1()
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.accent)
                     .child("ALBUMS"),
@@ -53,7 +54,7 @@ impl Workspace {
                             .flex()
                             .flex_row()
                             .items_center()
-                            .h(px(26.0))
+                            .h(sp(26.0))
                             .px_2()
                             .bg(theme.background)
                             .border_1()
@@ -61,11 +62,11 @@ impl Workspace {
                             .text_sm()
                             .text_color(theme.text)
                             .child(draft.to_string())
-                            .child(div().w(px(1.0)).h(px(14.0)).ml(px(1.0)).bg(theme.accent)),
+                            .child(div().w(sp(1.0)).h(sp(14.0)).ml(sp(1.0)).bg(theme.accent)),
                     )
                     .child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(sp(10.0))
                             .text_color(theme.text_faint)
                             .child(
                                 "Name the album \u{00B7} Enter to create \u{00B7} Esc to cancel",
@@ -119,7 +120,7 @@ impl Workspace {
                 .pb_1()
                 .child(
                     div()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.accent)
                         .child("SMART COLLECTIONS"),
@@ -150,7 +151,7 @@ impl Workspace {
                             .flex()
                             .flex_row()
                             .items_center()
-                            .h(px(26.0))
+                            .h(sp(26.0))
                             .px_2()
                             .bg(theme.background)
                             .border_1()
@@ -158,11 +159,11 @@ impl Workspace {
                             .text_sm()
                             .text_color(theme.text)
                             .child(draft.to_string())
-                            .child(div().w(px(1.0)).h(px(14.0)).ml(px(1.0)).bg(theme.accent)),
+                            .child(div().w(sp(1.0)).h(sp(14.0)).ml(sp(1.0)).bg(theme.accent)),
                     )
                     .child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(sp(10.0))
                             .text_color(theme.text_faint)
                             .child("Name it · it saves the current filters and rating · Enter to create · Esc to cancel"),
                     )
@@ -207,7 +208,7 @@ impl Workspace {
             .flex_row()
             .items_center()
             .gap_2()
-            .h(px(28.0))
+            .h(sp(28.0))
             .px_2()
             .cursor_pointer()
             .text_sm()
@@ -221,14 +222,14 @@ impl Workspace {
             .child(
                 div()
                     .flex_shrink_0()
-                    .text_size(px(11.0))
+                    .text_size(sp(11.0))
                     .text_color(theme.accent)
                     .child("\u{2699}"),
             )
-            .child(div().flex_1().min_w(px(0.0)).overflow_hidden().child(name))
+            .child(div().flex_1().min_w(sp(0.0)).overflow_hidden().child(name))
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .text_color(theme.text_faint)
                     .child(count.to_string()),
             )
@@ -296,7 +297,7 @@ impl Workspace {
             .flex_row()
             .items_center()
             .gap_2()
-            .h(px(28.0))
+            .h(sp(28.0))
             .px_2()
             .cursor_pointer()
             .text_sm()
@@ -307,11 +308,11 @@ impl Workspace {
                 el.text_color(theme.text_muted)
                     .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
             })
-            .child(div().flex_1().min_w(px(0.0)).overflow_hidden().child(name))
+            .child(div().flex_1().min_w(sp(0.0)).overflow_hidden().child(name))
             .when_some(count, |el, n| {
                 el.child(
                     div()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .text_color(theme.text_faint)
                         .child(n.to_string()),
                 )

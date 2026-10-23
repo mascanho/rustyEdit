@@ -3,6 +3,7 @@
 //! tone, colour, sharpness, clarity, ISO…) and turning it into a Develop
 //! preset, with a live summary of what it becomes.
 
+use rustyedit_ui::sp;
 use gpui::{
     div, prelude::*, px, AnyElement, App, ClickEvent, ClipboardItem, Context, Entity, MouseButton,
     SharedString, Window,
@@ -101,7 +102,7 @@ impl Workspace {
             .items_center()
             .justify_between()
             .flex_shrink_0()
-            .h(px(44.0))
+            .h(sp(44.0))
             .px_4()
             .border_b_1()
             .border_color(theme.border_subtle)
@@ -117,7 +118,7 @@ impl Workspace {
                     )
                     .child(
                         div()
-                            .text_size(px(10.5))
+                            .text_size(sp(10.5))
                             .text_color(theme.text_faint)
                             .child("Enter a recipe to turn it into a preset"),
                     ),
@@ -361,7 +362,7 @@ impl Workspace {
             .flex()
             .flex_col()
             .flex_1()
-            .min_w(px(0.0))
+            .min_w(sp(0.0))
             .gap_3()
             .overflow_y_scroll()
             .track_scroll(&self.develop_ui.preset_ui.recipe_scroll)
@@ -389,7 +390,7 @@ impl Workspace {
             .flex()
             .flex_col()
             .flex_shrink_0()
-            .w(px(280.0))
+            .w(sp(280.0))
             .gap_3()
             .p_4()
             .bg(theme.background)
@@ -398,7 +399,7 @@ impl Workspace {
             .child(caption(&theme, "RECIPE"))
             .child(
                 div()
-                    .text_size(px(11.0))
+                    .text_size(sp(11.0))
                     .text_color(theme.text_muted)
                     .children(
                         recipe
@@ -418,14 +419,14 @@ impl Workspace {
                             .flex()
                             .flex_row()
                             .justify_between()
-                            .text_size(px(11.0))
+                            .text_size(sp(11.0))
                             .child(div().text_color(theme.text_muted).child(label))
                             .child(div().text_color(theme.text).child(format!("{value:+.0}")))
                     })),
             )
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .text_color(theme.text_faint)
                     .child(
                         "The film simulation is built from curves, colour mixer and \
@@ -442,7 +443,7 @@ impl Workspace {
             .items_center()
             .justify_between()
             .flex_shrink_0()
-            .h(px(48.0))
+            .h(sp(48.0))
             .px_4()
             .border_t_1()
             .border_color(theme.border_subtle)
@@ -527,13 +528,13 @@ impl Workspace {
                     .flex()
                     .flex_row()
                     .flex_1()
-                    .min_h(px(0.0))
+                    .min_h(sp(0.0))
                     .child(
                         div()
                             .relative()
                             .flex()
                             .flex_1()
-                            .min_w(px(0.0))
+                            .min_w(sp(0.0))
                             .child(form)
                             .child(rustyedit_ui::vertical_scrollbar(
                                 "recipe-form-scrollbar",
@@ -577,7 +578,7 @@ fn tone(v: f32) -> String {
 
 fn caption(theme: &Theme, text: &'static str) -> AnyElement {
     div()
-        .text_size(px(10.0))
+        .text_size(sp(10.0))
         .font_weight(gpui::FontWeight::BOLD)
         .text_color(theme.text_faint)
         .child(text)
@@ -592,7 +593,7 @@ fn field(theme: &Theme, label: &'static str, control: AnyElement) -> AnyElement 
         .gap_1()
         .child(
             div()
-                .text_size(px(11.0))
+                .text_size(sp(11.0))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text_muted)
                 .child(label),
@@ -613,12 +614,12 @@ fn text_value(
         .id(id)
         .flex()
         .items_center()
-        .h(px(26.0))
+        .h(sp(26.0))
         .px_2()
         .bg(theme.background)
         .border_1()
         .border_color(theme.border)
-        .text_size(px(11.5))
+        .text_size(sp(11.5))
         .text_color(if value.is_empty() {
             theme.text_faint
         } else {
@@ -658,7 +659,7 @@ fn chips<T: Copy + PartialEq + 'static>(
                 .id(SharedString::from(format!("{id}-{i}")))
                 .flex()
                 .items_center()
-                .h(px(24.0))
+                .h(sp(24.0))
                 .px_2p5()
                 .cursor_pointer()
                 .border_1()
@@ -713,7 +714,7 @@ fn stepper_row(
         .justify_between()
         .child(
             div()
-                .text_size(px(11.0))
+                .text_size(sp(11.0))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text_muted)
                 .child(label),
@@ -727,9 +728,9 @@ fn stepper_row(
                 .child(step("dec", "\u{2212}", dec))
                 .child(
                     div()
-                        .w(px(64.0))
+                        .w(sp(64.0))
                         .text_center()
-                        .text_size(px(12.0))
+                        .text_size(sp(12.0))
                         .text_color(theme.text)
                         .child(value),
                 )

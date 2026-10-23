@@ -3,7 +3,8 @@
 //! balance between them. A histogram of the photo sits above them, so the
 //! levels being tinted can be seen while they are graded.
 
-use gpui::{div, prelude::*, px, AnyElement, Context};
+use rustyedit_ui::sp;
+use gpui::{div, prelude::*, AnyElement, Context};
 use rustyedit_core::{Adjustment, GradeProp, HistogramChannel, ToneZone};
 use rustyedit_ui::HistogramProps;
 
@@ -49,7 +50,7 @@ impl Workspace {
                     .pt_2()
                     .child(
                         div()
-                            .size(px(12.0))
+                            .size(sp(12.0))
                             .rounded_full()
                             .border_1()
                             .border_color(theme.border)
@@ -61,7 +62,7 @@ impl Workspace {
                     )
                     .child(
                         div()
-                            .text_size(px(10.5))
+                            .text_size(sp(10.5))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.text_muted)
                             .child(zone.label()),
@@ -71,7 +72,7 @@ impl Workspace {
             rows.push(self.adjustment_slider(Adjustment::Grade(zone, GradeProp::Hue), cx));
             rows.push(self.adjustment_slider(Adjustment::Grade(zone, GradeProp::Saturation), cx));
         }
-        rows.push(div().h(px(4.0)).into_any_element());
+        rows.push(div().h(sp(4.0)).into_any_element());
         rows.push(self.adjustment_slider(Adjustment::GradingBalance, cx));
         rows
     }

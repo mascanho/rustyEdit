@@ -2,6 +2,7 @@
 //! channel (RGB master, Red, Green, Blue). Click to add a point, drag a
 //! point to move it, double-click one to remove it.
 
+use rustyedit_ui::sp;
 use gpui::{
     canvas, div, point, prelude::*, px, AnyElement, Bounds, ClickEvent, Context, Hsla, MouseButton,
     MouseDownEvent, PathBuilder, Pixels, Point, Window,
@@ -36,7 +37,7 @@ impl Workspace {
             rows.extend(self.adjustment_sliders(&Adjustment::PARAMETRIC, cx));
             rows.push(
                 div()
-                    .text_size(px(9.5))
+                    .text_size(sp(9.5))
                     .text_color(self.theme.text_faint)
                     .child("Lift or lower a band of tones. These apply before the point curve.")
                     .into_any_element(),
@@ -56,7 +57,7 @@ impl Workspace {
                 .child(self.curve_presets(channel, cx))
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(sp(9.5))
                         .text_color(self.theme.text_faint)
                         .child(
                             "Click to add a point \u{00B7} drag to move \u{00B7} double-click to remove",
@@ -77,9 +78,9 @@ impl Workspace {
                 .flex()
                 .items_center()
                 .justify_center()
-                .h(px(22.0))
+                .h(sp(22.0))
                 .cursor_pointer()
-                .text_size(px(10.5))
+                .text_size(sp(10.5))
                 .when(active, |el| {
                     el.bg(theme.accent_muted).text_color(theme.text)
                 })
@@ -118,13 +119,13 @@ impl Workspace {
                     .id(("curve-preset", preset as usize))
                     .flex()
                     .items_center()
-                    .h(px(20.0))
+                    .h(sp(20.0))
                     .px_1p5()
                     .cursor_pointer()
                     .border_1()
                     .border_color(theme.border_subtle)
                     .bg(theme.background)
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .text_color(theme.text_muted)
                     .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                     .child(preset.label())
@@ -145,7 +146,7 @@ impl Workspace {
                 // Band dividers at the quarter points.
                 for i in 1..4 {
                     let x = b.origin.x + px(w * i as f32 / 4.0);
-                    let mut line = PathBuilder::stroke(px(1.0));
+                    let mut line = PathBuilder::stroke(sp(1.0));
                     line.move_to(point(x, b.origin.y));
                     line.line_to(point(x, b.origin.y + px(h)));
                     if let Ok(path) = line.build() {
@@ -159,7 +160,7 @@ impl Workspace {
                         b.origin.y + px((1.0 - curve.evaluate(x)) * h),
                     )
                 };
-                let mut path = PathBuilder::stroke(px(1.75));
+                let mut path = PathBuilder::stroke(sp(1.75));
                 path.move_to(at(0.0));
                 for i in 1..=SAMPLES {
                     path.line_to(at(i as f32 / SAMPLES as f32));
@@ -201,11 +202,11 @@ impl Workspace {
                 .flex_row()
                 .items_center()
                 .gap_1()
-                .h(px(20.0))
+                .h(sp(20.0))
                 .px_2()
                 .rounded_sm()
                 .cursor_pointer()
-                .text_size(px(10.5))
+                .text_size(sp(10.5))
                 .when(active, |el| {
                     el.bg(theme.surface_elevated).text_color(theme.text)
                 })
@@ -215,14 +216,14 @@ impl Workspace {
                 })
                 .child(
                     div()
-                        .size(px(6.0))
+                        .size(sp(6.0))
                         .rounded_full()
                         .bg(channel_color(tab, &theme)),
                 )
                 .child(tab.label())
                 // A dot marks channels that have a curve.
                 .when(edited && !active, |el| {
-                    el.child(div().size(px(3.0)).rounded_full().bg(theme.accent))
+                    el.child(div().size(sp(3.0)).rounded_full().bg(theme.accent))
                 })
                 .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                     this.develop_ui.curve_channel = tab;
@@ -249,7 +250,7 @@ impl Workspace {
                 el.child(
                     div()
                         .id("curve-reset")
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .text_color(theme.text_muted)
                         .cursor_pointer()
                         .hover(|el| el.text_color(theme.accent))
@@ -282,8 +283,8 @@ impl Workspace {
         let grid = (1..4).flat_map(|i| {
             let at = px(side * i as f32 / 4.0);
             [
-                div().absolute().left(at).top_0().bottom_0().w(px(1.0)),
-                div().absolute().top(at).left_0().right_0().h(px(1.0)),
+                div().absolute().left(at).top_0().bottom_0().w(sp(1.0)),
+                div().absolute().top(at).left_0().right_0().h(sp(1.0)),
             ]
             .map(|line| line.bg(theme.border_subtle.opacity(0.6)))
         });

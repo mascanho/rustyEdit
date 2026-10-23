@@ -1,3 +1,4 @@
+use crate::sp;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gpui::{
@@ -431,7 +432,7 @@ pub fn labeled_slider(
                 .id(track_id.clone())
                 .group(group.clone())
                 .relative()
-                .h(px(14.0))
+                .h(sp(14.0))
                 .w_full()
                 .flex()
                 .items_center()
@@ -453,7 +454,7 @@ pub fn labeled_slider(
                             .absolute()
                             .left(relative(lo))
                             .w(relative(hi - lo))
-                            .h(px(4.0))
+                            .h(sp(4.0))
                             .rounded_full()
                             .bg(theme.accent),
                     )
@@ -472,7 +473,7 @@ pub fn labeled_slider(
                         } else {
                             return;
                         };
-                        let delta = event.delta.pixel_delta(px(16.0));
+                        let delta = event.delta.pixel_delta(sp(16.0));
                         // Shift turns a vertical wheel into a horizontal one
                         // on some platforms, so take whichever axis moved.
                         let (dx, dy) = (f32::from(delta.x), f32::from(delta.y));
@@ -573,8 +574,8 @@ fn value_entry(id: SharedString, text: String, replace: bool, theme: &Theme) -> 
         .flex()
         .flex_row()
         .items_center()
-        .min_w(px(32.0))
-        .h(px(16.0))
+        .min_w(sp(32.0))
+        .h(sp(16.0))
         .px_1()
         .rounded_sm()
         .border_1()
@@ -589,7 +590,7 @@ fn value_entry(id: SharedString, text: String, replace: bool, theme: &Theme) -> 
                 })
                 .child(text),
         )
-        .child(div().w(px(1.0)).h(px(11.0)).bg(theme.accent))
+        .child(div().w(sp(1.0)).h(sp(11.0)).bg(theme.accent))
         .into_any_element()
 }
 
@@ -600,7 +601,7 @@ fn track_background(track: SliderTrack, theme: &Theme) -> AnyElement {
             .absolute()
             .left_0()
             .right_0()
-            .h(px(4.0))
+            .h(sp(4.0))
             .rounded_full()
             .overflow_hidden()
     };
@@ -643,7 +644,7 @@ pub fn reset_button(
         .flex()
         .items_center()
         .justify_center()
-        .size(px(16.0))
+        .size(sp(16.0))
         .when(!visible, |el| el.invisible())
         .cursor_pointer()
         .hover(|el| el.bg(theme.surface_elevated))
@@ -674,14 +675,14 @@ pub fn compact_slider(
         .flex()
         .items_center()
         .w(px(width))
-        .h(px(14.0))
+        .h(sp(14.0))
         .cursor(CursorStyle::ResizeLeftRight)
         .child(
             div()
                 .absolute()
                 .left_0()
                 .right_0()
-                .h(px(3.0))
+                .h(sp(3.0))
                 .rounded_full()
                 .bg(theme.border),
         )
@@ -690,7 +691,7 @@ pub fn compact_slider(
                 .absolute()
                 .left_0()
                 .w(relative(fraction))
-                .h(px(3.0))
+                .h(sp(3.0))
                 .rounded_full()
                 .bg(theme.accent),
         )

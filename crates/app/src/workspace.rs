@@ -1,3 +1,4 @@
+use rustyedit_ui::sp;
 use std::{
     cell::Cell,
     collections::{HashMap, HashSet},
@@ -925,7 +926,7 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .h(gpui::px(24.0))
+                    .h(sp(24.0))
                     .px_2()
                     .rounded_md()
                     .text_xl()

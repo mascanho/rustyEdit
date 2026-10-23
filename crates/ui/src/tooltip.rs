@@ -1,4 +1,5 @@
-use gpui::{div, prelude::*, px, AnyView, App, Context, SharedString, Window};
+use crate::sp;
+use gpui::{div, prelude::*, AnyView, App, Context, SharedString, Window};
 
 use crate::theme::Theme;
 
@@ -19,7 +20,7 @@ impl Render for Tip {
             .border_1()
             .border_color(theme.border)
             .shadow_md()
-            .text_size(px(11.0))
+            .text_size(sp(11.0))
             .text_color(theme.text)
             .child(self.text.clone())
     }

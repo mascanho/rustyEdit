@@ -2,6 +2,7 @@
 //! tonal-zone guides, and the hover / drag highlights. Interaction lives
 //! in the app; this only paints what it's told.
 
+use crate::sp;
 use std::{cell::Cell, rc::Rc, sync::Arc};
 
 use gpui::{
@@ -84,7 +85,7 @@ fn paint(bounds: Bounds<Pixels>, props: &HistogramProps, theme: &Theme, window: 
         window.paint_quad(fill(
             Bounds::new(
                 point(x_at(zone.span().0), bounds.origin.y),
-                size(px(1.0), bounds.size.height),
+                size(sp(1.0), bounds.size.height),
             ),
             theme.border_subtle.opacity(0.7),
         ));
@@ -108,7 +109,7 @@ fn paint(bounds: Bounds<Pixels>, props: &HistogramProps, theme: &Theme, window: 
         window.paint_quad(fill(
             Bounds::new(
                 point(x_at(level), bounds.origin.y),
-                size(px(1.0), bounds.size.height),
+                size(sp(1.0), bounds.size.height),
             ),
             theme.text.opacity(0.7),
         ));
@@ -234,7 +235,7 @@ fn fill_series(window: &mut Window, bounds: Bounds<Pixels>, series: &[f32], colo
 
 /// The outline along the top of `series`.
 fn stroke_series(window: &mut Window, bounds: Bounds<Pixels>, series: &[f32], color: Hsla) {
-    let mut path = PathBuilder::stroke(px(1.25));
+    let mut path = PathBuilder::stroke(sp(1.25));
     path.add_polygon(&series_points(bounds, series), false);
     if let Ok(path) = path.build() {
         window.paint_path(path, color);

@@ -1,4 +1,5 @@
-use gpui::{div, prelude::*, px, App, ClickEvent, ElementId, SharedString, Window};
+use crate::sp;
+use gpui::{div, prelude::*, App, ClickEvent, ElementId, SharedString, Window};
 
 use crate::{button::chrome_button, theme::Theme};
 
@@ -17,14 +18,14 @@ pub fn toggle_switch(
         .flex_row()
         .items_center()
         .flex_shrink_0()
-        .w(px(32.0))
-        .h(px(18.0))
-        .p(px(2.0))
+        .w(sp(32.0))
+        .h(sp(18.0))
+        .p(sp(2.0))
         .rounded_full()
         .cursor_pointer()
         .bg(if on { theme.accent } else { theme.border })
         .when(on, |el| el.justify_end())
-        .child(div().size(px(14.0)).rounded_full().bg(theme.text))
+        .child(div().size(sp(14.0)).rounded_full().bg(theme.text))
         .on_click(on_click)
 }
 
@@ -43,14 +44,14 @@ pub fn mini_toggle_switch(
         .flex_row()
         .items_center()
         .flex_shrink_0()
-        .w(px(20.0))
-        .h(px(12.0))
-        .p(px(1.5))
+        .w(sp(20.0))
+        .h(sp(12.0))
+        .p(sp(1.5))
         .rounded_full()
         .cursor_pointer()
         .bg(if on { theme.accent } else { theme.border })
         .when(on, |el| el.justify_end())
-        .child(div().size(px(8.0)).rounded_full().bg(theme.text))
+        .child(div().size(sp(8.0)).rounded_full().bg(theme.text))
         .on_click(on_click)
 }
 
@@ -97,7 +98,7 @@ pub fn stepper(
         .child(step_button(-1, value > min))
         .child(
             div()
-                .min_w(px(28.0))
+                .min_w(sp(28.0))
                 .px_1()
                 .flex()
                 .justify_center()

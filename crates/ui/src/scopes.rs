@@ -1,6 +1,7 @@
 //! Waveform, RGB parade and vectorscope views of a photo's tones and
 //! colours, painted from the density grids in [`Histogram::scopes`].
 
+use crate::sp;
 use std::sync::Arc;
 
 use gpui::{
@@ -213,7 +214,7 @@ fn paint_vectorscope(window: &mut Window, bounds: Bounds<Pixels>, scopes: &Scope
 
     // Graticule: the outer circle, a half-way circle and the axes.
     let circle = |window: &mut Window, radius: f32, alpha: f32| {
-        let mut path = PathBuilder::stroke(px(1.0));
+        let mut path = PathBuilder::stroke(sp(1.0));
         for i in 0..=72 {
             let a = i as f32 / 72.0 * std::f32::consts::TAU;
             let p = point(px(cx + radius * a.cos()), px(cy + radius * a.sin()));
@@ -234,7 +235,7 @@ fn paint_vectorscope(window: &mut Window, bounds: Bounds<Pixels>, scopes: &Scope
 
     // The skin-tone line (about 123 degrees from the blue axis).
     let angle = 123.0f32.to_radians();
-    let mut skin = PathBuilder::stroke(px(1.0));
+    let mut skin = PathBuilder::stroke(sp(1.0));
     skin.move_to(point(px(cx), px(cy)));
     skin.line_to(point(
         px(cx + side / 2.0 * angle.cos()),

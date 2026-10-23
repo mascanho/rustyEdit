@@ -10,6 +10,7 @@
 //! a [`ZoomAnchor`] saying which photo point should land where; the viewer
 //! applies it when it renders.
 
+use rustyedit_ui::sp;
 use std::{cell::Cell, rc::Rc};
 
 use gpui::{
@@ -333,8 +334,8 @@ impl Workspace {
         let zoom = &mut self.develop_ui.zoom;
         let offset = zoom.scroll.offset();
         let max = zoom.scroll.max_offset();
-        let x = (offset.x + (position.x - last.x)).clamp(-max.width, px(0.0));
-        let y = (offset.y + (position.y - last.y)).clamp(-max.height, px(0.0));
+        let x = (offset.x + (position.x - last.x)).clamp(-max.width, sp(0.0));
+        let y = (offset.y + (position.y - last.y)).clamp(-max.height, sp(0.0));
         zoom.scroll.set_offset(point(x, y));
         zoom.pan = Some(position);
         cx.notify();

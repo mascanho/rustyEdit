@@ -5,6 +5,7 @@
 //! to Bare (only the photo). All the styles share one geometry so the
 //! uniform row height and keyboard row-stepping stay exact.
 
+use rustyedit_ui::sp;
 use gpui::{
     div, img, prelude::*, px, uniform_list, Animation, AnimationExt, AnyElement, App, ClickEvent,
     Context, Entity, ObjectFit, Window,
@@ -109,8 +110,8 @@ impl Workspace {
         div()
             .id("library-body")
             .flex_1()
-            .min_h(px(0.0))
-            .min_w(px(0.0))
+            .min_h(sp(0.0))
+            .min_w(sp(0.0))
             .overflow_hidden()
             .child(
                 uniform_list(
@@ -272,7 +273,7 @@ impl Workspace {
                     .left_0()
                     .right_0()
                     .bottom_0()
-                    .h(px(3.0))
+                    .h(sp(3.0))
                     .bg(color),
             )
         })
@@ -354,7 +355,7 @@ fn card_header(
 ) -> AnyElement {
     let entity = entity.clone();
     let keyword_count = asset.keywords.len();
-    let small = |color| div().text_size(px(9.0)).text_color(color);
+    let small = |color| div().text_size(sp(9.0)).text_color(color);
 
     div()
         .flex()
@@ -392,7 +393,7 @@ fn card_header(
                     el.child(small(theme.accent).child("\u{270E}"))
                 })
                 .when_some(theme.color_label(asset.color_label), |el, color| {
-                    el.child(div().size(px(8.0)).rounded_full().bg(color))
+                    el.child(div().size(sp(8.0)).rounded_full().bg(color))
                 })
                 .child(rustyedit_ui::flag_badge(asset.flag, theme)),
         )
@@ -413,15 +414,15 @@ fn card_footer(asset: &Asset, grid: &GridSettings, theme: &Theme) -> AnyElement 
         .gap_0p5()
         .px_2()
         .pt_1()
-        .pb(px(6.0))
+        .pb(sp(6.0))
         .flex_1()
-        .min_w(px(0.0))
+        .min_w(sp(0.0))
         .overflow_hidden()
         .child(card_text_row(
             div()
-                .h(px(14.0))
-                .line_height(px(14.0))
-                .text_size(px(11.0))
+                .h(sp(14.0))
+                .line_height(sp(14.0))
+                .text_size(sp(11.0))
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .text_color(theme.text)
                 .child(name),
@@ -429,9 +430,9 @@ fn card_footer(asset: &Asset, grid: &GridSettings, theme: &Theme) -> AnyElement 
         .when(grid.show_details, |el| {
             el.child(card_text_row(
                 div()
-                    .h(px(12.0))
-                    .line_height(px(12.0))
-                    .text_size(px(9.0))
+                    .h(sp(12.0))
+                    .line_height(sp(12.0))
+                    .text_size(sp(9.0))
                     .text_color(theme.text_faint)
                     .child(card_facts(asset)),
             ))
@@ -447,10 +448,10 @@ fn card_text_row(text: gpui::Div) -> gpui::Div {
         .flex_row()
         .flex_shrink_0()
         .w_full()
-        .min_w(px(0.0))
+        .min_w(sp(0.0))
         .child(
             text.flex_1()
-                .min_w(px(0.0))
+                .min_w(sp(0.0))
                 .overflow_hidden()
                 .whitespace_nowrap(),
         )
@@ -472,22 +473,22 @@ fn minimal_badges(asset: &Asset, theme: &Theme) -> Option<AnyElement> {
     Some(
         div()
             .absolute()
-            .top(px(4.0))
-            .left(px(4.0))
+            .top(sp(4.0))
+            .left(sp(4.0))
             .flex()
             .flex_row()
             .items_center()
             .gap_1()
-            .h(px(16.0))
+            .h(sp(16.0))
             .px_1p5()
             .rounded_full()
             .bg(theme.background.opacity(0.8))
-            .text_size(px(9.5))
+            .text_size(sp(9.5))
             .when_some(flag, |el, (glyph, color)| {
                 el.child(div().text_color(color).child(glyph))
             })
             .when_some(label, |el, color| {
-                el.child(div().size(px(7.0)).rounded_full().bg(color))
+                el.child(div().size(sp(7.0)).rounded_full().bg(color))
             })
             .when(rating > 0, |el| {
                 el.child(
@@ -514,19 +515,19 @@ fn stack_badge(
     div()
         .id(("grid-stack", asset_ix))
         .absolute()
-        .top(px(4.0))
-        .right(px(4.0))
+        .top(sp(4.0))
+        .right(sp(4.0))
         .flex()
         .flex_row()
         .items_center()
         .gap_0p5()
-        .h(px(18.0))
+        .h(sp(18.0))
         .px_1p5()
         .rounded_full()
         .bg(theme.background.opacity(0.85))
         .border_1()
         .border_color(theme.border)
-        .text_size(px(9.5))
+        .text_size(sp(9.5))
         .text_color(theme.text)
         .cursor_pointer()
         .tooltip(rustyedit_ui::tip(
@@ -585,8 +586,8 @@ fn card_controls(asset_ix: usize, entity: &Entity<Workspace>, theme: &Theme) -> 
 
     div()
         .absolute()
-        .left(px(4.0))
-        .bottom(px(4.0))
+        .left(sp(4.0))
+        .bottom(sp(4.0))
         .flex()
         .flex_row()
         .gap_1()
@@ -668,15 +669,15 @@ fn info_button(asset_ix: usize, entity: &Entity<Workspace>, theme: &Theme) -> An
     div()
         .id(("grid-info", asset_ix))
         .absolute()
-        .top(px(4.0))
-        .right(px(4.0))
+        .top(sp(4.0))
+        .right(sp(4.0))
         .flex()
         .items_center()
         .justify_center()
-        .size(px(14.0))
+        .size(sp(14.0))
         .rounded_full()
         .bg(theme.background.opacity(0.7))
-        .text_size(px(9.0))
+        .text_size(sp(9.0))
         .italic()
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .text_color(theme.text_muted)

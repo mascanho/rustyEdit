@@ -1,3 +1,4 @@
+use crate::sp;
 use gpui::{div, prelude::*, px, AnyElement};
 
 use crate::theme::Theme;
@@ -53,5 +54,5 @@ pub fn status_bar(
 /// A small vertical divider pipe used to separate groups of controls within
 /// the status bar, matching Zed's visual language.
 pub fn status_divider(theme: &Theme) -> impl IntoElement {
-    div().w(px(1.0)).h(px(14.0)).bg(theme.border)
+    div().w(sp(1.0)).h(sp(14.0)).bg(theme.border)
 }

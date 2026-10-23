@@ -2,6 +2,7 @@
 //! real file relocation for missing originals, non-destructive rotation,
 //! "Reveal in Finder", folder synchronization and the missing-files panel.
 
+use rustyedit_ui::sp;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -9,7 +10,7 @@ use std::{
     sync::atomic::AtomicUsize,
 };
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString, Window};
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString, Window};
 use rustyedit_core::AssetState;
 
 use crate::{
@@ -387,13 +388,13 @@ impl Workspace {
             div()
                 .id("rename-chip")
                 .absolute()
-                .top(px(12.0))
-                .left(px(12.0))
+                .top(sp(12.0))
+                .left(sp(12.0))
                 .occlude()
                 .flex()
                 .flex_col()
                 .gap_0p5()
-                .w(px(320.0))
+                .w(sp(320.0))
                 .p_2()
                 .rounded_lg()
                 .bg(theme.surface_elevated)
@@ -404,7 +405,7 @@ impl Workspace {
                 .text_color(theme.text)
                 .child(
                     div()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .text_color(theme.text_faint)
                         .child("RENAME PHOTO"),
                 )
@@ -413,20 +414,20 @@ impl Workspace {
                         .flex()
                         .flex_row()
                         .items_center()
-                        .h(px(24.0))
+                        .h(sp(24.0))
                         .child(
                             div()
-                                .min_w(px(0.0))
+                                .min_w(sp(0.0))
                                 .flex_1()
                                 .overflow_hidden()
                                 .whitespace_nowrap()
                                 .child(draft.to_string()),
                         )
-                        .child(div().w(px(1.0)).h(px(14.0)).ml(px(1.0)).bg(theme.accent)),
+                        .child(div().w(sp(1.0)).h(sp(14.0)).ml(sp(1.0)).bg(theme.accent)),
                 )
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(sp(9.5))
                         .text_color(theme.text_faint)
                         .child("Enter to rename \u{00B7} Esc to cancel"),
                 )
@@ -557,7 +558,7 @@ impl Workspace {
                 .pb_1()
                 .child(
                     div()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.reject)
                         .child(format!("MISSING FILES ({})", missing.len())),
@@ -592,7 +593,7 @@ impl Workspace {
                             .gap_1()
                             .child(
                                 div()
-                                    .min_w(px(0.0))
+                                    .min_w(sp(0.0))
                                     .flex_1()
                                     .overflow_hidden()
                                     .whitespace_nowrap()
@@ -625,10 +626,10 @@ impl Workspace {
                     )
                     .child(
                         div()
-                            .min_w(px(0.0))
+                            .min_w(sp(0.0))
                             .overflow_hidden()
                             .whitespace_nowrap()
-                            .text_size(px(9.0))
+                            .text_size(sp(9.0))
                             .text_color(theme.text_faint)
                             .child(folder),
                     )
@@ -638,7 +639,7 @@ impl Workspace {
         rows.push(
             div()
                 .pt_1()
-                .text_size(px(9.0))
+                .text_size(sp(9.0))
                 .text_color(theme.text_faint)
                 .child("Use the arrow to locate a moved file, or remove it from this catalog.")
                 .into_any_element(),

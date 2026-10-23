@@ -1,3 +1,4 @@
+use rustyedit_ui::sp;
 use gpui::{
     div, img, prelude::*, px, relative, Animation, AnimationExt, AnyElement, App, ClickEvent,
     Context, ObjectFit, SharedString, Window,
@@ -29,7 +30,7 @@ impl Workspace {
             .flex()
             .flex_col()
             .flex_1()
-            .min_w(px(0.0))
+            .min_w(sp(0.0))
             .overflow_hidden();
         let arrangement = self.settings.layout.preset.arrangement();
         let center = if self.is_importing {
@@ -45,8 +46,8 @@ impl Workspace {
                         .relative()
                         .flex()
                         .flex_1()
-                        .min_h(px(0.0))
-                        .min_w(px(0.0))
+                        .min_h(sp(0.0))
+                        .min_w(sp(0.0))
                         .child(match self.library_view {
                             LibraryView::Loupe => self.render_loupe(window, cx),
                             LibraryView::Grid => self.render_grid(window, cx),
@@ -66,7 +67,7 @@ impl Workspace {
             .flex()
             .flex_row()
             .flex_1()
-            .min_h(px(0.0))
+            .min_h(sp(0.0))
             .children(self.dock_with_rail(DockSide::Left, left, cx))
             .child(center)
             .children(self.dock_with_rail(DockSide::Right, right, cx));
@@ -89,7 +90,7 @@ impl Workspace {
             row.child(
                 div()
                     .id(("import-dot", i))
-                    .size(px(10.0))
+                    .size(sp(10.0))
                     .rounded_full()
                     .bg(theme.accent)
                     .with_animation(
@@ -124,8 +125,8 @@ impl Workspace {
                 done as f32 / total as f32
             };
             div()
-                .w(px(260.0))
-                .h(px(4.0))
+                .w(sp(260.0))
+                .h(sp(4.0))
                 .rounded_full()
                 .bg(theme.border)
                 .child(
@@ -417,7 +418,7 @@ impl Workspace {
                                 "library-label-{}",
                                 label.label()
                             )))
-                            .size(px(14.0))
+                            .size(sp(14.0))
                             .rounded_full()
                             .bg(color)
                             .border_2()
@@ -542,7 +543,7 @@ impl Workspace {
                             this.set_library_view(LibraryView::Survey, cx);
                         }),
                     ))
-                    .child(div().w(px(1.0)).h(px(16.0)).mx_1().bg(theme.border))
+                    .child(div().w(sp(1.0)).h(sp(16.0)).mx_1().bg(theme.border))
                     .child(rustyedit_ui::chrome_button(
                         "library-presets",
                         "Presets",
@@ -595,8 +596,8 @@ impl Workspace {
                 img(source)
                     .object_fit(ObjectFit::Contain)
                     .size_full()
-                    .min_w(px(0.0))
-                    .min_h(px(0.0))
+                    .min_w(sp(0.0))
+                    .min_h(sp(0.0))
                     .into_any_element()
             }
             None => div()
@@ -620,8 +621,8 @@ impl Workspace {
             )
             .relative()
             .flex_1()
-            .min_h(px(0.0))
-            .min_w(px(0.0))
+            .min_h(sp(0.0))
+            .min_w(sp(0.0))
             .overflow_hidden()
             .flex()
             .items_center()
@@ -680,17 +681,17 @@ impl Workspace {
                 .child(
                     div()
                         .flex_shrink_0()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(theme.text_muted)
                         .child("NAVIGATOR"),
                 )
                 .child(
                     div()
-                        .min_w(px(0.0))
+                        .min_w(sp(0.0))
                         .overflow_hidden()
                         .whitespace_nowrap()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .text_color(theme.text_faint)
                         .child(name),
                 )
@@ -811,11 +812,11 @@ pub(crate) fn panel_group_heading(theme: &Theme, label: &'static str) -> AnyElem
         .gap_2()
         .pt_3()
         .pb_1()
-        .text_size(px(10.0))
+        .text_size(sp(10.0))
         .font_weight(gpui::FontWeight::BOLD)
         .text_color(theme.accent)
         .child(label.to_uppercase())
-        .child(div().flex_1().h(px(1.0)).bg(theme.border))
+        .child(div().flex_1().h(sp(1.0)).bg(theme.border))
         .into_any_element()
 }
 

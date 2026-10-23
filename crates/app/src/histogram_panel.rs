@@ -10,10 +10,11 @@
 //!   Whites), as in Lightroom;
 //! - mean brightness, clipping percentages and the capture settings.
 
+use rustyedit_ui::sp;
 use std::{cell::Cell, rc::Rc, sync::Arc};
 
 use gpui::{
-    div, hsla, prelude::*, px, AnyElement, Bounds, ClickEvent, Context, Hsla, MouseButton,
+    div, hsla, prelude::*, AnyElement, Bounds, ClickEvent, Context, Hsla, MouseButton,
     MouseDownEvent, MouseMoveEvent, Pixels, Point,
 };
 use rustyedit_core::{Clipping, Histogram, HistogramChannel, ScopeMode, TonalZone};
@@ -131,9 +132,9 @@ impl Workspace {
                 .flex()
                 .items_center()
                 .justify_center()
-                .h(px(20.0))
+                .h(sp(20.0))
                 .cursor_pointer()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .when(active, |el| {
                     el.bg(theme.accent_muted).text_color(theme.text)
@@ -174,11 +175,11 @@ impl Workspace {
                 .flex()
                 .items_center()
                 .justify_center()
-                .min_w(px(22.0))
-                .h(px(18.0))
+                .min_w(sp(22.0))
+                .h(sp(18.0))
                 .px_1()
                 .cursor_pointer()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(if active {
                     channel_tint(channel, &theme)
@@ -214,13 +215,13 @@ impl Workspace {
                 el.child(
                     div()
                         .id("histogram-log")
-                        .h(px(18.0))
+                        .h(sp(18.0))
                         .px_1p5()
                         .flex()
                         .items_center()
                         .border_1()
                         .cursor_pointer()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .when(log, |el| {
                             el.border_color(theme.accent)
                                 .text_color(theme.accent)
@@ -258,9 +259,9 @@ impl Workspace {
         let highlights = histogram.highlight_clipping();
         div()
             .absolute()
-            .top(px(4.0))
-            .left(px(4.0))
-            .right(px(4.0))
+            .top(sp(4.0))
+            .left(sp(4.0))
+            .right(sp(4.0))
             .flex()
             .flex_row()
             .justify_between()
@@ -300,7 +301,7 @@ impl Workspace {
             } else {
                 "clip-highlights"
             })
-            .p(px(2.0))
+            .p(sp(2.0))
             .cursor_pointer()
             .when(showing, |el| {
                 el.bg(theme.surface_elevated)
@@ -350,7 +351,7 @@ impl Workspace {
                 .flex_row()
                 .justify_between()
                 .gap_2()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .text_color(theme.text_faint)
         };
         let Some(histogram) = histogram else {
@@ -428,7 +429,7 @@ impl Workspace {
             div()
                 .overflow_hidden()
                 .whitespace_nowrap()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .text_color(self.theme.text_faint)
                 .child(parts.join("  \u{00B7}  "))
                 .into_any_element(),
@@ -438,7 +439,7 @@ impl Workspace {
     /// The level under `position`, if it's over the graph.
     fn histogram_level(&self, position: Point<Pixels>) -> Option<f32> {
         let b = self.histogram_ui.bounds.get();
-        if !b.contains(&position) || b.size.width <= px(0.0) {
+        if !b.contains(&position) || b.size.width <= sp(0.0) {
             return None;
         }
         Some((f32::from(position.x - b.origin.x) / f32::from(b.size.width)).clamp(0.0, 1.0))

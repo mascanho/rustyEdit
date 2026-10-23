@@ -1,9 +1,10 @@
 //! The History rail tool: a newest-first log of every change made to the
 //! selected photo (flags, ratings, labels and each Develop adjustment).
 
+use rustyedit_ui::sp;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use gpui::{div, prelude::*, px, AnyElement};
+use gpui::{div, prelude::*, AnyElement};
 use rustyedit_core::HistoryEntry;
 
 use crate::workspace::Workspace;
@@ -31,7 +32,7 @@ impl Workspace {
             )
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .text_color(theme.text_faint)
                     .child(match asset.history.len() {
                         0 => "No changes".to_string(),
@@ -80,12 +81,12 @@ pub(crate) fn history_row(
         .flex()
         .flex_col()
         .items_center()
-        .w(px(12.0))
+        .w(sp(12.0))
         .flex_shrink_0()
-        .pt(px(4.0))
+        .pt(sp(4.0))
         .child(
             div()
-                .size(px(9.0))
+                .size(sp(9.0))
                 .rounded_full()
                 .bg(if highlight { theme.accent } else { theme.border })
                 .when(highlight, |el| {
@@ -93,7 +94,7 @@ pub(crate) fn history_row(
                 }),
         )
         .when(!is_last, |el| {
-            el.child(div().flex_1().w(px(1.0)).mt_1().bg(theme.border_subtle))
+            el.child(div().flex_1().w(sp(1.0)).mt_1().bg(theme.border_subtle))
         });
 
     div()
@@ -105,7 +106,7 @@ pub(crate) fn history_row(
         .child(
             div()
                 .flex_1()
-                .min_w(px(0.0))
+                .min_w(sp(0.0))
                 .flex()
                 .flex_col()
                 .gap_0p5()
@@ -118,20 +119,20 @@ pub(crate) fn history_row(
                         .items_baseline()
                         .child(
                             div()
-                                .text_size(px(11.5))
+                                .text_size(sp(11.5))
                                 .text_color(theme.text)
                                 .child(entry.label.clone()),
                         )
                         .child(
                             div()
-                                .text_size(px(9.5))
+                                .text_size(sp(9.5))
                                 .text_color(theme.text_faint)
                                 .child(when),
                         ),
                 )
                 .child(
                     div()
-                        .text_size(px(10.5))
+                        .text_size(sp(10.5))
                         .text_color(theme.text_muted)
                         .child(if entry.from.is_empty() {
                             entry.to.clone()

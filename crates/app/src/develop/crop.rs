@@ -1,7 +1,8 @@
 //! The Crop & Straighten section: shape presets and the straightening
 //! angle. The crop rectangle itself is changed by dragging on the photo.
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString};
+use rustyedit_ui::sp;
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString};
 use rustyedit_core::{AspectLock, MAX_STRAIGHTEN};
 use rustyedit_ui::{SliderSpec, SliderTrack};
 
@@ -66,11 +67,11 @@ impl Workspace {
             .flex()
             .items_center()
             .justify_center()
-            .h(px(24.0))
+            .h(sp(24.0))
             .rounded_md()
             .border_1()
             .cursor_pointer()
-            .text_size(px(11.0))
+            .text_size(sp(11.0))
             .when(active, |el| {
                 el.bg(theme.accent_muted)
                     .border_color(theme.accent)

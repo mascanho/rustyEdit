@@ -7,6 +7,7 @@
 //! one's centre and its two edges. Delete (Backspace) removes it. Holding
 //! Space still pans.
 
+use rustyedit_ui::sp;
 use gpui::{
     canvas, div, point, prelude::*, px, AnyElement, Bounds, ClickEvent, Context, Hsla, MouseButton,
     MouseDownEvent, PathBuilder, Pixels, Point, SharedString, Window,
@@ -95,7 +96,7 @@ impl Workspace {
         let mut rows = vec![
             tools.into_any_element(),
             div()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .text_color(theme.text_faint)
                 .child(hint)
                 .into_any_element(),
@@ -122,11 +123,11 @@ impl Workspace {
             .flex()
             .items_center()
             .justify_center()
-            .h(px(30.0))
+            .h(sp(30.0))
             .rounded_md()
             .border_1()
             .cursor_pointer()
-            .text_size(px(11.5))
+            .text_size(sp(11.5))
             .when(active, |el| {
                 el.bg(theme.accent_muted)
                     .border_color(theme.accent)
@@ -173,7 +174,7 @@ impl Workspace {
             .flex_row()
             .justify_between()
             .pt_1()
-            .text_size(px(10.0))
+            .text_size(sp(10.0))
             .text_color(theme.text_faint)
             .child(format!("LAYERS \u{00B7} {count} of {MAX_GRADIENTS}"))
             .child(
@@ -209,7 +210,7 @@ impl Workspace {
                         .id((id, ix))
                         .flex_shrink_0()
                         .px_1()
-                        .text_size(px(10.5))
+                        .text_size(sp(10.5))
                         .text_color(theme.text_faint)
                         .cursor_pointer()
                         .hover(|el| el.text_color(if danger { theme.danger } else { theme.text }))
@@ -232,7 +233,7 @@ impl Workspace {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .size(px(20.0))
+                        .size(sp(20.0))
                         .cursor_pointer()
                         .tooltip(rustyedit_ui::tip(
                             if hidden { "Show layer" } else { "Hide layer" },
@@ -274,10 +275,10 @@ impl Workspace {
                     .flex_row()
                     .items_center()
                     .gap_1()
-                    .h(px(28.0))
+                    .h(sp(28.0))
                     .px_1()
                     .cursor_pointer()
-                    .text_size(px(11.5))
+                    .text_size(sp(11.5))
                     .when(selected, |el| {
                         el.bg(theme.accent_muted).text_color(theme.text)
                     })
@@ -302,7 +303,7 @@ impl Workspace {
                     .child(
                         div()
                             .flex_1()
-                            .min_w(px(0.0))
+                            .min_w(sp(0.0))
                             .overflow_hidden()
                             .whitespace_nowrap()
                             .child(format!("{} {}", gradient.kind.label(), ix + 1)),
@@ -311,7 +312,7 @@ impl Workspace {
                         el.child(
                             div()
                                 .flex_shrink_0()
-                                .text_size(px(9.5))
+                                .text_size(sp(9.5))
                                 .text_color(theme.text_faint)
                                 .child(note.join(" \u{00B7} ")),
                         )
@@ -399,7 +400,7 @@ impl Workspace {
             .items_center()
             .justify_between()
             .pt_2()
-            .text_size(px(11.0))
+            .text_size(sp(11.0))
             .text_color(theme.text_muted)
             .child(format!(
                 "{} {} \u{00B7} invert",
@@ -494,7 +495,7 @@ impl Workspace {
         rows.push(
             div()
                 .pt_2()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.text_faint)
                 .child("COLOUR GRADING")
@@ -505,7 +506,7 @@ impl Workspace {
             let (entity_h, entity_s) = (cx.entity(), cx.entity());
             rows.push(
                 div()
-                    .text_size(px(10.5))
+                    .text_size(sp(10.5))
                     .text_color(theme.text_muted)
                     .child(zone.label())
                     .into_any_element(),
@@ -973,11 +974,11 @@ impl Shape {
             GradientKind::Radial => vec![
                 (self.start, Handle::Move((0.0, 0.0))),
                 (
-                    self.start + point(px(self.radius.0), px(0.0)),
+                    self.start + point(px(self.radius.0), sp(0.0)),
                     Handle::RadiusX,
                 ),
                 (
-                    self.start + point(px(0.0), px(self.radius.1)),
+                    self.start + point(sp(0.0), px(self.radius.1)),
                     Handle::RadiusY,
                 ),
             ],
@@ -1095,7 +1096,7 @@ fn stroke(
 ) {
     let mut path = PathBuilder::stroke(px(width));
     if dashed {
-        path = path.dash_array(&[px(5.0), px(4.0)]);
+        path = path.dash_array(&[sp(5.0), sp(4.0)]);
     }
     path.add_polygon(points, closed);
     if let Ok(path) = path.build() {

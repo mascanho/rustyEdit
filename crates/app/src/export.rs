@@ -4,6 +4,7 @@
 //! runs. Every photo is rendered through its saved develop settings at full
 //! resolution.
 
+use rustyedit_ui::sp;
 use std::{
     collections::HashSet,
     io::Write,
@@ -466,10 +467,10 @@ impl Workspace {
             .child(
                 div()
                     .flex_1()
-                    .min_w(px(0.0))
+                    .min_w(sp(0.0))
                     .overflow_hidden()
                     .px_3()
-                    .h(px(28.0))
+                    .h(sp(28.0))
                     .flex()
                     .items_center()
                     .rounded_md()
@@ -518,9 +519,9 @@ impl Workspace {
             .flex_1()
             .items_center()
             .justify_center()
-            .h(px(26.0))
+            .h(sp(26.0))
             .rounded_md()
-            .text_size(px(11.5))
+            .text_size(sp(11.5))
             .font_weight(gpui::FontWeight::SEMIBOLD);
         let footer_button = if running {
             footer_button
@@ -679,8 +680,8 @@ impl Workspace {
             .flex()
             .flex_col()
             .flex_1()
-            .min_w(px(0.0))
-            .min_h(px(0.0))
+            .min_w(sp(0.0))
+            .min_h(sp(0.0))
             .bg(theme.background)
             .when(has_top, |el| el.child(top_bar))
             .child(
@@ -689,7 +690,7 @@ impl Workspace {
                     .flex()
                     .flex_col()
                     .flex_1()
-                    .min_h(px(0.0))
+                    .min_h(sp(0.0))
                     .overflow_y_scroll()
                     .gap_4()
                     .px_6()
@@ -716,7 +717,7 @@ impl Workspace {
             .flex()
             .flex_row()
             .flex_1()
-            .min_h(px(0.0))
+            .min_h(sp(0.0))
             .child(panel)
             .child(center);
         self.with_filmstrip(main.into_any_element(), cx)
@@ -774,7 +775,7 @@ impl Workspace {
                     .gap_1()
                     .child(
                         div()
-                            .text_size(px(18.0))
+                            .text_size(sp(18.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.text)
                             .child(count.to_string()),
@@ -786,12 +787,12 @@ impl Workspace {
                             .child(format!("of {} photos", self.catalog.assets.len())),
                     ),
             )
-            .child(div().w(px(1.0)).h(px(14.0)).bg(theme.border))
+            .child(div().w(sp(1.0)).h(sp(14.0)).bg(theme.border))
             .children(pills)
             .child(
                 div()
                     .flex_1()
-                    .min_w(px(80.0))
+                    .min_w(sp(80.0))
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_xs()
@@ -806,7 +807,7 @@ impl Workspace {
                     .flex_shrink_0()
                     .items_center()
                     .justify_center()
-                    .size(px(28.0))
+                    .size(sp(28.0))
                     .rounded_md()
                     .cursor_pointer()
                     .border_1()
@@ -847,7 +848,7 @@ impl Workspace {
             .flex_row()
             .items_center()
             .gap_3()
-            .h(px(28.0))
+            .h(sp(28.0))
             .child(
                 div()
                     .text_sm()
@@ -983,7 +984,7 @@ impl Workspace {
                     .absolute()
                     .top_0()
                     .h_full()
-                    .w(px(60.0))
+                    .w(sp(60.0))
                     .bg(hsla(0.0, 0.0, 1.0, 0.35))
                     .with_animation(
                         "export-bar-shimmer-anim",
@@ -1050,8 +1051,8 @@ impl Workspace {
             .child(
                 div()
                     .flex_1()
-                    .min_w(px(120.0))
-                    .h(px(5.0))
+                    .min_w(sp(120.0))
+                    .h(sp(5.0))
                     .rounded_full()
                     .bg(theme.border)
                     .child(fill),
@@ -1100,7 +1101,7 @@ fn dot_count(theme: &Theme, value: usize, label: &'static str, colour: gpui::Hsl
         .flex_row()
         .items_center()
         .gap_1()
-        .child(div().size(px(6.0)).rounded_full().bg(colour))
+        .child(div().size(sp(6.0)).rounded_full().bg(colour))
         .child(
             div()
                 .text_xs()
@@ -1115,7 +1116,7 @@ fn pill(theme: &Theme, text: String) -> AnyElement {
     div()
         .flex_shrink_0()
         .px_2()
-        .h(px(20.0))
+        .h(sp(20.0))
         .flex()
         .items_center()
         .rounded_full()
@@ -1159,7 +1160,7 @@ fn option_row<T: Copy + PartialEq + 'static>(
                 .flex()
                 .items_center()
                 .justify_center()
-                .h(px(24.0))
+                .h(sp(24.0))
                 .px_2p5()
                 .rounded_md()
                 .text_xs()
@@ -1310,7 +1311,7 @@ fn tile_view(
                     .absolute()
                     .top_0()
                     .h_full()
-                    .w(px(36.0))
+                    .w(sp(36.0))
                     .bg(hsla(0.0, 0.0, 1.0, 0.28))
                     .with_animation(
                         ("export-tile-shimmer-anim", ix),
@@ -1338,16 +1339,16 @@ fn tile_view(
                 div()
                     .id(("export-tile-badge", ix))
                     .absolute()
-                    .top(px(4.0))
-                    .right(px(4.0))
-                    .size(px(20.0))
+                    .top(sp(4.0))
+                    .right(sp(4.0))
+                    .size(sp(20.0))
                     .rounded_full()
                     .flex()
                     .items_center()
                     .justify_center()
                     .bg(colour)
                     .text_color(theme.background)
-                    .text_size(px(12.0))
+                    .text_size(sp(12.0))
                     .font_weight(gpui::FontWeight::BOLD)
                     .child(glyph)
                     .with_animation(
@@ -1371,9 +1372,9 @@ fn tile_view(
             div()
                 .id(("export-tile-remove", ix))
                 .absolute()
-                .top(px(4.0))
-                .left(px(4.0))
-                .size(px(22.0))
+                .top(sp(4.0))
+                .left(sp(4.0))
+                .size(sp(22.0))
                 .rounded_full()
                 .flex()
                 .items_center()
@@ -1381,7 +1382,7 @@ fn tile_view(
                 .cursor_pointer()
                 .bg(hsla(0.0, 0.0, 0.0, 0.72))
                 .text_color(gpui::white())
-                .text_size(px(12.0))
+                .text_size(sp(12.0))
                 .opacity(0.0)
                 .group_hover(hover_group, |el| el.opacity(1.0))
                 .hover(|el| el.bg(theme.danger))

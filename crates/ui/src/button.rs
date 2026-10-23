@@ -1,4 +1,5 @@
-use gpui::{div, prelude::*, px, App, ClickEvent, ElementId, SharedString, Window};
+use crate::sp;
+use gpui::{div, prelude::*, App, ClickEvent, ElementId, SharedString, Window};
 
 use crate::theme::Theme;
 
@@ -30,7 +31,7 @@ pub fn chrome_icon_button(
         .flex()
         .items_center()
         .justify_center()
-        .h(px(24.0))
+        .h(sp(24.0))
         .px_2()
         .text_xs()
         .cursor_pointer()
@@ -65,7 +66,7 @@ pub fn glyph_button(
         .flex()
         .items_center()
         .justify_center()
-        .size(px(20.0))
+        .size(sp(20.0))
         .cursor_pointer()
         .text_color(if active { color } else { theme.text_faint })
         .hover(|el| el.bg(theme.surface_elevated))

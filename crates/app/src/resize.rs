@@ -2,6 +2,7 @@
 //! which edge is being dragged; the workspace root then tracks the mouse
 //! and converts its position into a size until the button is released.
 
+use rustyedit_ui::sp;
 use gpui::{
     div, prelude::*, px, AnyElement, Context, MouseButton, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, Window,
@@ -62,7 +63,7 @@ impl Workspace {
             ResizeTarget::Dock(_) => div()
                 .relative()
                 .flex_shrink_0()
-                .w(px(0.0))
+                .w(sp(0.0))
                 .h_full()
                 .child(
                     hit.top_0()
@@ -119,8 +120,8 @@ impl Workspace {
         if let Some((start, start_offset)) = self.loupe_drag {
             if event.dragging() {
                 let max = self.loupe_scroll.max_offset();
-                let x = (start_offset.x + (event.position.x - start.x)).clamp(-max.width, px(0.0));
-                let y = (start_offset.y + (event.position.y - start.y)).clamp(-max.height, px(0.0));
+                let x = (start_offset.x + (event.position.x - start.x)).clamp(-max.width, sp(0.0));
+                let y = (start_offset.y + (event.position.y - start.y)).clamp(-max.height, sp(0.0));
                 self.loupe_scroll.set_offset(gpui::point(x, y));
                 cx.notify();
             } else {

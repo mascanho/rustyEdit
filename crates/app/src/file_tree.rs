@@ -6,6 +6,7 @@
 //! rendered with a `uniform_list`, so folders with tens of thousands of
 //! photos stay as fast as small ones.
 
+use rustyedit_ui::sp;
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
@@ -405,9 +406,9 @@ fn tree_row(
     let icon: AnyElement = match row.kind {
         RowKind::Folder { is_root, .. } => div()
             .flex_shrink_0()
-            .w(px(12.0))
-            .h(px(9.0))
-            .rounded(px(2.0))
+            .w(sp(12.0))
+            .h(sp(9.0))
+            .rounded(sp(2.0))
             .bg(if is_catalog {
                 theme.accent
             } else if is_root {
@@ -419,8 +420,8 @@ fn tree_row(
         // A tiny "photo": sky fading into warm ground.
         RowKind::Photo => div()
             .flex_shrink_0()
-            .size(px(10.0))
-            .rounded(px(2.0))
+            .size(sp(10.0))
+            .rounded(sp(2.0))
             .bg(linear_gradient(
                 180.0,
                 linear_color_stop(theme.label_blue.opacity(0.8), 0.0),
@@ -472,5 +473,5 @@ fn tree_row(
                 .children(chevron.map(|chevron| rustyedit_ui::icon(chevron, CHEVRON_SIZE, theme.text_muted))),
         )
         .child(icon)
-        .child(div().min_w(px(0.0)).truncate().child(row.name.clone()))
+        .child(div().min_w(sp(0.0)).truncate().child(row.name.clone()))
 }

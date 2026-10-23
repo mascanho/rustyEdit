@@ -2,6 +2,7 @@
 //! onto every other selected photo, as one undo step. A dialog lists the
 //! sections with a checkbox each; the choice is remembered for next time.
 
+use rustyedit_ui::sp;
 use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, MouseButton, SharedString, Window};
 use rustyedit_core::{DevelopSection, DevelopSettings};
 use rustyedit_ui::Theme;
@@ -169,7 +170,7 @@ impl Workspace {
             )
             .child(
                 div()
-                    .text_size(px(11.0))
+                    .text_size(sp(11.0))
                     .text_color(theme.text_muted)
                     .child(format!(
                         "From {source_name} to {targets} other photo{}",
@@ -280,12 +281,12 @@ fn section_row(
         .flex()
         .items_center()
         .justify_center()
-        .size(px(14.0))
+        .size(sp(14.0))
         .rounded_sm()
         .border_1()
         .border_color(if checked { theme.accent } else { theme.border })
         .when(checked, |el| el.bg(theme.accent))
-        .text_size(px(10.0))
+        .text_size(sp(10.0))
         .text_color(theme.surface)
         .when(checked, |el| el.child("\u{2713}"));
     div()
@@ -294,7 +295,7 @@ fn section_row(
         .flex_row()
         .items_center()
         .gap_2()
-        .h(px(26.0))
+        .h(sp(26.0))
         .px_4()
         .cursor_pointer()
         .hover(|el| el.bg(theme.surface_elevated))
@@ -302,14 +303,14 @@ fn section_row(
         .child(
             div()
                 .flex_1()
-                .text_size(px(12.0))
+                .text_size(sp(12.0))
                 .text_color(if checked { theme.text } else { theme.text_muted })
                 .child(section.label()),
         )
         .when(edited, |el| {
             el.child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .text_color(theme.text_faint)
                     .child("edited"),
             )

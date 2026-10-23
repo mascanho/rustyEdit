@@ -11,6 +11,7 @@
 //! scanned, like Import; dropped photos bring their folder in and are
 //! selected.
 
+use rustyedit_ui::sp;
 use std::{path::PathBuf, time::Duration};
 
 use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString};
@@ -147,7 +148,7 @@ impl Workspace {
         Some(
             div()
                 .absolute()
-                .right(px(16.0))
+                .right(sp(16.0))
                 .bottom(px(rustyedit_ui::STATUS_BAR_HEIGHT + 12.0))
                 .flex()
                 .flex_col()
@@ -225,8 +226,8 @@ fn toast_card(toast: &Toast, theme: &Theme, cx: &mut Context<Workspace>) -> AnyE
         .flex_row()
         .items_center()
         .gap_2()
-        .max_w(px(420.0))
-        .min_h(px(36.0))
+        .max_w(sp(420.0))
+        .min_h(sp(36.0))
         .pl_2()
         .pr_1()
         .py_1p5()
@@ -241,10 +242,10 @@ fn toast_card(toast: &Toast, theme: &Theme, cx: &mut Context<Workspace>) -> AnyE
                 .flex_shrink_0()
                 .items_center()
                 .justify_center()
-                .size(px(18.0))
+                .size(sp(18.0))
                 .rounded_full()
                 .bg(colour.opacity(0.18))
-                .text_size(px(10.5))
+                .text_size(sp(10.5))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(colour)
                 .child(glyph),
@@ -252,8 +253,8 @@ fn toast_card(toast: &Toast, theme: &Theme, cx: &mut Context<Workspace>) -> AnyE
         .child(
             div()
                 .flex_1()
-                .min_w(px(0.0))
-                .text_size(px(12.0))
+                .min_w(sp(0.0))
+                .text_size(sp(12.0))
                 .text_color(theme.text)
                 .child(toast.text.clone()),
         )
@@ -265,7 +266,7 @@ fn toast_card(toast: &Toast, theme: &Theme, cx: &mut Context<Workspace>) -> AnyE
                     .px_2()
                     .py_0p5()
                     .rounded_md()
-                    .text_size(px(11.5))
+                    .text_size(sp(11.5))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(theme.accent)
                     .cursor_pointer()
@@ -284,9 +285,9 @@ fn toast_card(toast: &Toast, theme: &Theme, cx: &mut Context<Workspace>) -> AnyE
                 .flex()
                 .items_center()
                 .justify_center()
-                .size(px(20.0))
+                .size(sp(20.0))
                 .rounded_md()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .text_color(theme.text_faint)
                 .cursor_pointer()
                 .hover(|el| el.bg(theme.background).text_color(theme.text))

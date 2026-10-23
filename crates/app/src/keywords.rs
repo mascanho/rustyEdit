@@ -2,9 +2,10 @@
 //! autocomplete), remove them, browse every keyword in the catalog as a
 //! filter facet, and apply whole keyword sets in one click.
 
+use rustyedit_ui::sp;
 use std::collections::HashMap;
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString};
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString};
 use rustyedit_core::AssetState;
 
 use crate::workspace::{TextTarget, Workspace};
@@ -55,7 +56,7 @@ impl Workspace {
                 .pb_1()
                 .child(
                     div()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.accent)
                         .child("KEYWORDS"),
@@ -63,7 +64,7 @@ impl Workspace {
                 .when(target_count > 1, |el| {
                     el.child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(sp(10.0))
                             .text_color(theme.accent)
                             .child(format!("{target_count} selected")),
                     )
@@ -77,7 +78,7 @@ impl Workspace {
             .flex()
             .flex_row()
             .items_center()
-            .h(px(28.0))
+            .h(sp(28.0))
             .px_2()
             .bg(theme.background)
             .border_1()
@@ -102,7 +103,7 @@ impl Workspace {
                     }),
             )
             .when(editing.is_some(), |el| {
-                el.child(div().w(px(1.0)).h(px(14.0)).ml(px(1.0)).bg(theme.accent))
+                el.child(div().w(sp(1.0)).h(sp(14.0)).ml(sp(1.0)).bg(theme.accent))
             })
             .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
                 this.begin_text_draft(TextTarget::Keyword, window, cx)
@@ -132,10 +133,10 @@ impl Workspace {
                         .flex_row()
                         .items_center()
                         .gap_2()
-                        .h(px(22.0))
+                        .h(sp(22.0))
                         .px_2()
                         .cursor_pointer()
-                        .text_size(px(11.5))
+                        .text_size(sp(11.5))
                         .text_color(theme.text_muted)
                         .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                         .child(div().text_color(theme.accent).child("#"))
@@ -159,7 +160,7 @@ impl Workspace {
         out.push(
             div()
                 .pt_2()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .text_color(theme.text_faint)
                 .child(if target_count > 1 {
                     "Keywords apply to every selected photo."
@@ -174,7 +175,7 @@ impl Workspace {
             div()
                 .pt_3()
                 .pb_1()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.text_faint)
                 .child("ON THIS PHOTO")
@@ -200,18 +201,18 @@ impl Workspace {
                         .flex_row()
                         .items_center()
                         .gap_1()
-                        .h(px(22.0))
+                        .h(sp(22.0))
                         .pl_2()
                         .pr_1()
                         .rounded_full()
                         .bg(theme.accent_muted)
-                        .text_size(px(10.5))
+                        .text_size(sp(10.5))
                         .text_color(theme.text)
                         .child(keyword)
                         .child(
                             div()
                                 .id(SharedString::from(format!("keyword-remove-{remove}")))
-                                .px(px(2.0))
+                                .px(sp(2.0))
                                 .rounded_full()
                                 .cursor_pointer()
                                 .text_color(theme.text_faint)
@@ -242,7 +243,7 @@ impl Workspace {
                 div()
                     .pt_3()
                     .pb_1()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_faint)
                     .child("KEYWORD SETS")
@@ -271,19 +272,19 @@ impl Workspace {
                                 .flex_row()
                                 .items_center()
                                 .justify_between()
-                                .text_size(px(11.5))
+                                .text_size(sp(11.5))
                                 .text_color(theme.text)
                                 .child(set.name.clone())
                                 .child(
                                     div()
-                                        .text_size(px(9.5))
+                                        .text_size(sp(9.5))
                                         .text_color(theme.accent)
                                         .child("APPLY"),
                                 ),
                         )
                         .child(
                             div()
-                                .text_size(px(10.0))
+                                .text_size(sp(10.0))
                                 .text_color(theme.text_faint)
                                 .child(label),
                         )
@@ -302,7 +303,7 @@ impl Workspace {
                 div()
                     .pt_3()
                     .pb_1()
-                    .text_size(px(10.0))
+                    .text_size(sp(10.0))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_faint)
                     .child("ALL KEYWORDS")
@@ -320,10 +321,10 @@ impl Workspace {
                         .flex_row()
                         .items_center()
                         .gap_2()
-                        .h(px(24.0))
+                        .h(sp(24.0))
                         .px_2()
                         .cursor_pointer()
-                        .text_size(px(11.5))
+                        .text_size(sp(11.5))
                         .when(is_active, |el| {
                             el.bg(theme.accent_muted).text_color(theme.text)
                         })
@@ -332,17 +333,17 @@ impl Workspace {
                                 .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                         })
                         .child(div().text_color(theme.accent).child("#"))
-                        .child(div().flex_1().min_w(px(0.0)).overflow_hidden().child(value))
+                        .child(div().flex_1().min_w(sp(0.0)).overflow_hidden().child(value))
                         .child(
                             div()
-                                .text_size(px(10.0))
+                                .text_size(sp(10.0))
                                 .text_color(theme.text_faint)
                                 .child(count.to_string()),
                         )
                         .child(
                             div()
                                 .id(SharedString::from(format!("keyword-add-{keyword}")))
-                                .px(px(3.0))
+                                .px(sp(3.0))
                                 .text_color(theme.text_faint)
                                 .hover(|el| el.text_color(theme.accent))
                                 .child("+")

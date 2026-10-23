@@ -8,7 +8,8 @@
 //! - Watermark: a switch for this export, while Settings ▸ Export ▸
 //!   Watermarks is on; the watermark itself is designed in Settings.
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString, Window};
+use rustyedit_ui::sp;
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString, Window};
 use rustyedit_core::{builtin_export_presets, settings::SETTINGS_PAGES, ExportPreset};
 
 use crate::workspace::{TextTarget, Workspace};
@@ -87,7 +88,7 @@ impl Workspace {
                 .flex_row()
                 .items_center()
                 .gap_1()
-                .h(px(24.0))
+                .h(sp(24.0))
                 .px_2()
                 .rounded_md()
                 .border_1()
@@ -131,7 +132,7 @@ impl Workspace {
                 .flex()
                 .flex_row()
                 .items_center()
-                .h(px(24.0))
+                .h(sp(24.0))
                 .px_2()
                 .rounded_md()
                 .border_1()
@@ -144,13 +145,13 @@ impl Workspace {
                 } else {
                     draft.to_string()
                 })
-                .child(div().w(px(1.0)).h(px(12.0)).ml(px(1.0)).bg(theme.accent))
+                .child(div().w(sp(1.0)).h(sp(12.0)).ml(sp(1.0)).bg(theme.accent))
                 .into_any_element(),
             None => div()
                 .id("export-preset-save")
                 .flex()
                 .items_center()
-                .h(px(24.0))
+                .h(sp(24.0))
                 .px_2()
                 .rounded_md()
                 .border_1()
@@ -223,7 +224,7 @@ impl Workspace {
             .gap_2()
             .child(
                 div()
-                    .min_w(px(0.0))
+                    .min_w(sp(0.0))
                     .overflow_hidden()
                     .text_xs()
                     .text_color(theme.text_faint)

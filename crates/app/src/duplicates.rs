@@ -2,7 +2,8 @@
 //! visually similar photos (dHash distance). Hashing happens during import;
 //! pairing runs in the background the first time the panel is opened.
 
-use gpui::{div, img, prelude::*, px, AnyElement, ClickEvent, Context, ObjectFit, SharedString};
+use rustyedit_ui::sp;
+use gpui::{div, img, prelude::*, AnyElement, ClickEvent, Context, ObjectFit, SharedString};
 use rustyedit_core::{find_duplicates_in, DuplicateGroup, DuplicateKind, PhotoHash};
 
 use crate::{
@@ -80,7 +81,7 @@ impl Workspace {
                 .pb_1()
                 .child(
                     div()
-                        .text_size(px(10.0))
+                        .text_size(sp(10.0))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.accent)
                         .child("DUPLICATES"),
@@ -142,7 +143,7 @@ impl Workspace {
         out.push(
             div()
                 .pb_2()
-                .text_size(px(10.5))
+                .text_size(sp(10.5))
                 .text_color(theme.text_faint)
                 .child(format!(
                     "{exact} exact group{} \u{00B7} {similar} similar group{}",
@@ -182,8 +183,8 @@ impl Workspace {
                     .unwrap_or_else(|| asset.path.clone());
                 Some(
                     div()
-                        .w(px(52.0))
-                        .h(px(40.0))
+                        .w(sp(52.0))
+                        .h(sp(40.0))
                         .overflow_hidden()
                         .bg(theme.background)
                         .child(img(source).object_fit(ObjectFit::Contain).size_full())
@@ -209,14 +210,14 @@ impl Workspace {
                     .justify_between()
                     .child(
                         div()
-                            .text_size(px(9.5))
+                            .text_size(sp(9.5))
                             .font_weight(gpui::FontWeight::BOLD)
                             .text_color(color)
                             .child(title),
                     )
                     .child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(sp(10.0))
                             .text_color(theme.text_faint)
                             .child(format!("{count} photos")),
                     ),
@@ -231,7 +232,7 @@ impl Workspace {
                     .child(
                         div()
                             .flex_1()
-                            .min_w(px(0.0))
+                            .min_w(sp(0.0))
                             .flex()
                             .flex_row()
                             .justify_end()

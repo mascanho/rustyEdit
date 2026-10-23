@@ -4,7 +4,8 @@
 //! Navigator itself is pinned at its top, outside the scrolling sections. As its own
 //! dock it carries that side's icon rail, whose tools can take it over.
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, SharedString};
+use rustyedit_ui::sp;
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString};
 use rustyedit_core::{settings::DockSide, RailTool};
 use rustyedit_ui::{PanelSide, Theme};
 
@@ -160,10 +161,10 @@ pub(super) fn list_row(
         .flex_row()
         .items_center()
         .gap_2()
-        .h(px(24.0))
+        .h(sp(24.0))
         .px_2()
         .cursor_pointer()
-        .text_size(px(11.5))
+        .text_size(sp(11.5))
         .when(active, |el| {
             el.bg(theme.accent_muted).text_color(theme.text)
         })
@@ -174,7 +175,7 @@ pub(super) fn list_row(
         .child(
             div()
                 .flex_1()
-                .min_w(px(0.0))
+                .min_w(sp(0.0))
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .child(name),
@@ -182,7 +183,7 @@ pub(super) fn list_row(
         .children(note.map(|note| {
             div()
                 .flex_shrink_0()
-                .text_size(px(9.5))
+                .text_size(sp(9.5))
                 .text_color(theme.text_faint)
                 .child(note)
         }))
@@ -191,7 +192,7 @@ pub(super) fn list_row(
                 .id("delete")
                 .flex_shrink_0()
                 .px_1()
-                .text_size(px(10.0))
+                .text_size(sp(10.0))
                 .text_color(theme.text_faint)
                 .invisible()
                 .group_hover("develop-list-row", |s| s.visible())
@@ -221,10 +222,10 @@ pub(super) fn add_row(
         .flex_row()
         .items_center()
         .gap_1()
-        .h(px(24.0))
+        .h(sp(24.0))
         .px_2()
         .cursor_pointer()
-        .text_size(px(11.0))
+        .text_size(sp(11.0))
         .text_color(theme.accent)
         .hover(|el| el.bg(theme.surface_elevated))
         .child("+")
@@ -239,12 +240,12 @@ pub(super) fn name_field(theme: &Theme, draft: &str, placeholder: &str) -> AnyEl
         .flex()
         .flex_row()
         .items_center()
-        .h(px(26.0))
+        .h(sp(26.0))
         .px_2()
         .bg(theme.background)
         .border_1()
         .border_color(theme.accent)
-        .text_size(px(11.5))
+        .text_size(sp(11.5))
         .child(
             div()
                 .text_color(if draft.is_empty() {
@@ -258,6 +259,6 @@ pub(super) fn name_field(theme: &Theme, draft: &str, placeholder: &str) -> AnyEl
                     draft.to_string()
                 }),
         )
-        .child(div().w(px(1.0)).h(px(14.0)).ml(px(1.0)).bg(theme.accent))
+        .child(div().w(sp(1.0)).h(sp(14.0)).ml(sp(1.0)).bg(theme.accent))
         .into_any_element()
 }
