@@ -144,13 +144,16 @@ impl Workspace {
                     cx: &mut Context<Self>|
          -> gpui::Stateful<gpui::Div> {
             let entity = cx.entity();
+            // Buttons share the row's width, so the toolbar always fits
+            // the panel exactly, however wide it is.
             div()
                 .id(id)
                 .flex()
-                .flex_shrink_0()
+                .flex_1()
+                .min_w(px(22.0))
                 .items_center()
                 .justify_center()
-                .size(px(28.0))
+                .h(px(28.0))
                 .border_1()
                 .when(active, |el| {
                     el.bg(theme.accent_muted).border_color(theme.accent)
@@ -281,6 +284,7 @@ impl Workspace {
                     .flex()
                     .flex_row()
                     .items_center()
+                    .w_full()
                     .gap_1()
                     .child(save)
                     .child(recipe)
@@ -289,9 +293,17 @@ impl Workspace {
                     .child(import)
                     .child(export)
                     .child(reset)
-                    .child(div().relative().child(options).when(popup_open, |el| {
-                        el.child(deferred(self.presets_options_popup(cx)).with_priority(1))
-                    })),
+                    .child(
+                        div()
+                            .relative()
+                            .flex()
+                            .flex_1()
+                            .min_w(px(22.0))
+                            .child(options)
+                            .when(popup_open, |el| {
+                                el.child(deferred(self.presets_options_popup(cx)).with_priority(1))
+                            }),
+                    ),
             )
             .child(strength)
             .into_any_element()
@@ -789,16 +801,24 @@ impl Workspace {
                 div()
                     .flex_1()
                     .min_w(px(0.0))
-                    .overflow_hidden()
-                    .whitespace_nowrap()
+                    .truncate()
                     .child(preset.name.clone()),
             )
+            // A saved preset's actions float over the row's right end while
+            // it's hovered, so they never take room from the name.
             .when(matches!(entry, Entry::Saved(..)), |el| {
                 el.child(
                     div()
+                        .absolute()
+                        .right(px(22.0))
+                        .top_0()
+                        .bottom_0()
                         .flex()
                         .flex_row()
                         .items_center()
+                        .pl_2()
+                        .rounded_md()
+                        .bg(theme.surface_elevated)
                         .invisible()
                         .group_hover(group.clone(), |s| s.visible())
                         .children(actions),
@@ -814,10 +834,57 @@ impl Workspace {
                         .child("\u{2713}"),
                 )
             })
+            .on_hover({
+                let preset = preset.clone();
+                let scope = scope.clone();
+                cx.listener(move |this, hovered: &bool, _w, cx| {
+                    if *hovered {
+                        this.preview_preset(&preset, amount / 100.0, &scope, cx);
+                    } else {
+                        this.end_preset_preview(&preset.name, cx);
+                    }
+                })
+            })
             .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                 this.apply_preset_blend(&apply_preset, amount / 100.0, &scope, cx)
             }))
             .into_any_element()
+    }
+
+    /// Shows the selected photo as it would look with `preset` applied now
+    /// (at `amount`, for `sections`), without changing it.
+    fn preview_preset(
+        &mut self,
+        preset: &DevelopPreset,
+        amount: f32,
+        sections: &[DevelopSection],
+        cx: &mut Context<Self>,
+    ) {
+        if !self.settings.develop.preset_hover_preview || sections.is_empty() {
+            return;
+        }
+        let Some(asset) = self.catalog.selected_asset() else {
+            return;
+        };
+        let mut next = asset.clone();
+        next.apply_preset(&preset.name, &preset.settings, sections, amount);
+        self.preset_hover = Some(preset.name.clone());
+        self.preview_override = Some(next.develop);
+        self.refresh_live_preview(cx);
+        cx.notify();
+    }
+
+    /// The pointer left `name`'s row: back to the photo's own look (unless
+    /// another preset is already being previewed).
+    fn end_preset_preview(&mut self, name: &str, cx: &mut Context<Self>) {
+        if self.preset_hover.as_deref() != Some(name) {
+            return;
+        }
+        self.preset_hover = None;
+        if self.preview_override.take().is_some() {
+            self.refresh_live_preview(cx);
+            cx.notify();
+        }
     }
 
     /// Gives every target photo the preset's look, at `amount` (0-1) and for
@@ -837,6 +904,9 @@ impl Workspace {
             cx.notify();
             return;
         }
+        // The hovered look becomes the real one.
+        self.preview_override = None;
+        self.preset_hover = None;
         let look = preset.settings;
         let detail = if amount < 1.0 {
             format!("{} ({}%)", preset.name, (amount * 100.0).round())

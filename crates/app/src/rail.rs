@@ -16,6 +16,18 @@ impl Workspace {
                 || self.right_rail_tool == Some(RailTool::Presets))
     }
 
+    /// Opens the Presets panel in the Library's left dock (or closes it if
+    /// it's open), for applying presets while looking at the loupe.
+    pub(crate) fn toggle_library_presets(&mut self, cx: &mut Context<Self>) {
+        if self.library_presets_open() {
+            self.toggle_rail_tool(DockSide::Left, RailTool::Presets, cx);
+            return;
+        }
+        self.left_panel_collapsed = false;
+        self.left_rail_tool = None;
+        self.toggle_rail_tool(DockSide::Left, RailTool::Presets, cx);
+    }
+
     pub(crate) fn active_rail_tool(&self, side: DockSide) -> Option<RailTool> {
         match side {
             DockSide::Left => self.left_rail_tool,
@@ -74,7 +86,12 @@ impl Workspace {
         }
     }
 
-    fn toggle_rail_tool(&mut self, side: DockSide, tool: RailTool, cx: &mut Context<Self>) {
+    pub(crate) fn toggle_rail_tool(
+        &mut self,
+        side: DockSide,
+        tool: RailTool,
+        cx: &mut Context<Self>,
+    ) {
         let slot = match side {
             DockSide::Left => &mut self.left_rail_tool,
             DockSide::Right => &mut self.right_rail_tool,

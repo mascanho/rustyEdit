@@ -494,7 +494,7 @@ impl Default for LayoutSettings {
         Self {
             preset: LayoutPreset::Classic,
             filmstrip_position: FilmstripPosition::Bottom,
-            navigator_width: 260,
+            navigator_width: 280,
             inspector_width: 300,
             filmstrip_height: 80,
         }
@@ -774,6 +774,8 @@ pub struct DevelopPreferences {
     /// The editing panel's section order, by `DevelopSection::key`; empty
     /// for the default. See `DevelopSection::arrange`.
     pub section_order: Vec<String>,
+    /// Hovering a preset shows its look on the photo before it's applied.
+    pub preset_hover_preview: bool,
 }
 
 impl Default for DevelopPreferences {
@@ -783,6 +785,7 @@ impl Default for DevelopPreferences {
             viewer_background: LoupeBackground::Theme,
             tools_expanded_on_startup: true,
             section_order: Vec::new(),
+            preset_hover_preview: true,
         }
     }
 }
@@ -1458,6 +1461,18 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                     control: SettingControl::Toggle {
                         get: |s| s.develop.tools_expanded_on_startup,
                         set: |s, v| s.develop.tools_expanded_on_startup = v,
+                    },
+                }],
+            },
+            SettingsSection {
+                title: "Presets",
+                items: &[SettingItem {
+                    label: "Preview on hover",
+                    description: "Show a preset's look on the photo while the pointer is over \
+                                  it; click to apply it.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.develop.preset_hover_preview,
+                        set: |s, v| s.develop.preset_hover_preview = v,
                     },
                 }],
             },

@@ -10,7 +10,7 @@ use rustyedit_core::AssetState;
 
 use crate::{
     actions::{Redo, Undo},
-    workspace::{Mode, Workspace},
+    workspace::Workspace,
 };
 
 const MAX_ENTRIES: usize = 200;
@@ -160,8 +160,6 @@ impl Workspace {
                 self.select_asset(ix, cx);
             }
         }
-        if self.mode == Mode::Develop {
-            self.request_preview_update(cx);
-        }
+        self.refresh_live_preview(cx);
     }
 }

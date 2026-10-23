@@ -255,6 +255,12 @@ pub struct Workspace {
     pub(crate) xmp_foreign_reported: bool,
     /// The Settings text field being edited (its item's address).
     pub(crate) settings_text_item: Option<usize>,
+
+    /// Settings the live preview shows instead of the selected photo's own,
+    /// while a preset is hovered (see `develop/presets.rs`), and which
+    /// preset that is.
+    pub(crate) preview_override: Option<rustyedit_core::DevelopSettings>,
+    pub(crate) preset_hover: Option<String>,
 }
 
 impl Workspace {
@@ -405,6 +411,8 @@ impl Workspace {
             xmp_known: Default::default(),
             xmp_foreign_reported: false,
             settings_text_item: None,
+            preview_override: None,
+            preset_hover: None,
         };
         // Pick up where the last session left off.
         if !this.catalog_def.folders.is_empty() {
@@ -572,6 +580,9 @@ impl Workspace {
             self.loupe_zoom = None;
         }
         self.preview_epoch += 1;
+        // A hovered preset's preview was for the photo being left.
+        self.preview_override = None;
+        self.preset_hover = None;
         // Another version of the same file (a virtual copy or its
         // original) can keep the decoded photo and just re-render.
         let selected = self
@@ -597,10 +608,10 @@ impl Workspace {
             self.full_source = full;
             self.source_image_path = path;
             self.source_image_for = Some(id);
-            if self.mode == Mode::Develop || self.ba_active() {
+            if self.wants_live_preview() {
                 self.request_preview_update(cx);
             }
-        } else if self.mode == Mode::Develop || self.ba_active() {
+        } else if self.wants_live_preview() {
             self.load_source_image(cx);
         }
         if let Some(pos) = self.catalog.visible_position(self.catalog.selected) {

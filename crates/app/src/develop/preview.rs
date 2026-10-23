@@ -107,6 +107,39 @@ impl LivePreview {
 }
 
 impl Workspace {
+    /// Whether something on screen shows the selected photo rendered with
+    /// its edits: Develop, Before / After, the Library's Presets panel, or
+    /// the Library loupe for an edited photo.
+    pub(crate) fn wants_live_preview(&self) -> bool {
+        use crate::workspace::{LibraryView, Mode};
+        let edited = self
+            .catalog
+            .selected_asset()
+            .is_some_and(|a| a.develop.is_edited());
+        self.mode == Mode::Develop
+            || self.ba_active()
+            || self.library_presets_open()
+            // Not in the cull view: decoding there would slow culling.
+            || (self.mode == Mode::Library
+                && self.library_view == LibraryView::Loupe
+                && !self.cull_view
+                && edited)
+    }
+
+    /// After the selected photo's edits changed: re-renders its preview if
+    /// one is on screen, decoding the photo first if it isn't yet.
+    pub(crate) fn refresh_live_preview(&mut self, cx: &mut Context<Self>) {
+        if !self.wants_live_preview() {
+            return;
+        }
+        let selected = self.catalog.selected_asset().map(|a| a.id);
+        if selected.is_some() && self.source_image_for != selected {
+            self.load_source_image(cx);
+        } else {
+            self.request_preview_update(cx);
+        }
+    }
+
     /// Re-renders the develop pipeline for the current asset's adjustments.
     /// Coalesces rapid changes (e.g. a slider drag) into a single trailing
     /// render instead of queueing one render per mouse-move event.
@@ -126,7 +159,8 @@ impl Workspace {
             return;
         }
 
-        let settings = asset.develop;
+        // A hovered preset is previewed without touching the photo.
+        let settings = self.preview_override.unwrap_or(asset.develop);
         let asset_id = asset.id;
         let epoch = self.preview_epoch;
         let clipping = ClipWarnings {

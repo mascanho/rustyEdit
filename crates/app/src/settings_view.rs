@@ -59,6 +59,11 @@ impl Workspace {
         {
             self.load_source_image(cx);
         }
+        if !self.settings.develop.preset_hover_preview && self.preview_override.is_some() {
+            self.preview_override = None;
+            self.preset_hover = None;
+            self.request_preview_update(cx);
+        }
         if self.settings.culling.enabled && !previous.culling.enabled {
             self.measure_missing_sharpness(cx);
         }

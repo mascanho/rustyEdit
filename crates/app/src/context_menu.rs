@@ -301,6 +301,14 @@ impl Workspace {
                 .hint("\u{21E7}\u{2318}S"),
             );
         }
+        if self.mode == Mode::Library && !self.library_presets_open() {
+            entries.push(action(
+                "ctx-presets",
+                "\u{2726}",
+                "Presets\u{2026}",
+                |this, _w, cx| this.toggle_library_presets(cx),
+            ));
+        }
         entries.push(
             action(
                 "ctx-virtual-copy",

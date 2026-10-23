@@ -541,6 +541,16 @@ impl Workspace {
                         cx.listener(|this, _: &ClickEvent, _window, cx| {
                             this.set_library_view(LibraryView::Survey, cx);
                         }),
+                    ))
+                    .child(div().w(px(1.0)).h(px(16.0)).mx_1().bg(theme.border))
+                    .child(rustyedit_ui::chrome_button(
+                        "library-presets",
+                        "Presets",
+                        self.library_presets_open(),
+                        &theme,
+                        cx.listener(|this, _: &ClickEvent, _window, cx| {
+                            this.toggle_library_presets(cx);
+                        }),
                     )),
             )
             .child(
@@ -571,12 +581,24 @@ impl Workspace {
         let content: AnyElement = match self.catalog.selected_asset() {
             _ if zoomed.is_some() => zoomed.unwrap(),
             Some(_) if comparison.is_some() => comparison.unwrap(),
-            Some(asset) => img(self.loupe_source(asset))
-                .object_fit(ObjectFit::Contain)
-                .size_full()
-                .min_w(px(0.0))
-                .min_h(px(0.0))
-                .into_any_element(),
+            Some(asset) => {
+                // An edited photo shows its edits once they're rendered
+                // (its own file until then).
+                let source: gpui::ImageSource = match (self.source_image_for == Some(asset.id)
+                    && (asset.develop.is_edited() || self.preview_override.is_some()))
+                .then(|| self.live_preview.image())
+                .flatten()
+                {
+                    Some(rendered) => rendered.into(),
+                    None => self.loupe_source(asset).into(),
+                };
+                img(source)
+                    .object_fit(ObjectFit::Contain)
+                    .size_full()
+                    .min_w(px(0.0))
+                    .min_h(px(0.0))
+                    .into_any_element()
+            }
             None => div()
                 .text_color(theme.text_muted)
                 .child("No photo selected")
@@ -689,7 +711,8 @@ impl Workspace {
         // The edited render when it's for this photo, else the file.
         // Unedited photos show their own file, so the preview never looks
         // different from the photo until something has been applied.
-        let live = (self.source_image_for == Some(asset.id) && asset.develop.is_edited())
+        let live = (self.source_image_for == Some(asset.id)
+            && (asset.develop.is_edited() || self.preview_override.is_some()))
             .then(|| self.live_preview.image())
             .flatten();
         let (w, h) = match (&live, self.live_preview.size()) {

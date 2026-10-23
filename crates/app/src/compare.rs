@@ -27,6 +27,9 @@ impl Workspace {
         self.bottom_menu = None;
         if view != LibraryView::Loupe {
             self.loupe_zoom = None;
+        } else {
+            // An edited photo shows its edits in the loupe.
+            self.refresh_live_preview(cx);
         }
         match view {
             LibraryView::Compare => {

@@ -6,7 +6,7 @@ use gpui::{hsla, prelude::*, AnyElement, Context, Hsla};
 use rustyedit_core::{Adjustment, ColorBand, DevelopSettings, GradeProp, MixerProp};
 use rustyedit_ui::{SliderSpec, SliderTrack};
 
-use crate::workspace::{Mode, Workspace};
+use crate::workspace::Workspace;
 
 /// How a whole-state change shows up in each photo's history.
 #[derive(Clone, Copy)]
@@ -215,9 +215,7 @@ impl Workspace {
         if !rotated.is_empty() {
             self.refresh_asset_thumbnails(&rotated, cx);
         }
-        if self.mode == Mode::Develop {
-            self.request_preview_update(cx);
-        }
+        self.refresh_live_preview(cx);
         cx.notify();
     }
 }
