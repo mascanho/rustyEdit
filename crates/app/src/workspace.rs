@@ -962,6 +962,8 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::auto_tone_action))
             .on_action(cx.listener(Self::sync_settings_action))
             .on_action(cx.listener(Self::create_virtual_copy))
+            .on_action(cx.listener(Self::match_look_action))
+            .on_action(cx.listener(Self::preset_from_photo_action))
             .on_action(cx.listener(Self::flag_pick))
             .on_action(cx.listener(Self::flag_reject))
             .on_action(cx.listener(Self::flag_unflag))

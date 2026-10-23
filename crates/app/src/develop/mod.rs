@@ -9,6 +9,7 @@
 //! - `zoom`: Ctrl + wheel zoom around the pointer, Space-drag panning
 //! - `adjustments`: the slider sections and every Develop-settings change
 //! - `auto`: Auto Tone and the white-balance eyedropper
+//! - `look`: Match look and New preset from photo
 //! - `retouch`: Heal and Clone spots, and drawing / dragging them
 //! - `gradients`: Linear and Radial masks with local adjustments
 //! - `sections`: each editing section's title bar (drag grip, reset
@@ -30,6 +31,7 @@ mod detail;
 mod gradients;
 mod grid_overlay;
 mod history;
+mod look;
 mod navigator;
 mod presets;
 mod preview;

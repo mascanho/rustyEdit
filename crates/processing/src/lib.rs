@@ -31,6 +31,7 @@ mod finishing;
 mod geometry;
 mod gpu;
 mod lens;
+mod look;
 mod parallel;
 mod retouch;
 mod sharpen;
@@ -38,6 +39,7 @@ mod tone;
 
 pub use auto::{auto_tone, neutral_white_balance, BalanceError, NeutralBalance};
 pub use cms::{set_display_profile, OutputSpace};
+pub use look::{match_look, preset_from_look, LookStats};
 pub use develop_source::DevelopSource;
 pub use retouch::find_spot_source;
 

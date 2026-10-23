@@ -185,6 +185,24 @@ impl Workspace {
             Box::new(|this, _, cx| this.open_recipe_modal(cx)),
             cx,
         );
+        let from_photo = tool(
+            "preset-from-photo",
+            Icon::PresetFromPhoto,
+            "New preset from a photo: pick any image and save its look",
+            false,
+            !self.develop_ui.auto_busy,
+            Box::new(|this, _, cx| this.preset_from_photo(cx)),
+            cx,
+        );
+        let match_look = tool(
+            "preset-match-look",
+            Icon::MatchLook,
+            "Match look: give the selected photos the look of another image",
+            false,
+            has_photo && !self.develop_ui.auto_busy,
+            Box::new(|this, _, cx| this.match_look(cx)),
+            cx,
+        );
         let import = tool(
             "preset-import",
             Icon::Download,
@@ -266,6 +284,8 @@ impl Workspace {
                     .gap_1()
                     .child(save)
                     .child(recipe)
+                    .child(from_photo)
+                    .child(match_look)
                     .child(import)
                     .child(export)
                     .child(reset)

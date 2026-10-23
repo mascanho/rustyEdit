@@ -80,5 +80,7 @@ actions!(
         AutoTone,
         SyncSettings,
         CreateVirtualCopy,
+        MatchLook,
+        PresetFromPhoto,
     ]
 );

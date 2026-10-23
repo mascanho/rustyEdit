@@ -58,7 +58,7 @@ use actions::{
     ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
 };
 use actions::{
-    AutoTone, CreateVirtualCopy, SyncSettings, ToolWhiteBalance,
+    AutoTone, CreateVirtualCopy, MatchLook, PresetFromPhoto, SyncSettings, ToolWhiteBalance,
     CycleGridStyle, GridLarger, GridSmaller, ToolLinearGradient, ToolRadialGradient,
     ToolSpotRemoval, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp,
     SelectDown, SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
@@ -168,6 +168,8 @@ fn main() {
                     MenuItem::action("Create Virtual Copy", CreateVirtualCopy),
                     MenuItem::action("Sync Settings…", SyncSettings),
                     MenuItem::action("Auto Tone", AutoTone),
+                    MenuItem::action("Match Look to a Photo…", MatchLook),
+                    MenuItem::action("New Preset from a Photo…", PresetFromPhoto),
                     MenuItem::separator(),
                     MenuItem::action("Remove from Catalog", DeleteFromCatalog),
                     MenuItem::action("Move to Trash…", DeleteFromDisk),

@@ -58,6 +58,11 @@ pub enum Icon {
     Eyedropper,
     /// A wand with sparkles: an automatic adjustment.
     Auto,
+    /// A landscape picture with a plus: a preset made from a photo.
+    PresetFromPhoto,
+    /// Two pictures with an arrow between: match one photo's look to
+    /// another's.
+    MatchLook,
 }
 
 /// `icon` drawn `size` pixels square in `color`.
@@ -337,6 +342,21 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
             pen.line(&[(9.2, 4.0), (12.0, 6.8)]);
             pen.shape(&[(10.0, 5.4), (10.6, 6.0), (4.2, 12.4), (3.6, 11.8)]);
             pen.line(&[(3.9, 12.1), (2.0, 14.0)]);
+        }
+        Icon::PresetFromPhoto => {
+            pen.shape(&[(1.5, 3.5), (12.0, 3.5), (12.0, 12.5), (1.5, 12.5)]);
+            pen.line(&[(2.5, 11.0), (5.5, 7.5), (7.5, 9.5), (8.8, 8.2), (11.0, 10.5)]);
+            pen.dot(8.8, 5.8, 0.9);
+            pen.line(&[(13.0, 11.5), (13.0, 15.5)]);
+            pen.line(&[(11.0, 13.5), (15.0, 13.5)]);
+        }
+        Icon::MatchLook => {
+            pen.shape(&[(1.0, 4.5), (6.5, 4.5), (6.5, 11.5), (1.0, 11.5)]);
+            pen.shape(&[(9.5, 4.5), (15.0, 4.5), (15.0, 11.5), (9.5, 11.5)]);
+            pen.line(&[(2.0, 10.5), (3.8, 8.0), (5.5, 10.5)]);
+            pen.line(&[(10.5, 10.5), (12.3, 8.0), (14.0, 10.5)]);
+            pen.line(&[(7.2, 8.0), (8.8, 8.0)]);
+            pen.line(&[(8.0, 7.0), (8.8, 8.0), (8.0, 9.0)]);
         }
         Icon::Auto => {
             // A wand from bottom left, with a star and two sparkles.

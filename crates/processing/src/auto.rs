@@ -319,6 +319,70 @@ pub fn neutral_white_balance(
     })
 }
 
+/// Finds where the two-variable function `f` is (near) zero, starting from
+/// `x0`, each variable kept within `range`: Newton's method with the
+/// Jacobian measured once (steps of `delta`) and then refined from each
+/// step (Broyden), so each step costs one evaluation. Returns the best
+/// point seen.
+pub(crate) fn newton2(
+    mut f: impl FnMut([f32; 2]) -> [f32; 2],
+    x0: [f32; 2],
+    range: (f32, f32),
+    delta: f32,
+    tolerance: f32,
+    steps: usize,
+) -> [f32; 2] {
+    let mut x = x0.map(|v| v.clamp(range.0, range.1));
+    let mut e = f(x);
+    let mut best = (x, norm(e));
+    if best.1 <= tolerance {
+        return x;
+    }
+    let mut jacobian = [[0.0f32; 2]; 2];
+    for i in 0..2 {
+        let mut probe = x;
+        probe[i] += if probe[i] + delta > range.1 { -delta } else { delta };
+        let pe = f(probe);
+        let d = probe[i] - x[i];
+        jacobian[0][i] = (pe[0] - e[0]) / d;
+        jacobian[1][i] = (pe[1] - e[1]) / d;
+    }
+    for _ in 0..steps {
+        let Some(dx) = solve2(jacobian, [-e[0], -e[1]]) else {
+            break;
+        };
+        let next = [
+            (x[0] + dx[0]).clamp(range.0, range.1),
+            (x[1] + dx[1]).clamp(range.0, range.1),
+        ];
+        let step = [next[0] - x[0], next[1] - x[1]];
+        if step[0].abs() + step[1].abs() < 0.05 {
+            break;
+        }
+        let ne = f(next);
+        let de = [ne[0] - e[0], ne[1] - e[1]];
+        let jdx = [
+            jacobian[0][0] * step[0] + jacobian[0][1] * step[1],
+            jacobian[1][0] * step[0] + jacobian[1][1] * step[1],
+        ];
+        let len2 = step[0] * step[0] + step[1] * step[1];
+        for r in 0..2 {
+            for c in 0..2 {
+                jacobian[r][c] += (de[r] - jdx[r]) * step[c] / len2;
+            }
+        }
+        x = next;
+        e = ne;
+        if norm(e) < best.1 {
+            best = (x, norm(e));
+        }
+        if best.1 <= tolerance {
+            break;
+        }
+    }
+    best.0
+}
+
 fn norm(e: [f32; 2]) -> f32 {
     e[0].hypot(e[1])
 }
@@ -363,7 +427,7 @@ fn sample_bgra(bgra: &image::RgbaImage, at: (f32, f32), r: i32) -> [f32; 3] {
 /// point already measured and `guess` where to look first. Uses the secant
 /// method, falling back to the bracket's regula falsi when a step would
 /// leave it; returns the best point seen when the target is out of reach.
-fn solve_increasing(
+pub(crate) fn solve_increasing(
     mut f: impl FnMut(f32) -> f32,
     range: (f32, f32),
     known: (f32, f32),
@@ -429,7 +493,7 @@ fn solve_increasing(
 
 /// The level (0-255, interpolated) below which a share `q` of the pixels
 /// fall.
-fn percentile(bins: &[u32; 256], q: f32) -> f32 {
+pub(crate) fn percentile(bins: &[u32; 256], q: f32) -> f32 {
     let total: u64 = bins.iter().map(|&n| n as u64).sum();
     if total == 0 {
         return 0.0;
