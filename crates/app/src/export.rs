@@ -129,7 +129,14 @@ impl Workspace {
         cx.spawn(async move |this, cx| {
             let folder = cx
                 .background_executor()
-                .spawn(async { rfd::FileDialog::new().pick_folder() })
+                // Async: on its own thread, as the blocking dialog fails on
+                // Windows' background threads (see `start_import`).
+                .spawn(async {
+                    rfd::AsyncFileDialog::new()
+                        .pick_folder()
+                        .await
+                        .map(|handle| handle.path().to_path_buf())
+                })
                 .await;
             if let Some(folder) = folder {
                 this.update(cx, |this, cx| {

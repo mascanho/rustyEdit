@@ -6,6 +6,7 @@
 mod button;
 mod controls;
 mod cull_bar;
+mod cursor;
 mod film_look;
 mod flag_badge;
 mod histogram;
@@ -27,6 +28,7 @@ pub use controls::{mini_toggle_switch, stepper, toggle_switch};
 pub use cull_bar::{
     cull_bar, cull_button, cull_group, cull_nav_button, label_swatch, CULL_BAR_HEIGHT,
 };
+pub use cursor::{GRABBING_CURSOR, GRAB_CURSOR};
 pub use film_look::{EdgePrint, FilmLook, Sprockets};
 pub use flag_badge::flag_badge;
 pub use scopes::{scope_view, SCOPE_HEIGHT};

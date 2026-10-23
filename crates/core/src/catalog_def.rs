@@ -59,6 +59,14 @@ impl CatalogDef {
         self.excluded.clear();
     }
 
+    /// Restores the removed photos inside `folder` (an explicit import of
+    /// it brings them back). Returns whether any were restored.
+    pub fn restore_excluded_in(&mut self, folder: &Path) -> bool {
+        let before = self.excluded.len();
+        self.excluded.retain(|path| !path.starts_with(folder));
+        self.excluded.len() != before
+    }
+
     /// Adds `folder`. A folder already covered by one of the catalog's
     /// folders is ignored; adding a parent of existing folders absorbs them.
     /// Returns whether the set of folders changed.
@@ -109,5 +117,16 @@ mod tests {
         assert!(def.is_excluded(path));
         def.restore_excluded();
         assert!(!def.is_excluded(path));
+    }
+
+    #[test]
+    fn importing_a_folder_restores_its_removed_photos() {
+        let mut def = CatalogDef::new("c", "C");
+        def.exclude(Path::new("/photos/may/a.jpg"));
+        def.exclude(Path::new("/photos/june/b.jpg"));
+        assert!(def.restore_excluded_in(Path::new("/photos/may")));
+        assert!(!def.is_excluded(Path::new("/photos/may/a.jpg")));
+        assert!(def.is_excluded(Path::new("/photos/june/b.jpg")));
+        assert!(!def.restore_excluded_in(Path::new("/photos/may")));
     }
 }

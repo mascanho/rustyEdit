@@ -136,12 +136,30 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// A read-only plot of the parametric curve with its four bands.
+    /// A read-only plot of the parametric curve with its four bands, over
+    /// the photo's histogram like the point curve.
     fn parametric_graph(&self, curve: ParametricCurve, side: f32) -> AnyElement {
         let theme = self.theme;
+        // The parametric curve shapes all channels together, so it's read
+        // against the master (RGB) histogram.
+        let (histogram, _) = self.current_histogram();
+        let histogram_channel = histogram_channel(CurveChannel::Master);
         let plot = canvas(
             |_, _, _| {},
             move |b, _, window, _| {
+                if let Some(histogram) = &histogram {
+                    rustyedit_ui::paint_histogram(
+                        window,
+                        b,
+                        rustyedit_ui::HistogramPaint {
+                            histogram,
+                            channel: histogram_channel,
+                            log_scale: false,
+                            opacity: 0.45,
+                        },
+                        &theme,
+                    );
+                }
                 let (w, h) = (f32::from(b.size.width), f32::from(b.size.height));
                 // Band dividers at the quarter points.
                 for i in 1..4 {

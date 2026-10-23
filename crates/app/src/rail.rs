@@ -116,7 +116,9 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Option<Vec<AnyElement>> {
         match tool {
+            RailTool::Folders => Some(self.navigator_sections(cx)),
             RailTool::History => Some(self.history_sections()),
+            RailTool::Snapshots => Some(self.snapshots_section(cx)),
             RailTool::Collections => Some(self.albums_sections(cx)),
             RailTool::Search => Some(self.search_sections(cx)),
             RailTool::Filters => Some(self.filters_sections(cx)),
@@ -151,7 +153,9 @@ impl Workspace {
         }
         if matches!(
             tool,
-            RailTool::History
+            RailTool::Folders
+                | RailTool::History
+                | RailTool::Snapshots
                 | RailTool::Collections
                 | RailTool::Search
                 | RailTool::Filters
@@ -174,6 +178,7 @@ fn rail_icon(tool: RailTool) -> Icon {
         RailTool::Presets => Icon::Presets,
         RailTool::Duplicates => Icon::Duplicates,
         RailTool::History => Icon::History,
+        RailTool::Snapshots => Icon::Camera,
         RailTool::Info => Icon::Info,
         RailTool::Adjust => Icon::Adjust,
         RailTool::Keywords => Icon::Tag,

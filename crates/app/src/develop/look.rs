@@ -26,12 +26,15 @@ const IMAGE_EXTENSIONS: [&str; 22] = [
     "cr2", "cr3", "nef", "arw", "raf", "orf", "rw2", "pef", "srw", "jxl",
 ];
 
-/// Asks for an image to take a look from.
-fn pick_reference() -> Option<PathBuf> {
-    rfd::FileDialog::new()
+/// Asks for an image to take a look from. (The async dialog, on its own
+/// thread: the blocking one fails on Windows' background threads.)
+async fn pick_reference() -> Option<PathBuf> {
+    rfd::AsyncFileDialog::new()
         .set_title("Choose a photo whose look you want")
         .add_filter("Images", &IMAGE_EXTENSIONS)
         .pick_file()
+        .await
+        .map(|handle| handle.path().to_path_buf())
 }
 
 /// The look of the image at `path`.
@@ -85,7 +88,7 @@ impl Workspace {
         let count = jobs.len();
 
         cx.spawn(async move |this, cx| {
-            let Some(reference) = cx.background_executor().spawn(async { pick_reference() }).await
+            let Some(reference) = cx.background_executor().spawn(pick_reference()).await
             else {
                 return;
             };
@@ -176,7 +179,7 @@ impl Workspace {
             return;
         }
         cx.spawn(async move |this, cx| {
-            let Some(reference) = cx.background_executor().spawn(async { pick_reference() }).await
+            let Some(reference) = cx.background_executor().spawn(pick_reference()).await
             else {
                 return;
             };

@@ -389,11 +389,16 @@ impl Workspace {
                 .size_full()
                 .overflow_scroll()
                 .track_scroll(&self.loupe_scroll)
-                .cursor_grab()
+                .when(self.loupe_drag.is_some(), |el| {
+                    el.cursor(rustyedit_ui::GRABBING_CURSOR)
+                })
+                .when(self.loupe_drag.is_none(), |el| el.cursor(rustyedit_ui::GRAB_CURSOR))
                 .on_mouse_down(
                     MouseButton::Left,
-                    cx.listener(|this, event: &MouseDownEvent, _w, _cx| {
+                    cx.listener(|this, event: &MouseDownEvent, _w, cx| {
                         this.loupe_drag = Some((event.position, this.loupe_scroll.offset()));
+                        // Redraw so the grabbing hand shows straight away.
+                        cx.notify();
                     }),
                 )
                 .child(

@@ -1112,10 +1112,14 @@ impl Workspace {
         cx.spawn(async move |this, cx| {
             let file = cx
                 .background_executor()
+                // Async: the blocking dialog fails on Windows' background
+                // threads.
                 .spawn(async {
-                    rfd::FileDialog::new()
+                    rfd::AsyncFileDialog::new()
                         .add_filter("Presets", &["json"])
                         .pick_file()
+                        .await
+                        .map(|handle| handle.path().to_path_buf())
                 })
                 .await;
             let Some(file) = file else { return };
@@ -1151,10 +1155,12 @@ impl Workspace {
             let file = cx
                 .background_executor()
                 .spawn(async {
-                    rfd::FileDialog::new()
+                    rfd::AsyncFileDialog::new()
                         .set_file_name("rustyedit-presets.json")
                         .add_filter("Presets", &["json"])
                         .save_file()
+                        .await
+                        .map(|handle| handle.path().to_path_buf())
                 })
                 .await;
             let Some(file) = file else { return };

@@ -14,7 +14,7 @@ use crate::{
 };
 
 impl Workspace {
-    pub(super) fn snapshots_section(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    pub(crate) fn snapshots_section(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let theme = self.theme;
         let Some(asset) = self.catalog.selected_asset() else {
             return Vec::new();

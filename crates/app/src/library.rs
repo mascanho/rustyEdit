@@ -591,6 +591,8 @@ impl Workspace {
                 gpui::MouseButton::Right,
                 Self::right_click_listener(cx.entity(), self.catalog.selected),
             )
+            // Holding the mouse down on the photo shows the hand, as a drag.
+            .active(|style| style.cursor(rustyedit_ui::GRABBING_CURSOR))
             .relative()
             .flex_1()
             .min_h(sp(0.0))

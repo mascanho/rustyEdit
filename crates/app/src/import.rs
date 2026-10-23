@@ -24,7 +24,15 @@ impl Workspace {
         cx.spawn(async move |this, cx| {
             let folder = cx
                 .background_executor()
-                .spawn(async { rfd::FileDialog::new().pick_folder() })
+                // The async dialog opens on a thread of its own. The blocking
+                // one fails at once on Windows, whose background threads are
+                // already set up for COM in a mode the dialog can't use.
+                .spawn(async {
+                    rfd::AsyncFileDialog::new()
+                        .pick_folder()
+                        .await
+                        .map(|handle| handle.path().to_path_buf())
+                })
                 .await;
 
             this.update(cx, |this, cx| {
@@ -57,7 +65,11 @@ impl Workspace {
         }
         // Already-covered folders still get rescanned, which picks up any
         // new files; everything already in the library stays as it is.
-        if self.catalog_def.add_folder(&folder) {
+        // Importing a folder again also brings back photos in it that were
+        // removed from the library, rather than skipping them as rescans do.
+        let added = self.catalog_def.add_folder(&folder);
+        let restored = select.is_none() && self.catalog_def.restore_excluded_in(&folder);
+        if added || restored {
             self.save_catalog_def();
         }
         self.import_append = select.is_none();
@@ -255,7 +267,9 @@ impl Workspace {
                 this.install_catalog(catalog, Some(Arc::new(cache)), select, cx);
                 if import_append {
                     this.post_scan_message = Some(
-                        if added == 0 {
+                        if added == 0 && kept == 0 {
+                            "No photos found in that folder.".to_string()
+                        } else if added == 0 {
                             format!(
                                 "No new photos \u{2014} everything was already in the library ({kept} photos)."
                             )

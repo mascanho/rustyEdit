@@ -18,6 +18,8 @@ pub enum Icon {
     Filter,
     Duplicates,
     History,
+    /// A camera: snapshots of a photo's edits.
+    Camera,
     Info,
     Adjust,
     /// An eye: view options.
@@ -214,6 +216,20 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
             pen.arc(8.0, 8.0, 5.5, 200.0, 520.0);
             pen.line(&[(1.3, 4.6), (2.8, 6.1), (4.6, 4.9)]);
             pen.line(&[(8.0, 5.0), (8.0, 8.0), (10.2, 9.4)]);
+        }
+        Icon::Camera => {
+            // A body with a viewfinder hump on top, and the lens.
+            pen.shape(&[
+                (1.5, 5.0),
+                (5.0, 5.0),
+                (6.0, 3.0),
+                (10.0, 3.0),
+                (11.0, 5.0),
+                (14.5, 5.0),
+                (14.5, 13.0),
+                (1.5, 13.0),
+            ]);
+            pen.circle(8.0, 9.0, 2.5);
         }
         Icon::Info => {
             pen.circle(8.0, 8.0, 6.5);

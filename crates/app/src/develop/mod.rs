@@ -155,6 +155,8 @@ impl Workspace {
         let stacked = tools_side == Some(panel_side);
         if stacked {
             panel_children.push(panel_group_heading(&self.theme, "Tools"));
+            panel_children.extend(self.develop_snapshot_history_sections(cx));
+            panel_children.push(panel_group_heading(&self.theme, "Library"));
             panel_children.extend(self.develop_tools_sections(cx));
             panel_children.push(panel_group_heading(&self.theme, "Edit"));
         }

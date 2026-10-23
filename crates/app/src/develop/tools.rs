@@ -1,4 +1,5 @@
-//! Develop's tools column: Navigator, Presets, Snapshots and History. It
+//! Develop's tools column: the Navigator over the folder picker, with
+//! Presets, Snapshots and History opened from its rail. It
 //! sits wherever the layout puts the Navigator: its own dock opposite the
 //! editing panel, stacked above the sliders, or nowhere at all. The
 //! Navigator itself is pinned at its top, outside the scrolling sections. As its own
@@ -9,11 +10,10 @@ use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString};
 use rustyedit_core::{settings::DockSide, RailTool};
 use rustyedit_ui::{PanelSide, Theme};
 
-use crate::{library::panel_group_heading, resize::ResizeTarget, workspace::Workspace};
+use crate::{resize::ResizeTarget, workspace::Workspace};
 
-/// Dock title while it shows the Develop tools and Library's panel,
-/// joined like Library's stacked dock titles.
-const TOOLS_TITLE: &str = "Tools \u{00B7} Library";
+/// Dock title while it shows its own content, the folder picker.
+const TOOLS_TITLE: &str = "Folders";
 
 /// A click handler stored for later, e.g. a row's delete button.
 pub(super) type ClickHandler = Box<dyn Fn(&ClickEvent, &mut gpui::Window, &mut gpui::App)>;
@@ -36,12 +36,20 @@ impl Workspace {
         }
     }
 
-    /// The Develop tools, then Library's Navigator panel (folders, catalog,
-    /// filter) under its own heading, as Library stacks panels that share
-    /// a dock.
+    /// The tools column's own content: Library's Navigator panel (the
+    /// folder picker and catalog). Snapshots and History have their own
+    /// rail tools. (The Navigator preview is pinned above, always shown.)
     pub(super) fn develop_tools_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        // The Navigator isn't here: it's pinned above these, always shown.
-        let mut sections = vec![
+        self.navigator_sections(cx)
+    }
+
+    /// Snapshots and History as folding sections, for the stacked layouts,
+    /// where the editing column has no left rail to open them from.
+    pub(super) fn develop_snapshot_history_sections(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        vec![
             self.disclosure(
                 "develop-snapshots",
                 "Snapshots",
@@ -54,10 +62,7 @@ impl Workspace {
                 self.develop_history_section(cx),
                 cx,
             ),
-        ];
-        sections.push(panel_group_heading(&self.theme, "Library"));
-        sections.extend(self.navigator_sections(cx));
-        sections
+        ]
     }
 
     /// What the tools column shows: the Develop tools, or the rail tool

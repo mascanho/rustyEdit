@@ -42,7 +42,7 @@ impl Workspace {
             .id("develop-viewer")
             .relative()
             .when(grab_fitted, |el| {
-                el.cursor_grab().on_mouse_down(
+                el.cursor(rustyedit_ui::GRAB_CURSOR).on_mouse_down(
                     MouseButton::Left,
                     cx.listener(|this, event: &MouseDownEvent, _w, cx| {
                         this.grab_fitted_develop(event.position, cx);
@@ -53,6 +53,9 @@ impl Workspace {
                 MouseButton::Right,
                 Self::right_click_listener(cx.entity(), self.catalog.selected),
             )
+            // Holding the mouse down on the photo shows the hand, as a
+            // drag. (Tool overlays that place things keep their own cursor.)
+            .active(|style| style.cursor(rustyedit_ui::GRABBING_CURSOR))
             .flex_1()
             .min_w(sp(0.0))
             .overflow_hidden()
@@ -170,8 +173,8 @@ impl Workspace {
             .size_full()
             .overflow_scroll()
             .track_scroll(&zoom.scroll)
-            .when(panning, |el| el.cursor_grabbing())
-            .when(!panning, |el| el.cursor_grab())
+            .when(panning, |el| el.cursor(rustyedit_ui::GRABBING_CURSOR))
+            .when(!panning, |el| el.cursor(rustyedit_ui::GRAB_CURSOR))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, _w, cx| {

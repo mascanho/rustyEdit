@@ -452,11 +452,15 @@ impl Workspace {
         cx.spawn(async move |this, cx| {
             let picked = cx
                 .background_executor()
+                // Async: the blocking dialog fails on Windows' background
+                // threads.
                 .spawn(async move {
-                    rfd::FileDialog::new()
+                    rfd::AsyncFileDialog::new()
                         .set_title("Locate Missing Photo")
                         .set_file_name(&suggested)
                         .pick_file()
+                        .await
+                        .map(|handle| handle.path().to_path_buf())
                 })
                 .await;
             let Some(new_path) = picked else {

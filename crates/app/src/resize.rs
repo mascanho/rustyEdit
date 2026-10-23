@@ -197,7 +197,10 @@ impl Workspace {
         _w: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.loupe_drag = None;
+        // Redraw after a photo drag so the hand cursor goes away.
+        if self.loupe_drag.take().is_some() || self.develop_ui.zoom.pan.is_some() {
+            cx.notify();
+        }
         self.end_develop_drag();
         self.end_histogram_drag();
         self.finish_resize(cx);
