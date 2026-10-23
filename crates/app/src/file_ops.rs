@@ -57,6 +57,113 @@ impl Workspace {
         self.delete_photos(self.target_indices(), from_disk, cx);
     }
 
+    // --- Marked for deletion ---------------------------------------------------
+
+    /// Marks the target photos for deletion, or clears the marks if they
+    /// all have one. Nothing leaves the disk until the user confirms
+    /// "Delete marked".
+    pub(crate) fn toggle_mark_for_deletion(&mut self, cx: &mut Context<Self>) {
+        let targets: Vec<usize> = self
+            .target_indices()
+            .into_iter()
+            .filter(|&ix| self.catalog.assets.get(ix).is_some_and(|a| !a.missing))
+            .collect();
+        let all_marked = !targets.is_empty()
+            && targets
+                .iter()
+                .all(|&ix| self.catalog.assets[ix].marked_delete);
+        self.set_marked_for_deletion(targets, !all_marked, cx);
+    }
+
+    pub(crate) fn set_marked_for_deletion(
+        &mut self,
+        targets: Vec<usize>,
+        marked: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let mut changes = Vec::new();
+        for ix in targets {
+            let Some(asset) = self.catalog.assets.get(ix) else {
+                continue;
+            };
+            if asset.marked_delete == marked {
+                continue;
+            }
+            let before = asset.state();
+            let mut after = before.clone();
+            after.marked_delete = marked;
+            changes.push((ix, before, after));
+        }
+        if changes.is_empty() {
+            return;
+        }
+        let count = changes.len();
+        for (ix, _, after) in &changes {
+            self.catalog.restore_state(*ix, after);
+        }
+        self.push_undo(
+            if marked {
+                "mark for deletion"
+            } else {
+                "unmark for deletion"
+            },
+            changes,
+            false,
+        );
+        self.mark_catalog_dirty(cx);
+        self.status_message = Some(
+            format!(
+                "{} {count} photo{} {} deletion.",
+                if marked { "Marked" } else { "Unmarked" },
+                if count == 1 { "" } else { "s" },
+                if marked { "for" } else { "from" },
+            )
+            .into(),
+        );
+        cx.notify();
+    }
+
+    /// How many photos are queued for deletion.
+    pub(crate) fn marked_count(&self) -> usize {
+        self.catalog
+            .assets
+            .iter()
+            .filter(|a| a.marked_delete && !a.missing)
+            .count()
+    }
+
+    /// Clears every deletion mark.
+    pub(crate) fn clear_deletion_marks(&mut self, cx: &mut Context<Self>) {
+        let marked: Vec<usize> = self
+            .catalog
+            .assets
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.marked_delete)
+            .map(|(ix, _)| ix)
+            .collect();
+        self.set_marked_for_deletion(marked, false, cx);
+    }
+
+    /// Moves every photo marked for deletion to the Trash, after asking
+    /// (the same confirmation as any delete from disk).
+    pub(crate) fn delete_marked(&mut self, cx: &mut Context<Self>) {
+        let marked: Vec<usize> = self
+            .catalog
+            .assets
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.marked_delete)
+            .map(|(ix, _)| ix)
+            .collect();
+        if marked.is_empty() {
+            self.status_message = Some("No photos are marked for deletion.".into());
+            cx.notify();
+            return;
+        }
+        self.delete_photos(marked, true, cx);
+    }
+
     /// "Delete rejected photos…": every rejected photo goes to the Trash,
     /// after confirming (virtual copies just leave the catalog).
     pub(crate) fn delete_rejected(&mut self, cx: &mut Context<Self>) {
@@ -127,8 +234,9 @@ impl Workspace {
                 .spawn(async move {
                     rfd::MessageDialog::new()
                         .set_title("Move to Trash?")
+                        .set_level(rfd::MessageLevel::Warning)
                         .set_description(format!(
-                            "Move {count} photo{} to the Trash? The originals will be removed from disk.",
+                            "Move {count} photo{} to the Trash (Recycle Bin on Windows)? The original files will be removed from their folders; you can still restore them from the Trash.",
                             if count == 1 { "" } else { "s" }
                         ))
                         .set_buttons(rfd::MessageButtons::YesNo)

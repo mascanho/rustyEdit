@@ -95,6 +95,11 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         if !self.ba_screen() {
+            if self.ba_photo_edited() {
+                return;
+            }
+            self.status_message = Some("Before / After needs a photo that has been edited.".into());
+            cx.notify();
             return;
         }
         let next = if self.ba.mode == BaMode::Off {
@@ -105,13 +110,23 @@ impl Workspace {
         self.set_ba_mode(next, cx);
     }
 
-    /// Whether this screen can show a comparison: Develop, or the loupe.
-    fn ba_screen(&self) -> bool {
-        match self.mode {
+    /// Whether the selected photo has edits worth comparing against.
+    pub(crate) fn ba_photo_edited(&self) -> bool {
+        self.catalog
+            .selected_asset()
+            .is_some_and(|asset| asset.develop.is_edited())
+    }
+
+    /// Whether this screen can show a comparison: Develop, or the loupe,
+    /// for a photo that has been edited (an untouched photo has nothing to
+    /// compare).
+    pub(crate) fn ba_screen(&self) -> bool {
+        let screen = match self.mode {
             Mode::Develop => true,
             Mode::Library => self.library_view == LibraryView::Loupe,
             Mode::Export => false,
-        }
+        };
+        screen && self.ba_photo_edited()
     }
 
     /// Comparison is on and this screen shows it.
@@ -120,6 +135,9 @@ impl Workspace {
     }
 
     pub(crate) fn set_ba_mode(&mut self, mode: BaMode, cx: &mut Context<Self>) {
+        if mode != BaMode::Off && !self.ba_photo_edited() {
+            return;
+        }
         self.ba.mode = mode;
         if mode != BaMode::Off {
             self.ba.last = mode;

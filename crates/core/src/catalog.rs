@@ -668,6 +668,7 @@ impl Catalog {
             asset.stack_id = state.stack_id;
             asset.stack_cover = state.stack_cover;
             asset.applied_preset = state.applied_preset.clone();
+            asset.marked_delete = state.marked_delete;
         }
         self.refresh();
     }

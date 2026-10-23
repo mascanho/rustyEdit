@@ -26,31 +26,80 @@ const EXIF_GROUPS: &[(&str, &[(&str, Tag)])] = &[
         &[
             ("Make", Tag::Make),
             ("Model", Tag::Model),
-            ("Lens", Tag::LensModel),
             ("Serial", Tag::BodySerialNumber),
+            ("Owner", Tag::CameraOwnerName),
             ("Software", Tag::Software),
+        ],
+    ),
+    (
+        "Lens",
+        &[
+            ("Lens", Tag::LensModel),
+            ("Make", Tag::LensMake),
+            ("Specification", Tag::LensSpecification),
+            ("Serial", Tag::LensSerialNumber),
+            ("Max aperture", Tag::MaxApertureValue),
         ],
     ),
     (
         "Exposure",
         &[
             ("Program", Tag::ExposureProgram),
+            ("Mode", Tag::ExposureMode),
             ("Metering", Tag::MeteringMode),
             ("Exposure comp.", Tag::ExposureBiasValue),
-            ("Flash", Tag::Flash),
-            ("White balance", Tag::WhiteBalance),
+            ("Shutter value", Tag::ShutterSpeedValue),
+            ("Aperture value", Tag::ApertureValue),
+            ("Brightness", Tag::BrightnessValue),
+            ("ISO type", Tag::SensitivityType),
+            ("Gain", Tag::GainControl),
+        ],
+    ),
+    (
+        "Optics",
+        &[
             ("Focal length (35mm)", Tag::FocalLengthIn35mmFilm),
+            ("Subject distance", Tag::SubjectDistance),
+            ("Digital zoom", Tag::DigitalZoomRatio),
+            ("Flash", Tag::Flash),
+            ("Light source", Tag::LightSource),
+            ("White balance", Tag::WhiteBalance),
+            ("Scene type", Tag::SceneCaptureType),
+            ("Sensing method", Tag::SensingMethod),
+        ],
+    ),
+    (
+        "Rendering",
+        &[
+            ("Contrast", Tag::Contrast),
+            ("Saturation", Tag::Saturation),
+            ("Sharpness", Tag::Sharpness),
+            ("Colour space", Tag::ColorSpace),
+            ("Orientation", Tag::Orientation),
+        ],
+    ),
+    (
+        "Dates",
+        &[
+            ("Taken", Tag::DateTimeOriginal),
+            ("Digitised", Tag::DateTimeDigitized),
+            ("Modified", Tag::DateTime),
         ],
     ),
     (
         "Image",
         &[
-            ("Taken", Tag::DateTimeOriginal),
-            ("Colour space", Tag::ColorSpace),
-            ("Orientation", Tag::Orientation),
-            ("Artist", Tag::Artist),
-            ("Copyright", Tag::Copyright),
+            ("Width", Tag::PixelXDimension),
+            ("Height", Tag::PixelYDimension),
+            ("Resolution X", Tag::XResolution),
+            ("Resolution Y", Tag::YResolution),
+            ("Resolution unit", Tag::ResolutionUnit),
+            ("Description", Tag::ImageDescription),
         ],
+    ),
+    (
+        "Rights",
+        &[("Artist", Tag::Artist), ("Copyright", Tag::Copyright)],
     ),
 ];
 
@@ -71,6 +120,14 @@ pub fn read_metadata(path: &Path, dimensions: Option<(u32, u32)>) -> Metadata {
     }
     if let Ok(md) = std::fs::metadata(path) {
         file_rows.push(("Size", format_bytes(md.len())));
+        for (label, time) in [("Created", md.created()), ("Modified", md.modified())] {
+            if let Some(text) = time.ok().and_then(file_time_text) {
+                file_rows.push((label, text));
+            }
+        }
+    }
+    if let Some(folder) = path.parent() {
+        file_rows.push(("Folder", folder.display().to_string()));
     }
     meta.groups.push(MetaGroup {
         title: "File",
@@ -111,9 +168,20 @@ pub fn read_metadata(path: &Path, dimensions: Option<(u32, u32)>) -> Metadata {
     }
 
     if let Some(gps) = gps_text(&exif) {
+        let mut rows = vec![("GPS", gps)];
+        for (label, tag) in [
+            ("Altitude", Tag::GPSAltitude),
+            ("Direction", Tag::GPSImgDirection),
+            ("Speed", Tag::GPSSpeed),
+            ("Date", Tag::GPSDateStamp),
+        ] {
+            if let Some(value) = display(&exif, tag) {
+                rows.push((label, value));
+            }
+        }
         meta.groups.push(MetaGroup {
             title: "Location",
-            rows: vec![("GPS", gps)],
+            rows,
         });
     }
     meta
@@ -150,6 +218,26 @@ fn format_shutter(seconds: f64) -> String {
     } else {
         format!("{} s", trim_float(seconds))
     }
+}
+
+/// "2024-05-17 14:03" for a file time (UTC).
+fn file_time_text(time: std::time::SystemTime) -> Option<String> {
+    let secs = time.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64;
+    let z = secs.div_euclid(86_400) + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    let rem = secs.rem_euclid(86_400);
+    Some(format!(
+        "{year:04}-{month:02}-{day:02} {:02}:{:02}",
+        rem / 3600,
+        rem % 3600 / 60
+    ))
 }
 
 fn format_bytes(bytes: u64) -> String {

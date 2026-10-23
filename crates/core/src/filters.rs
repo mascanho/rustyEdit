@@ -95,6 +95,9 @@ pub struct FilterSet {
     pub focal: Option<FocalBand>,
     /// `Some(true)` = has Develop edits, `Some(false)` = untouched.
     pub edited: Option<bool>,
+    /// `Some(true)` = only photos marked for deletion, `Some(false)` = only
+    /// those that are not.
+    pub marked: Option<bool>,
     /// One keyword that every visible photo must carry (matched
     /// case-insensitively).
     pub keyword: Option<String>,
@@ -116,6 +119,7 @@ impl FilterSet {
             self.iso.is_some(),
             self.focal.is_some(),
             self.edited.is_some(),
+            self.marked.is_some(),
             self.keyword.is_some(),
             !self.search.trim().is_empty(),
         ]
@@ -174,6 +178,11 @@ impl FilterSet {
                 return false;
             }
         }
+        if let Some(marked) = self.marked {
+            if asset.marked_delete != marked {
+                return false;
+            }
+        }
         if let Some(keyword) = &self.keyword {
             if !asset
                 .keywords
@@ -207,5 +216,46 @@ impl FilterSet {
             }
         }
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn the_marked_for_deletion_filter_selects_only_marked_photos() {
+        let plain = Asset::new(1, PathBuf::from("/photos/a.jpg"));
+        let mut marked = Asset::new(2, PathBuf::from("/photos/b.jpg"));
+        marked.marked_delete = true;
+
+        let only_marked = FilterSet {
+            marked: Some(true),
+            ..Default::default()
+        };
+        assert!(only_marked.is_active());
+        assert!(only_marked.matches(&marked));
+        assert!(!only_marked.matches(&plain));
+
+        let not_marked = FilterSet {
+            marked: Some(false),
+            ..Default::default()
+        };
+        assert!(not_marked.matches(&plain) && !not_marked.matches(&marked));
+        assert!(FilterSet::default().matches(&marked));
+    }
+
+    #[test]
+    fn marks_survive_a_state_round_trip() {
+        let mut catalog = crate::Catalog::new(
+            PathBuf::from("/photos"),
+            vec![Asset::new(1, PathBuf::from("/photos/a.jpg"))],
+        );
+        let mut state = catalog.assets[0].state();
+        state.marked_delete = true;
+        catalog.restore_state(0, &state);
+        assert!(catalog.assets[0].marked_delete);
+        assert!(catalog.assets[0].state().marked_delete);
     }
 }

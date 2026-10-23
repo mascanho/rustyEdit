@@ -231,6 +231,13 @@ impl Workspace {
 
     /// Re-reads drives and every expanded folder, picking up changes made
     /// on disk since they were first listed.
+    /// Folds every folder back up to the top-level places.
+    fn collapse_file_tree(&mut self, cx: &mut Context<Self>) {
+        self.file_tree.expanded.clear();
+        self.file_tree.rows_dirty = true;
+        cx.notify();
+    }
+
     fn refresh_file_tree(&mut self, cx: &mut Context<Self>) {
         self.file_tree.listings.clear();
         self.file_tree.load_roots();
@@ -319,10 +326,30 @@ impl Workspace {
                         let row = rows[ix].clone();
                         let is_catalog = this.catalog.has_folder(&row.path)
                             && matches!(row.kind, RowKind::Folder { .. });
+                        // Folders in the catalog show how many photos they
+                        // hold and can be removed from it.
+                        let photos = is_catalog.then(|| {
+                            this.catalog
+                                .assets
+                                .iter()
+                                .filter(|a| a.path.starts_with(&row.path))
+                                .count()
+                        });
+                        let remove_entity = entity.clone();
+                        let remove_path = row.path.clone();
+                        let remove: Option<RemoveFolder> = is_catalog.then(|| {
+                            Box::new(move |_: &ClickEvent, _w: &mut gpui::Window, cx: &mut gpui::App| {
+                                cx.stop_propagation();
+                                let path = remove_path.clone();
+                                remove_entity.update(cx, |this, cx| {
+                                    this.remove_folder_from_catalog(path, cx)
+                                });
+                            }) as RemoveFolder
+                        });
                         let is_selected = selected_photo.as_ref() == Some(&row.path)
                             && row.kind == RowKind::Photo;
                         let entity = entity.clone();
-                        tree_row(ix, &row, is_catalog, is_selected, &theme)
+                        tree_row(ix, &row, is_catalog, is_selected, photos, remove, &theme)
                             .on_click(move |event: &ClickEvent, _window, cx| {
                                 let row = row.clone();
                                 let clicks = event.click_count();
@@ -337,23 +364,38 @@ impl Workspace {
         .track_scroll(self.file_tree.scroll.clone())
         .h(px(height));
 
+        let tool = |id: &'static str, icon: Icon, tip: &'static str| {
+            div()
+                .id(id)
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(sp(22.0))
+                .cursor_pointer()
+                .hover(|el| el.bg(theme.surface_elevated))
+                .tooltip(rustyedit_ui::tip(tip, &theme))
+                .child(rustyedit_ui::icon(icon, 13.0, theme.text_muted))
+        };
         let toolbar = div()
             .flex()
             .flex_row()
             .items_center()
-            .justify_between()
-            .text_xs()
-            .text_color(theme.text_faint)
-            .child("Double-click a folder to open it")
-            .child(rustyedit_ui::glyph_button(
-                "folder-tree-refresh",
-                "\u{21BB}",
-                "Refresh folders",
-                theme.text_muted,
-                true,
-                &theme,
-                cx.listener(|this, _: &ClickEvent, _window, cx| this.refresh_file_tree(cx)),
-            ));
+            .justify_end()
+            .gap_0p5()
+            .child(
+                tool("folder-tree-add", Icon::Plus, "Add a folder to the catalog")
+                    .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.start_import(cx))),
+            )
+            .child(
+                tool("folder-tree-collapse", Icon::Minus, "Collapse all")
+                    .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                        this.collapse_file_tree(cx)
+                    })),
+            )
+            .child(
+                tool("folder-tree-refresh", Icon::Reset, "Refresh")
+                    .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.refresh_file_tree(cx))),
+            );
 
         self.disclosure(
             "folders",
@@ -384,11 +426,16 @@ impl Workspace {
 /// Size of a folder row's expand chevron.
 const CHEVRON_SIZE: f32 = 12.0;
 
+/// Click handler for a catalog folder's remove button.
+type RemoveFolder = Box<dyn Fn(&ClickEvent, &mut gpui::Window, &mut gpui::App)>;
+
 fn tree_row(
     ix: usize,
     row: &TreeRow,
     is_catalog: bool,
     is_selected: bool,
+    photos: Option<usize>,
+    remove: Option<RemoveFolder>,
     theme: &Theme,
 ) -> gpui::Stateful<gpui::Div> {
     let theme = *theme;
@@ -440,6 +487,8 @@ fn tree_row(
 
     div()
         .id(("folder-tree-row", ix))
+        .group("folder-tree-row")
+        .tooltip(rustyedit_ui::tip(row.path.display().to_string(), &theme))
         .flex()
         .flex_row()
         .items_center()
@@ -473,5 +522,35 @@ fn tree_row(
                 .children(chevron.map(|chevron| rustyedit_ui::icon(chevron, CHEVRON_SIZE, theme.text_muted))),
         )
         .child(icon)
-        .child(div().min_w(sp(0.0)).truncate().child(row.name.clone()))
+        .child(
+            div()
+                .flex_1()
+                .min_w(sp(0.0))
+                .truncate()
+                .child(row.name.clone()),
+        )
+        .children(photos.map(|count| {
+            div()
+                .flex_shrink_0()
+                .text_size(sp(10.0))
+                .text_color(theme.text_faint)
+                .child(count.to_string())
+        }))
+        .children(remove.map(|remove| {
+            div()
+                .id(("folder-tree-remove", ix))
+                .flex_shrink_0()
+                .px_1()
+                .text_size(sp(10.0))
+                .text_color(theme.text_faint)
+                .invisible()
+                .group_hover("folder-tree-row", |s| s.visible())
+                .hover(|el| el.text_color(theme.danger))
+                .tooltip(rustyedit_ui::tip(
+                    "Remove from catalog (files are not deleted)",
+                    &theme,
+                ))
+                .child(rustyedit_ui::icon(Icon::Close, 10.0, theme.text_muted))
+                .on_click(remove)
+        }))
 }

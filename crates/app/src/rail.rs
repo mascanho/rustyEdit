@@ -9,6 +9,14 @@ use rustyedit_ui::{Icon, PanelSide, RailButton};
 use crate::workspace::Workspace;
 
 impl Workspace {
+    /// The Info tab is showing in the Library, so the photo's metadata is
+    /// wanted.
+    pub(crate) fn library_info_tab_open(&self) -> bool {
+        self.mode == crate::workspace::Mode::Library
+            && !self.right_panel_collapsed
+            && self.active_rail_tool(DockSide::Right) == Some(RailTool::Info)
+    }
+
     /// The Presets tab is open in a Library dock.
     pub(crate) fn library_presets_open(&self) -> bool {
         self.mode == crate::workspace::Mode::Library
@@ -31,6 +39,11 @@ impl Workspace {
     pub(crate) fn active_rail_tool(&self, side: DockSide) -> Option<RailTool> {
         match side {
             DockSide::Left => self.left_rail_tool,
+            // In the Library the right column's icons are tabs: one is
+            // always showing, Info by default.
+            DockSide::Right if self.mode == crate::workspace::Mode::Library => {
+                self.right_rail_tool.or(Some(RailTool::Info))
+            }
             DockSide::Right => self.right_rail_tool,
         }
     }
@@ -92,11 +105,15 @@ impl Workspace {
         tool: RailTool,
         cx: &mut Context<Self>,
     ) {
+        // The Library's right-hand icons are tabs, so clicking the open one
+        // keeps it open rather than closing it.
+        let tabs = side == DockSide::Right && self.mode == crate::workspace::Mode::Library;
+        let current = self.active_rail_tool(side);
         let slot = match side {
             DockSide::Left => &mut self.left_rail_tool,
             DockSide::Right => &mut self.right_rail_tool,
         };
-        *slot = if *slot == Some(tool) {
+        *slot = if current == Some(tool) && !tabs {
             None
         } else {
             Some(tool)
@@ -124,8 +141,10 @@ impl Workspace {
             RailTool::Filters => Some(self.filters_sections(cx)),
             RailTool::Presets => Some(self.presets_sections(cx)),
             RailTool::Keywords => Some(self.keywords_sections(cx)),
+            RailTool::Info => Some(self.info_tab_sections(cx)),
+            RailTool::Details => Some(self.details_tab_sections(cx)),
+            RailTool::Adjust => Some(self.adjust_tab_sections(cx)),
             RailTool::Duplicates => Some(self.duplicates_sections(cx)),
-            _ => None,
         }
     }
 
@@ -147,6 +166,9 @@ impl Workspace {
             }
             return;
         }
+        if tool == RailTool::Info {
+            self.request_metadata(cx);
+        }
         if tool == RailTool::Duplicates {
             self.ensure_duplicates(cx);
             return;
@@ -161,6 +183,9 @@ impl Workspace {
                 | RailTool::Filters
                 | RailTool::Presets
                 | RailTool::Keywords
+                | RailTool::Info
+                | RailTool::Details
+                | RailTool::Adjust
         ) {
             return; // Shown in the dock itself; nothing to announce.
         }
@@ -180,6 +205,7 @@ fn rail_icon(tool: RailTool) -> Icon {
         RailTool::History => Icon::History,
         RailTool::Snapshots => Icon::Camera,
         RailTool::Info => Icon::Info,
+        RailTool::Details => Icon::Edit,
         RailTool::Adjust => Icon::Adjust,
         RailTool::Keywords => Icon::Tag,
     }

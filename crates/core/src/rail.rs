@@ -20,6 +20,7 @@ pub enum RailTool {
     Snapshots,
     // Right rail: working on the selected photo.
     Info,
+    Details,
     Adjust,
     Keywords,
 }
@@ -38,7 +39,12 @@ impl RailTool {
                 RailTool::History,
                 RailTool::Snapshots,
             ],
-            DockSide::Right => &[RailTool::Info, RailTool::Adjust, RailTool::Keywords],
+            DockSide::Right => &[
+                RailTool::Info,
+                RailTool::Details,
+                RailTool::Adjust,
+                RailTool::Keywords,
+            ],
         }
     }
 
@@ -51,6 +57,7 @@ impl RailTool {
             RailTool::Presets => "Presets",
             RailTool::Duplicates => "Duplicates",
             RailTool::Info => "Info",
+            RailTool::Details => "Details",
             RailTool::Adjust => "Adjust",
             RailTool::Keywords => "Keywords",
             RailTool::History => "History",

@@ -33,6 +33,7 @@ mod grid_overlay;
 mod history;
 mod look;
 mod navigator;
+pub(crate) use navigator::navigator_size;
 mod presets;
 mod preview;
 mod recipe_modal;
@@ -180,7 +181,7 @@ impl Workspace {
                     .child(self.render_tool_strip(cx))
                     // Stacked layouts keep the Navigator in view here.
                     .when(stacked, |el| {
-                        el.child(self.render_navigator(navigator::MAX_HEIGHT_SHARED, cx))
+                        el.child(self.render_navigator(cx))
                     })
                     .into_any_element(),
             ),

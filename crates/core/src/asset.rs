@@ -60,6 +60,7 @@ pub struct AssetState {
     pub stack_id: Option<u64>,
     pub stack_cover: bool,
     pub applied_preset: Option<AppliedPreset>,
+    pub marked_delete: bool,
 }
 
 /// The preset that makes up a photo's look. Only one applies at a time:
@@ -143,6 +144,11 @@ pub struct Asset {
     /// The preset currently making up the photo's look, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applied_preset: Option<AppliedPreset>,
+    /// Queued to be deleted from disk (moved to the Trash) once the user
+    /// confirms. Separate from the Rejected flag, which only hides a photo
+    /// from view; this one means the file itself is to go.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub marked_delete: bool,
     /// Set when the file recorded in the catalog no longer exists on disk.
     /// Runtime-only: it is recomputed on every scan, so it is never saved.
     #[serde(skip)]
@@ -177,6 +183,7 @@ impl Asset {
             copy_name: None,
             sharpness: None,
             applied_preset: None,
+            marked_delete: false,
             missing: false,
         }
     }
@@ -201,6 +208,7 @@ impl Asset {
         self.snapshots = old.snapshots.clone();
         self.copy_name = old.copy_name.clone();
         self.applied_preset = old.applied_preset.clone();
+        self.marked_delete = old.marked_delete;
         if old.content_hash != 0 {
             self.content_hash = old.content_hash;
         }
@@ -342,6 +350,7 @@ impl Asset {
             stack_id: self.stack_id,
             stack_cover: self.stack_cover,
             applied_preset: self.applied_preset.clone(),
+            marked_delete: self.marked_delete,
         }
     }
 

@@ -3,25 +3,41 @@
 //! so while fitted zooms to 100% there. It's always on screen, pinned at
 //! the top of the tools column rather than in a foldable section.
 
-use rustyedit_ui::sp;
 use gpui::{
     canvas, div, img, prelude::*, px, AnyElement, Context, MouseButton, MouseDownEvent, ObjectFit,
     Pixels, Point,
 };
+use rustyedit_ui::sp;
 
 use crate::workspace::Workspace;
 
 /// Tallest the Navigator's picture gets, so portrait photos don't push the
 /// other tools off screen: in its own column, and when it shares the
 /// editing column with the histogram.
-pub(super) const MAX_HEIGHT: f32 = 200.0;
-pub(super) const MAX_HEIGHT_SHARED: f32 = 130.0;
+///
+/// The Library's Navigator preview uses the same numbers, so the picture is
+/// the same size in both modules.
+pub(crate) const NAVIGATOR_MAX_HEIGHT: f32 = 180.0;
 /// Horizontal room the dock's padding takes from its width.
-const DOCK_PADDING: f32 = 28.0;
+pub(crate) const NAVIGATOR_PADDING: f32 = 24.0;
+
+/// The Navigator picture's size for a photo of `w` x `h` in a dock
+/// `dock_width` wide: as wide as the dock allows, no taller than
+/// [`NAVIGATOR_MAX_HEIGHT`].
+pub(crate) fn navigator_size(dock_width: f32, w: f32, h: f32) -> (f32, f32) {
+    let (w, h) = (w.max(1.0), h.max(1.0));
+    let mut width = (dock_width - NAVIGATOR_PADDING).max(40.0);
+    let mut height = width * h / w;
+    if height > NAVIGATOR_MAX_HEIGHT {
+        height = NAVIGATOR_MAX_HEIGHT;
+        width = height * w / h;
+    }
+    (width, height)
+}
 
 impl Workspace {
-    /// The Navigator, at most `max_height` tall.
-    pub(super) fn render_navigator(&self, max_height: f32, cx: &mut Context<Self>) -> AnyElement {
+    /// The Navigator, sized by [`navigator_size`].
+    pub(super) fn render_navigator(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
         let header = div()
             .flex()
@@ -59,13 +75,7 @@ impl Workspace {
 
         // Size the picture to the photo's proportions so the frame maps
         // straight onto it.
-        let max_width = self.develop_tools_width() - DOCK_PADDING;
-        let mut width = max_width;
-        let mut height = width * h / w;
-        if height > max_height {
-            height = max_height;
-            width = height * w / h;
-        }
+        let (width, height) = navigator_size(self.develop_tools_width(), w, h);
 
         let bounds = self.develop_ui.navigator_bounds.clone();
         let frame = self.develop_visible_region().map(|(left, top, fw, fh)| {
@@ -111,7 +121,7 @@ impl Workspace {
             .text_color(theme.text_faint)
             .text_center()
             .child(match self.develop_ui.zoom.scale {
-                None => "Click to zoom to 100%",
+                None => "",
                 Some(_) => "Drag the frame to move around",
             });
 
@@ -120,7 +130,6 @@ impl Workspace {
             .flex_col()
             .child(header)
             .child(picture)
-            .child(caption)
             .into_any_element()
     }
 

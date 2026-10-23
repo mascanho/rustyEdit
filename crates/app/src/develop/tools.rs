@@ -74,7 +74,14 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> (SharedString, Vec<AnyElement>) {
         match self.active_rail_tool(side) {
-            Some(RailTool::History) => ("History".into(), self.develop_history_section(cx)),
+            Some(RailTool::History) => (
+                "History".into(),
+                vec![div()
+                    .px_3()
+                    .pt_2()
+                    .children(self.develop_history_section(cx))
+                    .into_any_element()],
+            ),
             Some(tool) => match self.rail_tool_content(tool, cx) {
                 Some(content) => (tool.label().into(), content),
                 None => (TOOLS_TITLE.into(), self.develop_tools_sections(cx)),
@@ -97,7 +104,7 @@ impl Workspace {
             self.develop_tools_content(side, cx)
         };
         let navigator =
-            (!collapsed).then(|| self.render_navigator(super::navigator::MAX_HEIGHT, cx));
+            (!collapsed).then(|| self.render_navigator(cx));
         // The Presets tab pins its controls under the Navigator.
         let navigator = if !collapsed && self.active_rail_tool(side) == Some(RailTool::Presets) {
             Some(

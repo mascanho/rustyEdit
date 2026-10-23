@@ -222,7 +222,10 @@ impl Workspace {
                     .gap_0p5()
                     .child(div().w(sp(1.0)).h(sp(16.0)).mx_1().bg(theme.border))
                     .child(zoom)
-                    .child(self.before_after_menu_button(cx))
+                    // Only an edited photo has anything to compare.
+                    .when(self.ba_photo_edited(), |el| {
+                        el.child(self.before_after_menu_button(cx))
+                    })
                     .child(self.grid_menu_button(cx))
                     .child(self.view_menu_button(cx)),
             )
@@ -662,21 +665,23 @@ impl Workspace {
                     })
             }))
             .child(div().h(sp(1.0)).my_1().bg(theme.border_subtle))
-            .child(item(
-                "view-before-after",
-                "Before / After",
-                "\\",
-                self.ba.mode != crate::before_after::BaMode::Off,
-                true,
-                |this, cx| {
-                    let next = if this.ba.mode == crate::before_after::BaMode::Off {
-                        crate::before_after::BaMode::Split
-                    } else {
-                        crate::before_after::BaMode::Off
-                    };
-                    this.set_ba_mode(next, cx);
-                },
-            ))
+            .when(self.ba_photo_edited(), |el| {
+                el.child(item(
+                    "view-before-after",
+                    "Before / After",
+                    "\\",
+                    self.ba.mode != crate::before_after::BaMode::Off,
+                    true,
+                    |this, cx| {
+                        let next = if this.ba.mode == crate::before_after::BaMode::Off {
+                            crate::before_after::BaMode::Split
+                        } else {
+                            crate::before_after::BaMode::Off
+                        };
+                        this.set_ba_mode(next, cx);
+                    },
+                ))
+            })
             .child(item(
                 "view-zoom",
                 "Zoom to 100%",

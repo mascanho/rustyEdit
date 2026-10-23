@@ -215,6 +215,23 @@ impl Workspace {
             .when(style == GridStyle::Minimal, |el| {
                 el.children(minimal_badges(asset, &theme))
             })
+            .when(asset.marked_delete, |el| {
+                el.child(
+                    div()
+                        .absolute()
+                        .bottom(sp(4.0))
+                        .right(sp(4.0))
+                        .size(sp(18.0))
+                        .rounded_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(theme.danger)
+                        .text_color(gpui::white())
+                        .text_size(sp(11.0))
+                        .child("\u{2326}"),
+                )
+            })
             .when(grid.hover_controls, |el| {
                 el.child(card_controls(asset_ix, entity, &theme))
             })
@@ -608,6 +625,13 @@ fn card_controls(asset_ix: usize, entity: &Entity<Workspace>, theme: &Theme) -> 
                     "Reject (X)",
                     theme.reject,
                     |this, cx| this.apply_cull(CullOp::Flag(Flag::Rejected), cx),
+                ))
+                .child(button(
+                    "grid-mark-delete",
+                    "\u{2326}",
+                    "Mark for deletion (asks before deleting)",
+                    theme.danger,
+                    |this, cx| this.toggle_mark_for_deletion(cx),
                 ))
                 .child(button(
                     "grid-remove",

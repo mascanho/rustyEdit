@@ -19,7 +19,7 @@ pub(crate) enum HistoryNote<'a> {
 
 impl Workspace {
     /// A slider per adjustment (Basic, Color, Detail, Effects).
-    pub(super) fn adjustment_sliders(
+    pub(crate) fn adjustment_sliders(
         &self,
         adjustments: &[Adjustment],
         cx: &mut Context<Self>,

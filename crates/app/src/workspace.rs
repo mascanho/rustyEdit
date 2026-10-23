@@ -95,6 +95,8 @@ pub enum TextTarget {
     Album,
     SmartCollection,
     NewCatalog,
+    /// Renaming a catalog from the switcher menu.
+    RenameCatalog,
     /// Live: every keystroke updates the library's text search.
     Search,
     Title,
@@ -189,6 +191,11 @@ pub struct Workspace {
     pub(crate) catalog_def: rustyedit_core::CatalogDef,
     pub(crate) catalog_list: Vec<rustyedit_core::CatalogDef>,
     pub(crate) catalog_menu_open: bool,
+    /// The catalog (by id) being renamed in the switcher menu.
+    pub(crate) catalog_renaming: Option<String>,
+    /// Catalogs whose folder list in the left column is flipped from its
+    /// default (open for the active catalog, closed for the others).
+    pub(crate) catalog_tree_toggled: std::collections::HashSet<String>,
     /// The text field currently being typed into, if any.
     pub(crate) text_draft: Option<(TextTarget, String)>,
     /// Asset index the rename draft applies to (the selection may move while
@@ -396,6 +403,8 @@ impl Workspace {
             catalog_def,
             catalog_list,
             catalog_menu_open: false,
+            catalog_renaming: None,
+            catalog_tree_toggled: Default::default(),
             text_draft: None,
             rename_target: None,
             pending_sync_report: false,
@@ -677,7 +686,7 @@ impl Workspace {
         self.request_histogram(cx);
         self.request_loupe(cx);
         self.prefetch_cull_neighbours(cx);
-        if self.info_visible {
+        if self.info_visible || self.library_info_tab_open() {
             self.request_metadata(cx);
         }
         cx.notify();

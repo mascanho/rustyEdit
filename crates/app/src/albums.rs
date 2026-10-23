@@ -522,6 +522,7 @@ impl Workspace {
             }
             TextTarget::SmartCollection => self.create_smart_collection(&text, cx),
             TextTarget::NewCatalog => self.create_catalog(&text, cx),
+            TextTarget::RenameCatalog => self.rename_catalog(&text, cx),
             TextTarget::Keyword => self.apply_keywords(vec![text], cx),
             TextTarget::Rename => self.commit_rename(text, cx),
             TextTarget::PresetName => self.save_preset(text, cx),

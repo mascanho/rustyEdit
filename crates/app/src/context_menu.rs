@@ -215,6 +215,21 @@ impl Workspace {
             .hint("U")
             .checked(same_flag == Some(Flag::Unflagged)),
         );
+        // Queue it for deletion without deleting yet.
+        let all_marked = assets.iter().all(|a| a.marked_delete);
+        entries.push(
+            action(
+                "ctx-mark-delete",
+                "\u{2326}",
+                if all_marked {
+                    "Unmark for deletion"
+                } else {
+                    "Mark for deletion"
+                },
+                |this, _w, cx| this.toggle_mark_for_deletion(cx),
+            )
+            .checked(all_marked),
+        );
         // Not just reject: actually get rid of the photo.
         entries.push(
             action(
@@ -396,6 +411,18 @@ impl Workspace {
             .iter()
             .filter(|a| a.flag == Flag::Rejected && !a.missing)
             .count();
+        let marked = self.marked_count();
+        if marked > 0 {
+            entries.push(action(
+                "ctx-delete-marked",
+                "\u{2326}",
+                format!(
+                    "Delete {marked} marked photo{}\u{2026}",
+                    if marked == 1 { "" } else { "s" }
+                ),
+                |this, _w, cx| this.delete_marked(cx),
+            ));
+        }
         if rejected > 0 {
             entries.push(action(
                 "ctx-delete-rejected",

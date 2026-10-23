@@ -28,6 +28,7 @@ mod import;
 mod before_after;
 mod edited_thumbs;
 mod info_overlay;
+mod inspector_tabs;
 mod keywords;
 mod library;
 mod maintenance;

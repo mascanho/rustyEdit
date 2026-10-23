@@ -207,6 +207,9 @@ impl Workspace {
         let presets_tab = takeover
             .as_ref()
             .is_some_and(|(tool, _)| *tool == rustyedit_core::RailTool::Presets);
+        let info_tab = takeover
+            .as_ref()
+            .is_some_and(|(tool, _)| *tool == rustyedit_core::RailTool::Info);
         let taken_over = takeover.is_some();
         if let Some((_, content)) = takeover {
             children = content;
@@ -260,13 +263,22 @@ impl Workspace {
                     let preview = (side == DockSide::Left)
                         .then(|| self.library_navigator_preview(width));
                     let presets = presets_tab.then(|| self.presets_pinned(cx));
-                    (preview.is_some() || presets.is_some()).then(|| {
+                    // The Info tab keeps its histogram fixed; only what is
+                    // below it scrolls.
+                    let histogram = info_tab.then(|| {
+                        div()
+                            .px_3()
+                            .child(self.render_histogram_panel(cx))
+                            .into_any_element()
+                    });
+                    (preview.is_some() || presets.is_some() || histogram.is_some()).then(|| {
                         div()
                             .flex()
                             .flex_col()
                             .gap_2()
                             .children(preview)
                             .children(presets)
+                            .children(histogram)
                             .into_any_element()
                     })
                 },
@@ -317,68 +329,18 @@ impl Workspace {
 
     /// Folders and catalog overview. (Filters live in the Filters rail tool.)
     pub(crate) fn navigator_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let theme = self.theme;
-        let counts = self.catalog.counts();
+        // The catalogs, with the folders inside each. The title bar's
+        // dropdown stays the quick overview.
+        let catalog = self.render_catalog_tree(cx);
 
-        let catalog = rustyedit_ui::section(
-            &theme,
-            "Catalog",
-            vec![
-                info_row(&theme, "Catalog", self.catalog_def.name.clone()),
-                info_row(
-                    &theme,
-                    "Folders",
-                    self.catalog_def.folders.len().to_string(),
-                ),
-                info_row(&theme, "Photos", counts.total.to_string()),
-            ],
-        )
-        .into_any_element();
-
-        let mut sections = vec![self.render_folder_tree(cx), catalog];
+        let mut sections = vec![catalog, self.render_folder_tree(cx)];
         sections.extend(self.missing_sections(cx));
         sections
     }
 
-    /// Histogram ("Main") and the selected photo's metadata.
-    fn inspector_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    /// Flag, rating and colour label for the selected photo(s).
+    pub(crate) fn quick_cull_section(&self, asset: &rustyedit_core::Asset, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
-        let mut metadata = Vec::new();
-
-        if let Some(asset) = self.catalog.selected_asset() {
-            let dimensions = if asset.width > 0 && asset.height > 0 {
-                format!("{} × {}", asset.width, asset.height)
-            } else {
-                "—".to_string()
-            };
-            let location = asset
-                .path
-                .parent()
-                .map(|p| p.display().to_string())
-                .unwrap_or_default();
-
-            metadata.push(
-                rustyedit_ui::section(
-                    &theme,
-                    "Info",
-                    [
-                        Some(info_row(&theme, "File", asset.file_name())),
-                        asset
-                            .copy_name
-                            .clone()
-                            .map(|name| info_row(&theme, "Virtual copy", name)),
-                        Some(info_row(&theme, "Size", dimensions)),
-                        Some(info_row(&theme, "Location", location)),
-                        Some(self.file_actions_row(cx)),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    .collect(),
-                )
-                .into_any_element(),
-            );
-            metadata.extend(self.metadata_sections(cx));
-
             let entity = cx.entity();
             let flags = div()
                 .flex()
@@ -436,8 +398,7 @@ impl Workspace {
                 }),
             );
 
-            metadata.push(
-                rustyedit_ui::section(
+            rustyedit_ui::section(
                     &theme,
                     "Quick Cull",
                     vec![
@@ -457,10 +418,67 @@ impl Workspace {
                             .into_any_element(),
                         ),
                         labeled_row(&theme, "Label", swatches.into_any_element()),
+                        labeled_row(
+                            &theme,
+                            "Delete",
+                            rustyedit_ui::glyph_button(
+                                "library-mark-delete",
+                                "\u{2326}",
+                                "Mark for deletion from disk (asks before deleting)",
+                                theme.danger,
+                                asset.marked_delete,
+                                &theme,
+                                cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                    this.toggle_mark_for_deletion(cx)
+                                }),
+                            )
+                            .into_any_element(),
+                        ),
                     ],
+                )
+                .into_any_element()
+    }
+
+    /// Histogram ("Main") and the selected photo's metadata.
+    fn inspector_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let theme = self.theme;
+        let mut metadata = Vec::new();
+
+        if let Some(asset) = self.catalog.selected_asset() {
+            let dimensions = if asset.width > 0 && asset.height > 0 {
+                format!("{} × {}", asset.width, asset.height)
+            } else {
+                "—".to_string()
+            };
+            let location = asset
+                .path
+                .parent()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+
+            metadata.push(
+                rustyedit_ui::section(
+                    &theme,
+                    "Info",
+                    [
+                        Some(info_row(&theme, "File", asset.file_name())),
+                        asset
+                            .copy_name
+                            .clone()
+                            .map(|name| info_row(&theme, "Virtual copy", name)),
+                        Some(info_row(&theme, "Size", dimensions)),
+                        Some(info_row(&theme, "Location", location)),
+                        Some(self.file_actions_row(cx)),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect(),
                 )
                 .into_any_element(),
             );
+            metadata.extend(self.metadata_sections(cx));
+
+            metadata.push(self.quick_cull_section(asset, cx));
         }
 
         if metadata.is_empty() {
@@ -606,7 +624,9 @@ impl Workspace {
             .child(content)
             .children(split)
             .children(self.ba_pill(true, cx))
-            .when(!self.ba_active(), |el| el.child(self.ba_start_button(cx)))
+            .when(!self.ba_active() && self.ba_photo_edited(), |el| {
+                el.child(self.ba_start_button(cx))
+            })
             .children(self.render_info_overlay(cx))
             .on_click(cx.listener(|this, event: &ClickEvent, _window, cx| {
                 if event.click_count() >= 2 {
@@ -643,7 +663,6 @@ impl Workspace {
     /// renders them so applying a preset shows straight away).
     fn library_navigator_preview(&self, dock_width: f32) -> AnyElement {
         let theme = self.theme;
-        const MAX_HEIGHT: f32 = 170.0;
         let header = |name: String| {
             div()
                 .flex()
@@ -651,7 +670,7 @@ impl Workspace {
                 .justify_between()
                 .items_baseline()
                 .gap_2()
-                .pb_1()
+                .pb_1p5()
                 .child(
                     div()
                         .flex_shrink_0()
@@ -699,13 +718,8 @@ impl Workspace {
         } else {
             (w, h)
         };
-        let max_width = (dock_width - 16.0).max(40.0);
-        let mut width = max_width;
-        let mut height = width * h / w.max(1.0);
-        if height > MAX_HEIGHT {
-            height = MAX_HEIGHT;
-            width = height * w / h.max(1.0);
-        }
+        // The same size as Develop's Navigator.
+        let (width, height) = crate::develop::navigator_size(dock_width, w, h);
         let source: gpui::ImageSource = match live {
             Some(image) => image.into(),
             None => self.loupe_source(asset).into(),
@@ -722,6 +736,7 @@ impl Workspace {
                     .h(px(height))
                     .mx_auto()
                     .overflow_hidden()
+                    .rounded_sm()
                     .bg(theme.background)
                     .child(img(source).object_fit(ObjectFit::Contain).size_full()),
             )
@@ -767,7 +782,7 @@ impl Workspace {
 }
 
 /// A muted label above a value, for read-only facts in the side panels.
-fn info_row(theme: &Theme, label: &'static str, value: impl Into<SharedString>) -> AnyElement {
+pub(crate) fn info_row(theme: &Theme, label: &'static str, value: impl Into<SharedString>) -> AnyElement {
     div()
         .flex()
         .flex_col()
@@ -795,7 +810,7 @@ pub(crate) fn panel_group_heading(theme: &Theme, label: &'static str) -> AnyElem
 }
 
 /// A label on the left with an interactive control on the right.
-fn labeled_row(theme: &Theme, label: &'static str, control: AnyElement) -> AnyElement {
+pub(crate) fn labeled_row(theme: &Theme, label: &'static str, control: AnyElement) -> AnyElement {
     div()
         .flex()
         .flex_row()

@@ -18,6 +18,7 @@ impl Workspace {
             return div().into_any_element();
         };
         let (flag, rating, label) = (asset.flag, asset.rating, asset.color_label);
+        let marked = asset.marked_delete;
         let visible = self.catalog.visible_indices().len();
         let position = self.catalog.visible_position(self.catalog.selected);
         let selected_count = self.target_indices().len();
@@ -102,6 +103,24 @@ impl Workspace {
                     "P",
                     theme.pick,
                 ),
+                {
+                    // Queue for deletion from disk; nothing is deleted until
+                    // the user confirms.
+                    let entity = cx.entity();
+                    rustyedit_ui::cull_button(
+                        "cull-mark-delete",
+                        "\u{2326}",
+                        "Delete",
+                        "Mark for deletion from disk (asks before deleting)",
+                        theme.danger,
+                        marked,
+                        &theme,
+                        move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
+                            entity.update(cx, |this, cx| this.toggle_mark_for_deletion(cx));
+                        },
+                    )
+                    .into_any_element()
+                },
             ],
         )
         .into_any_element();

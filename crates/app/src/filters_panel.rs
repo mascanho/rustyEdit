@@ -417,7 +417,66 @@ impl Workspace {
             )
         })
         .collect();
+        let mut flag_rows = flag_rows;
+        // Photos queued to be deleted from disk, as a filter of their own
+        // (alongside Rejected, which only hides them).
+        let marked = self.marked_count();
+        flag_rows.push(self.facet_row(
+            "filter-marked",
+            "Marked for deletion",
+            marked,
+            filters.marked == Some(true),
+            Some(theme.danger),
+            cx,
+            |f| toggle(&mut f.marked, true),
+        ));
         out.push(self.facet_group("FLAG", flag_rows));
+        if marked > 0 {
+            out.push(
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap_1()
+                    .pt_2()
+                    .child(
+                        div()
+                            .id("filters-delete-marked")
+                            .flex_1()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .justify_center()
+                            .gap_1p5()
+                            .h(rustyedit_ui::sp(28.0))
+                            .cursor_pointer()
+                            .border_1()
+                            .border_color(theme.danger.opacity(0.6))
+                            .bg(theme.danger.opacity(0.12))
+                            .text_size(rustyedit_ui::sp(11.5))
+                            .text_color(theme.danger)
+                            .hover(|el| el.bg(theme.danger.opacity(0.22)))
+                            .tooltip(rustyedit_ui::tip(
+                                "Move the marked photos to the Trash (asks first)",
+                                &theme,
+                            ))
+                            .child(rustyedit_ui::icon(rustyedit_ui::Icon::Close, 12.0, theme.danger))
+                            .child(format!("Delete {marked} marked\u{2026}"))
+                            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                                this.delete_marked(cx)
+                            })),
+                    )
+                    .child(rustyedit_ui::chrome_button(
+                        "filters-clear-marks",
+                        "Clear marks",
+                        false,
+                        &theme,
+                        cx.listener(|this, _: &ClickEvent, _w, cx| {
+                            this.clear_deletion_marks(cx)
+                        }),
+                    ))
+                    .into_any_element(),
+            );
+        }
 
         // Star rating
         let mut rating_options = vec![

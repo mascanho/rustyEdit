@@ -26,6 +26,12 @@ pub enum Icon {
     View,
     /// A 3x3 grid: composition guides.
     Grid,
+    /// A cross: close / remove.
+    Close,
+    /// A pencil: rename.
+    Edit,
+    /// A tick.
+    Check,
     /// An arrow down into a tray: import.
     Download,
     /// An arrow up out of a tray: export.
@@ -248,6 +254,15 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
             // The "after" half is filled in.
             pen.solid(&[(8.0, 3.0), (14.0, 3.0), (14.0, 13.0), (8.0, 13.0)]);
         }
+        Icon::Close => {
+            pen.line(&[(4.0, 4.0), (12.0, 12.0)]);
+            pen.line(&[(12.0, 4.0), (4.0, 12.0)]);
+        }
+        Icon::Edit => {
+            pen.line(&[(3.0, 13.0), (3.6, 10.2), (11.0, 2.8), (13.2, 5.0), (5.8, 12.4), (3.0, 13.0)]);
+            pen.line(&[(9.4, 4.4), (11.6, 6.6)]);
+        }
+        Icon::Check => pen.line(&[(3.0, 8.5), (6.5, 12.0), (13.0, 4.5)]),
         Icon::Download => {
             pen.line(&[(8.0, 2.0), (8.0, 10.0)]);
             pen.line(&[(4.5, 6.8), (8.0, 10.2), (11.5, 6.8)]);

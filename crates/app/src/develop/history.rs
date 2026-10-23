@@ -34,37 +34,50 @@ impl Workspace {
         };
         let at_original = standing.is_none() && !current.is_edited();
 
+        // Oldest at the top ("Original"), the latest change at the bottom,
+        // with whatever lies after the current state faded: stepping back
+        // keeps the later changes there to step forward to.
         let now = now_secs();
-        let mut rows: Vec<AnyElement> = asset
-            .history
-            .iter()
-            .enumerate()
-            .rev()
-            .map(|(ix, entry)| {
-                let row = history_row(
-                    &theme,
-                    entry,
-                    relative_time(now, entry.at),
-                    standing == Some(ix),
-                    false,
-                );
-                self.step_target(("develop-history", ix), entry.develop, row, cx)
-            })
-            .collect();
+        let mut rows: Vec<AnyElement> = Vec::new();
         rows.push(self.step_target(
             ("develop-history", usize::MAX),
             original.develop,
-            history_row(&theme, &original, String::new(), at_original, true),
+            history_row(
+                &theme,
+                usize::MAX,
+                &original,
+                String::new(),
+                at_original,
+                false,
+            ),
             cx,
         ));
+        rows.extend(asset.history.iter().enumerate().map(|(ix, entry)| {
+            let row = history_row(
+                &theme,
+                ix,
+                entry,
+                relative_time(now, entry.at),
+                standing == Some(ix),
+                match standing {
+                    Some(current) => ix > current,
+                    None => at_original,
+                },
+            );
+            self.step_target(("develop-history", ix), entry.develop, row, cx)
+        }));
 
         if asset.history.is_empty() {
-            rows.insert(
-                0,
-                empty_note(&theme, "Edits you make to this photo will appear here."),
-            );
+            return vec![empty_note(&theme, "Edits will be listed here.")];
         }
-        rows
+        vec![div()
+            .flex()
+            .flex_col()
+            .bg(theme.background.opacity(0.45))
+            .border_1()
+            .border_color(theme.border_subtle)
+            .children(rows)
+            .into_any_element()]
     }
 
     /// Makes a history row clickable when it carries a Develop state.
@@ -73,17 +86,16 @@ impl Workspace {
         &self,
         id: (&'static str, usize),
         develop: Option<DevelopSettings>,
-        row: AnyElement,
+        row: gpui::Stateful<gpui::Div>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let theme = self.theme;
         let Some(develop) = develop else {
-            return div().opacity(0.6).child(row).into_any_element();
+            // Flags, ratings and labels have no edit state to step to.
+            return row.opacity(0.6).into_any_element();
         };
         div()
             .id(id)
-            .rounded_md()
-            .px_1()
             .cursor_pointer()
             .hover(|el| el.bg(theme.surface_elevated))
             .child(row)
