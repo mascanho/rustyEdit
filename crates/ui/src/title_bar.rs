@@ -1,4 +1,4 @@
-use gpui::{div, prelude::*, px, AnyElement, MouseButton, SharedString};
+use gpui::{div, prelude::*, px, AnyElement, MouseButton, SharedString, WindowControlArea};
 
 use crate::theme::Theme;
 
@@ -41,11 +41,29 @@ pub fn title_bar(
         }))
         .pr_2()
         .gap_3()
-        .on_mouse_down(MouseButton::Left, |_, window, _| {
-            window.start_window_move();
+        // Windows has no imperative "start a move" call; instead the OS asks
+        // the window what's under the cursor, and gpui answers HTCAPTION for
+        // a `Drag` control area. That also gives the native double-click to
+        // maximise and Aero Snap for free.
+        //
+        // gpui first replays that native mouse-down through the element tree
+        // and swallows it if anything handles it, and a focus-tracking parent
+        // (the workspace root) always does. Occluding the bar hides it from
+        // everything behind, so the press falls through to the OS drag.
+        .when(cfg!(target_os = "windows"), |bar| {
+            bar.occlude().window_control_area(WindowControlArea::Drag)
+        })
+        .when(!cfg!(target_os = "windows"), |bar| {
+            bar.on_mouse_down(MouseButton::Left, |_, window, _| {
+                window.start_window_move();
+            })
         })
         .child(
+            // The button groups occlude the drag area behind them, otherwise
+            // Windows would treat clicks on them as title-bar drags.
             div()
+                .id("title-bar-left")
+                .occlude()
                 .flex()
                 .flex_row()
                 .items_center()
@@ -63,6 +81,8 @@ pub fn title_bar(
         )
         .child(
             div()
+                .id("title-bar-right")
+                .occlude()
                 .flex()
                 .flex_row()
                 .items_center()
