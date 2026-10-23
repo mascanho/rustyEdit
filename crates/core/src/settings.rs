@@ -22,6 +22,8 @@ pub struct Settings {
     pub grid: GridSettings,
     pub appearance: AppearanceSettings,
     pub culling: CullingSettings,
+    pub export: ExportSettings,
+    pub sidecars: SidecarSettings,
 }
 
 // --- Appearance -------------------------------------------------------------------
@@ -313,6 +315,61 @@ impl Default for LibrarySettings {
             auto_advance: false,
             loupe_background: LoupeBackground::Theme,
             sort: crate::catalog::SortOrder::default(),
+        }
+    }
+}
+
+// --- Export -------------------------------------------------------------------
+
+/// Export presets and the watermark.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ExportSettings {
+    /// Show the preset picker at the top of the Export panel.
+    pub presets_enabled: bool,
+    /// The user's own presets (the built-in ones aren't stored).
+    pub presets: Vec<crate::ExportPreset>,
+    /// Allow watermarks on exports. Off: none is ever stamped, and the
+    /// Export panel doesn't offer it.
+    pub watermark_enabled: bool,
+    pub watermark: crate::Watermark,
+}
+
+impl Default for ExportSettings {
+    fn default() -> Self {
+        Self {
+            presets_enabled: true,
+            presets: Vec::new(),
+            watermark_enabled: false,
+            watermark: crate::Watermark::default(),
+        }
+    }
+}
+
+// --- Sidecars ------------------------------------------------------------------
+
+/// XMP sidecar files next to the photos.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SidecarSettings {
+    /// Write a sidecar for each photo whenever its rating, flag, label,
+    /// keywords, metadata or edits change. Off by default: it creates
+    /// files in the photo folders.
+    pub write: bool,
+    /// Include the edits (the tone sliders in a form other apps read, and
+    /// this app's full settings).
+    pub include_edits: bool,
+    /// When importing photos the catalog doesn't know yet, take their
+    /// rating, label, keywords and metadata from existing sidecars.
+    pub read_on_import: bool,
+}
+
+impl Default for SidecarSettings {
+    fn default() -> Self {
+        Self {
+            write: false,
+            include_edits: true,
+            read_on_import: true,
         }
     }
 }
@@ -795,6 +852,13 @@ pub enum SettingControl {
         get: fn(&Settings) -> i64,
         set: fn(&mut Settings, i64),
     },
+    /// A line of text, edited in place.
+    Text {
+        /// Shown while it's empty.
+        placeholder: &'static str,
+        get: fn(&Settings) -> String,
+        set: fn(&mut Settings, String),
+    },
     /// Pick one of several options shown as large cards with a visual
     /// preview. The row's label and description sit above the cards.
     Cards {
@@ -963,6 +1027,128 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                 ],
             },
         ],
+    },
+    SettingsPage {
+        title: "Export",
+        sections: &[
+            SettingsSection {
+                title: "Presets",
+                items: &[SettingItem {
+                    label: "Export presets",
+                    description: "Show saved export setups (Web, Instagram, Client proofs, \
+                                  your own) at the top of the Export panel.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.export.presets_enabled,
+                        set: |s, v| s.export.presets_enabled = v,
+                    },
+                }],
+            },
+            SettingsSection {
+                title: "Watermark",
+                items: &[
+                    SettingItem {
+                        label: "Watermarks",
+                        description: "Allow a text watermark on exported photos. Turn it on \
+                                      per export in the Export panel (or in a preset).",
+                        control: SettingControl::Toggle {
+                            get: |s| s.export.watermark_enabled,
+                            set: |s, v| s.export.watermark_enabled = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Text",
+                        description: "What the watermark says.",
+                        control: SettingControl::Text {
+                            placeholder: "\u{00A9} Your Name",
+                            get: |s| s.export.watermark.text.clone(),
+                            set: |s, v| s.export.watermark.text = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Position",
+                        description: "Where on the photo it goes.",
+                        control: SettingControl::Choice {
+                            options: &["Bottom right", "Bottom left", "Top right", "Top left", "Centre"],
+                            get: |s| s.export.watermark.position.index(),
+                            set: |s, ix| {
+                                s.export.watermark.position = crate::WatermarkPosition::from_index(ix)
+                            },
+                        },
+                    },
+                    SettingItem {
+                        label: "Size",
+                        description: "Text height, as a percentage of the photo's long edge.",
+                        control: SettingControl::Stepper {
+                            min: 1,
+                            max: 15,
+                            step: 1,
+                            unit: "%",
+                            get: |s| s.export.watermark.size as i64,
+                            set: |s, v| s.export.watermark.size = v.clamp(1, 15) as u8,
+                        },
+                    },
+                    SettingItem {
+                        label: "Opacity",
+                        description: "How solid the text is.",
+                        control: SettingControl::Stepper {
+                            min: 10,
+                            max: 100,
+                            step: 10,
+                            unit: "%",
+                            get: |s| s.export.watermark.opacity as i64,
+                            set: |s, v| s.export.watermark.opacity = v.clamp(10, 100) as u8,
+                        },
+                    },
+                    SettingItem {
+                        label: "Colour",
+                        description: "White suits most photos; black suits bright ones.",
+                        control: SettingControl::Choice {
+                            options: &["White", "Black"],
+                            get: |s| usize::from(!s.export.watermark.white),
+                            set: |s, ix| s.export.watermark.white = ix == 0,
+                        },
+                    },
+                ],
+            },
+        ],
+    },
+    SettingsPage {
+        title: "Sidecars (XMP)",
+        sections: &[SettingsSection {
+            title: "XMP sidecar files",
+            items: &[
+                SettingItem {
+                    label: "Write sidecars",
+                    description: "Keep a small .xmp file next to each photo with its rating, \
+                                  reject flag, colour label, keywords and metadata, so other \
+                                  apps can read them and they survive a lost catalog. \
+                                  Sidecars made by other apps are never overwritten.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.sidecars.write,
+                        set: |s, v| s.sidecars.write = v,
+                    },
+                },
+                SettingItem {
+                    label: "Include edits",
+                    description: "Also store the edits: the basic tone sliders in the form \
+                                  Lightroom reads, and this app's full settings.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.sidecars.include_edits,
+                        set: |s, v| s.sidecars.include_edits = v,
+                    },
+                },
+                SettingItem {
+                    label: "Read sidecars on import",
+                    description: "When importing photos that are new to the catalog, take \
+                                  their rating, label, keywords and metadata (and edits made \
+                                  here) from existing sidecars.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.sidecars.read_on_import,
+                        set: |s, v| s.sidecars.read_on_import = v,
+                    },
+                },
+            ],
+        }],
     },
     SettingsPage {
         title: "Grid",

@@ -65,6 +65,10 @@ pub enum TextTarget {
     RecipeExposure,
     /// Naming a new snapshot of the selected photo.
     SnapshotName,
+    /// A text setting in the Settings window (see `settings_text_item`).
+    SettingText,
+    /// Naming a new export preset.
+    ExportPresetName,
 }
 
 /// What the Library module's center area shows: the selected photo large
@@ -243,6 +247,14 @@ pub struct Workspace {
     pub(crate) cull_cache: std::cell::RefCell<Option<(u64, Rc<rustyedit_core::CullInfo>)>>,
     pub(crate) cull_view: bool,
     pub(crate) cull_made_fullscreen: bool,
+
+    /// XMP sidecars (see `rustyedit_io::xmp`): what each photo's sidecar
+    /// was last found or made to be, so saves only rewrite changed ones,
+    /// and whether skipped foreign sidecars were already reported.
+    pub(crate) xmp_known: Arc<std::sync::Mutex<HashMap<PathBuf, u64>>>,
+    pub(crate) xmp_foreign_reported: bool,
+    /// The Settings text field being edited (its item's address).
+    pub(crate) settings_text_item: Option<usize>,
 }
 
 impl Workspace {
@@ -257,6 +269,15 @@ impl Workspace {
             let unsaved = this.catalog_dirty || this.catalog_save_in_flight;
             if unsaved && this.catalog.folder.is_some() {
                 let _ = rustyedit_io::save_catalog(&this.catalog);
+                if this.settings.sidecars.write {
+                    if let Ok(mut known) = this.xmp_known.lock() {
+                        rustyedit_io::xmp::sync_sidecars(
+                            &this.catalog.assets,
+                            this.settings.sidecars.include_edits,
+                            &mut known,
+                        );
+                    }
+                }
             }
             async {}
         });
@@ -381,6 +402,9 @@ impl Workspace {
             cull_cache: Default::default(),
             cull_view: false,
             cull_made_fullscreen: false,
+            xmp_known: Default::default(),
+            xmp_foreign_reported: false,
+            settings_text_item: None,
         };
         // Pick up where the last session left off.
         if !this.catalog_def.folders.is_empty() {
@@ -462,17 +486,50 @@ impl Workspace {
         self.catalog_save_in_flight = true;
 
         let snapshot = self.catalog.clone();
-        let save = cx
-            .background_executor()
-            .spawn(async move { rustyedit_io::save_catalog(&snapshot) });
+        // Sidecars are brought up to date in the same background job.
+        let sidecars = self
+            .settings
+            .sidecars
+            .write
+            .then(|| (self.settings.sidecars.include_edits, self.xmp_known.clone()));
+        let save = cx.background_executor().spawn(async move {
+            let saved = rustyedit_io::save_catalog(&snapshot);
+            let report = sidecars.and_then(|(include_edits, known)| {
+                let mut known = known.lock().ok()?;
+                Some(rustyedit_io::xmp::sync_sidecars(
+                    &snapshot.assets,
+                    include_edits,
+                    &mut known,
+                ))
+            });
+            (saved, report)
+        });
 
         cx.spawn(async move |this, cx| {
-            let result = save.await;
+            let (result, report) = save.await;
             this.update(cx, |this, cx| {
                 this.catalog_save_in_flight = false;
                 if let Err(err) = result {
                     this.status_message = Some(format!("Couldn't save catalog: {err}").into());
                     cx.notify();
+                }
+                if let Some(report) = report {
+                    if report.failed > 0 {
+                        this.status_message = Some(
+                            format!("Couldn't write {} XMP sidecar(s).", report.failed).into(),
+                        );
+                        cx.notify();
+                    } else if report.foreign > 0 && !this.xmp_foreign_reported {
+                        this.xmp_foreign_reported = true;
+                        this.status_message = Some(
+                            format!(
+                                "Left {} sidecar(s) made by other apps untouched.",
+                                report.foreign
+                            )
+                            .into(),
+                        );
+                        cx.notify();
+                    }
                 }
                 if this.catalog_dirty {
                     this.mark_catalog_dirty(cx);

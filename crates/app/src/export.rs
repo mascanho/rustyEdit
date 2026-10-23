@@ -191,6 +191,9 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         let options = self.export_options.clone();
+        // The watermark designed in Settings, if this export uses it.
+        let watermark = (self.settings.export.watermark_enabled && options.watermark)
+            .then(|| self.settings.export.watermark.clone());
         let tiles = jobs
             .iter()
             .map(|(n, asset)| preview_tile(asset, *n, &options))
@@ -229,7 +232,14 @@ impl Workspace {
                             let i = next.fetch_add(1, Ordering::Relaxed);
                             let Some((n, asset)) = jobs.get(i) else { break };
                             status.lock().unwrap()[i] = ItemStatus::Working;
-                            let result = export_one(asset, *n, &options, &destination, &claimed);
+                            let result = export_one(
+                                asset,
+                                *n,
+                                &options,
+                                watermark.as_ref(),
+                                &destination,
+                                &claimed,
+                            );
                             status.lock().unwrap()[i] = match result {
                                 Ok(Some(bytes)) => ItemStatus::Done(bytes),
                                 Ok(None) => ItemStatus::Skipped,
@@ -483,7 +493,11 @@ impl Workspace {
             ))
             .into_any_element();
 
-        let sections: Vec<AnyElement> = vec![
+        let presets = self.export_presets_section(cx);
+        let watermark = self.export_watermark_section(cx);
+        let sections: Vec<AnyElement> = presets
+            .into_iter()
+            .chain([
             export_section(&theme, "Photos", vec![scope_row, skip_rejected]).into_any_element(),
             export_section(&theme, "Format", format_children).into_any_element(),
             export_section(&theme, "Size", vec![size_row]).into_any_element(),
@@ -493,7 +507,9 @@ impl Workspace {
             export_section(&theme, "If a file exists", vec![conflict_row]).into_any_element(),
             export_section(&theme, "Destination", vec![destination_row, open_when_done])
                 .into_any_element(),
-        ];
+            ])
+            .chain(watermark)
+            .collect();
 
         // The action sits in the panel's footer, like the other modules'.
         let footer_button = div()
@@ -1478,6 +1494,7 @@ fn export_one(
     asset: &Asset,
     index: usize,
     options: &ExportOptions,
+    watermark: Option<&rustyedit_core::Watermark>,
     destination: &Path,
     claimed: &Mutex<HashSet<PathBuf>>,
 ) -> anyhow::Result<Option<u64>> {
@@ -1491,7 +1508,7 @@ fn export_one(
         return Ok(None);
     };
 
-    let written = render_to(asset, options, file);
+    let written = render_to(asset, options, watermark, file);
     match written {
         Ok(bytes) => Ok(Some(bytes)),
         Err(error) => {
@@ -1515,18 +1532,26 @@ fn output_space(options: &ExportOptions) -> rustyedit_processing::OutputSpace {
     }
 }
 
-fn render_to(asset: &Asset, options: &ExportOptions, file: std::fs::File) -> anyhow::Result<u64> {
+fn render_to(
+    asset: &Asset,
+    options: &ExportOptions,
+    watermark: Option<&rustyedit_core::Watermark>,
+    file: std::fs::File,
+) -> anyhow::Result<u64> {
     let source = rustyedit_io::open_for_develop(&asset.path)?;
     let space = output_space(options);
     // Develop (from the RAW data for RAW files), resize, output sharpening
     // and colour conversion in one GPU pass (or the CPU fallback).
-    let rgb = rustyedit_processing::render_export(
+    let mut rgb = rustyedit_processing::render_export(
         &source,
         &asset.develop,
         options.size.0,
         options.sharpen.params(),
         &space,
     );
+    if let Some(watermark) = watermark {
+        rustyedit_processing::apply_watermark(&mut rgb, watermark);
+    }
     let icc = space.icc();
     let tag = |encoder: &mut dyn ImageEncoderIcc| {
         if let Some(icc) = &icc {

@@ -5345,6 +5345,7 @@ dependencies = [
  "kamadak-exif",
  "rawler",
  "rayon",
+ "roxmltree",
  "rustyedit-core",
  "rustyedit-processing",
  "serde",
@@ -5362,6 +5363,7 @@ dependencies = [
  "moxcms",
  "pollster 1.0.1",
  "rawler",
+ "resvg",
  "rustyedit-core",
  "wgpu",
 ]

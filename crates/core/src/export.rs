@@ -3,9 +3,11 @@
 
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{asset::Asset, flag::Flag};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExportScope {
     /// Only photos flagged as picks.
     Picked,
@@ -39,7 +41,7 @@ impl ExportScope {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExportFormat {
     Jpeg,
     Png,
@@ -80,7 +82,7 @@ impl ExportFormat {
 }
 
 /// Longest-edge limit for exported images; `None` keeps the original size.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExportSize(pub Option<u32>);
 
 impl ExportSize {
@@ -117,7 +119,7 @@ impl ExportSize {
 }
 
 /// How exported files are named.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExportNaming {
     /// `IMG_0001`
     Original,
@@ -176,7 +178,7 @@ impl ExportNaming {
 }
 
 /// What to do when the target file already exists.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExportConflict {
     /// Add `-1`, `-2`, ... to the name.
     Rename,
@@ -203,7 +205,7 @@ impl ExportConflict {
 }
 
 /// How exported files are grouped into folders inside the destination.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExportSubfolder {
     None,
     /// `2024-05`
@@ -268,7 +270,7 @@ impl ExportSubfolder {
 }
 
 /// Output sharpening applied after resizing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExportSharpen {
     Off,
     Low,
@@ -299,7 +301,7 @@ impl ExportSharpen {
 
 /// The colour space exported pixels are written in; its ICC profile is
 /// embedded in the file so other apps show the colours as intended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ExportColorSpace {
     /// Safe everywhere, and what the web expects.
     #[default]
@@ -327,7 +329,7 @@ impl ExportColorSpace {
 }
 
 /// PNG encoder effort.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExportPngCompression {
     Fast,
     Balanced,
@@ -350,7 +352,8 @@ impl ExportPngCompression {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ExportOptions {
     pub scope: ExportScope,
     pub format: ExportFormat,
@@ -368,6 +371,9 @@ pub struct ExportOptions {
     pub skip_rejected: bool,
     /// Reveal the destination in the file manager when finished.
     pub open_when_done: bool,
+    /// Stamp the watermark designed in Settings on each photo (only while
+    /// watermarks are switched on there).
+    pub watermark: bool,
 }
 
 impl Default for ExportOptions {
@@ -386,6 +392,129 @@ impl Default for ExportOptions {
             color_space: ExportColorSpace::Srgb,
             skip_rejected: true,
             open_when_done: false,
+            watermark: false,
+        }
+    }
+}
+
+/// A saved set of export options ("Web", "Client proofs", ...). Which
+/// photos to export and where to put them stay as they are when one is
+/// applied, unless the preset has its own destination.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportPreset {
+    pub name: String,
+    pub options: ExportOptions,
+}
+
+impl ExportPreset {
+    /// `current` with this preset's options, keeping its photos and (when
+    /// the preset has none) its destination.
+    pub fn apply_to(&self, current: &ExportOptions) -> ExportOptions {
+        ExportOptions {
+            scope: current.scope,
+            destination: self
+                .options
+                .destination
+                .clone()
+                .or_else(|| current.destination.clone()),
+            ..self.options.clone()
+        }
+    }
+
+    /// Whether `options` are this preset's (ignoring photos and folder).
+    pub fn matches(&self, options: &ExportOptions) -> bool {
+        self.apply_to(options) == *options
+    }
+}
+
+/// The export presets that ship with the app.
+pub fn builtin_export_presets() -> Vec<ExportPreset> {
+    let preset = |name: &str, change: fn(&mut ExportOptions)| {
+        let mut options = ExportOptions::default();
+        change(&mut options);
+        ExportPreset {
+            name: name.to_string(),
+            options,
+        }
+    };
+    vec![
+        preset("Full size JPEG", |o| {
+            o.quality = 95;
+        }),
+        preset("Web (2048 px)", |o| {
+            o.quality = 85;
+            o.size = ExportSize(Some(2048));
+            o.sharpen = ExportSharpen::Low;
+        }),
+        preset("Instagram (1080 px)", |o| {
+            o.quality = 90;
+            o.size = ExportSize(Some(1080));
+            o.sharpen = ExportSharpen::Low;
+        }),
+        preset("Client proofs", |o| {
+            o.quality = 80;
+            o.size = ExportSize(Some(1600));
+            o.watermark = true;
+        }),
+        preset("Archive TIFF", |o| {
+            o.format = ExportFormat::Tiff;
+            o.color_space = ExportColorSpace::AdobeRgb;
+        }),
+    ]
+}
+
+/// Where a watermark sits on the photo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum WatermarkPosition {
+    #[default]
+    BottomRight,
+    BottomLeft,
+    TopRight,
+    TopLeft,
+    Centre,
+}
+
+impl WatermarkPosition {
+    pub const ALL: [WatermarkPosition; 5] = [
+        WatermarkPosition::BottomRight,
+        WatermarkPosition::BottomLeft,
+        WatermarkPosition::TopRight,
+        WatermarkPosition::TopLeft,
+        WatermarkPosition::Centre,
+    ];
+
+    pub fn index(&self) -> usize {
+        Self::ALL.iter().position(|p| p == self).unwrap_or(0)
+    }
+
+    pub fn from_index(ix: usize) -> Self {
+        Self::ALL.get(ix).copied().unwrap_or_default()
+    }
+}
+
+/// A text watermark, sized relative to the photo so it looks the same at
+/// any export size.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Watermark {
+    pub text: String,
+    pub position: WatermarkPosition,
+    /// Text height as a percentage of the photo's long edge.
+    pub size: u8,
+    /// 0-100.
+    pub opacity: u8,
+    /// White text (otherwise black).
+    pub white: bool,
+}
+
+impl Default for Watermark {
+    fn default() -> Self {
+        Self {
+            text: "\u{00A9} Your Name".to_string(),
+            position: WatermarkPosition::BottomRight,
+            size: 3,
+            opacity: 70,
+            white: true,
         }
     }
 }

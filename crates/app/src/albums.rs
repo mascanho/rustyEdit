@@ -475,6 +475,9 @@ impl Workspace {
                 if target == TextTarget::Rename {
                     self.rename_target = None;
                 }
+                if target == TextTarget::SettingText {
+                    self.settings_text_item = None;
+                }
                 self.text_draft = None;
             }
             "backspace" => {
@@ -526,6 +529,8 @@ impl Workspace {
                 self.commit_recipe_text(target, text, cx)
             }
             TextTarget::SnapshotName => self.take_snapshot(text, cx),
+            TextTarget::SettingText => self.commit_setting_text(text, cx),
+            TextTarget::ExportPresetName => self.save_export_preset(text, cx),
             TextTarget::Title
             | TextTarget::Caption
             | TextTarget::Creator

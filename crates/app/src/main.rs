@@ -14,6 +14,7 @@ mod display_profile;
 mod duplicates;
 mod edit_clipboard;
 mod export;
+mod export_presets;
 mod file_ops;
 mod file_tree;
 mod filmstrip;

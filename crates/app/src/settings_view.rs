@@ -28,6 +28,10 @@ impl Workspace {
 
     pub(crate) fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_open = false;
+        // A text setting being typed is dropped with the window.
+        if self.settings_text_item.take().is_some() {
+            self.text_draft = None;
+        }
         window.focus(&self.focus_handle);
         cx.notify();
     }
@@ -58,7 +62,36 @@ impl Workspace {
         if self.settings.culling.enabled && !previous.culling.enabled {
             self.measure_missing_sharpness(cx);
         }
+        // Sidecars just switched on (or their contents changed): a save
+        // writes every photo's.
+        let sidecars = &self.settings.sidecars;
+        if sidecars.write
+            && (!previous.sidecars.write
+                || sidecars.include_edits != previous.sidecars.include_edits)
+        {
+            self.mark_catalog_dirty(cx);
+        }
         cx.notify();
+    }
+
+    /// Saves a typed text setting (Enter).
+    pub(crate) fn commit_setting_text(&mut self, text: String, cx: &mut Context<Self>) {
+        let Some(addr) = self.settings_text_item.take() else {
+            return;
+        };
+        let item = SETTINGS_PAGES
+            .iter()
+            .flat_map(|page| page.sections.iter())
+            .flat_map(|section| section.items.iter())
+            .find(|item| *item as *const SettingItem as usize == addr);
+        if let Some(SettingItem {
+            control: SettingControl::Text { set, .. },
+            ..
+        }) = item
+        {
+            let set = *set;
+            self.update_settings(|s| set(s, text.trim().to_string()), cx);
+        }
     }
 
     /// Zed-style settings window: a modal over the workspace with a page
@@ -340,6 +373,62 @@ impl Workspace {
             }
             SettingControl::Cards { options, get, set } => {
                 return self.render_card_picker(id, item, options, get(settings), *set, cx);
+            }
+            SettingControl::Text {
+                placeholder, get, ..
+            } => {
+                let addr = item as *const SettingItem as usize;
+                let draft = (self.settings_text_item == Some(addr))
+                    .then(|| self.draft_for(crate::workspace::TextTarget::SettingText))
+                    .flatten();
+                let field = div()
+                    .id(SharedString::from(id))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .flex_shrink_0()
+                    .w(px(220.0))
+                    .h(px(26.0))
+                    .px_2()
+                    .rounded_md()
+                    .bg(theme.background)
+                    .border_1()
+                    .text_sm()
+                    .overflow_hidden();
+                match draft {
+                    Some(draft) => field
+                        .border_color(theme.accent)
+                        .text_color(theme.text)
+                        .child(draft.to_string())
+                        .child(div().w(px(1.0)).h(px(14.0)).ml(px(1.0)).bg(theme.accent))
+                        .into_any_element(),
+                    None => {
+                        let value = get(settings);
+                        let shown = if value.is_empty() {
+                            placeholder.to_string()
+                        } else {
+                            value.clone()
+                        };
+                        field
+                            .border_color(theme.border)
+                            .text_color(if value.is_empty() {
+                                theme.text_faint
+                            } else {
+                                theme.text
+                            })
+                            .cursor_text()
+                            .hover(|el| el.border_color(theme.accent))
+                            .tooltip(rustyedit_ui::tip("Click to edit, Enter to save", &theme))
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                                this.settings_text_item = Some(addr);
+                                this.text_draft =
+                                    Some((crate::workspace::TextTarget::SettingText, value.clone()));
+                                cx.notify();
+                            }))
+                            .child(shown)
+                            .into_any_element()
+                    }
+                }
             }
         };
 

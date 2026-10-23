@@ -36,10 +36,12 @@ mod parallel;
 mod retouch;
 mod sharpen;
 mod tone;
+mod watermark;
 
 pub use auto::{auto_tone, neutral_white_balance, BalanceError, NeutralBalance};
 pub use cms::{set_display_profile, OutputSpace};
 pub use look::{match_look, preset_from_look, LookStats};
+pub use watermark::apply_watermark;
 pub use develop_source::DevelopSource;
 pub use retouch::find_spot_source;
 

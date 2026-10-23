@@ -47,9 +47,9 @@ pub use duplicates::{
     SIMILAR_HAMMING,
 };
 pub use export::{
-    ExportColorSpace, ExportConflict, ExportFormat, ExportNaming, ExportOptions,
-    ExportPngCompression, ExportScope,
-    ExportSharpen, ExportSize, ExportSubfolder,
+    builtin_export_presets, ExportColorSpace, ExportConflict, ExportFormat, ExportNaming,
+    ExportOptions, ExportPngCompression, ExportPreset, ExportScope, ExportSharpen, ExportSize,
+    ExportSubfolder, Watermark, WatermarkPosition,
 };
 pub use filters::{FilterSet, FocalBand, IsoBand};
 pub use flag::Flag;

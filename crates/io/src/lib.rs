@@ -14,6 +14,7 @@ mod preset_store;
 mod scan;
 mod settings_store;
 mod thumbnails;
+pub mod xmp;
 
 pub use album_store::{load as load_albums, save as save_albums};
 pub use browse::{browse_roots, list_directory, FsEntry};

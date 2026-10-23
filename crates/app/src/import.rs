@@ -95,6 +95,12 @@ impl Workspace {
                 .collect();
         let import_append = std::mem::take(&mut self.import_append);
         let measure_sharpness = self.settings.culling.enabled;
+        // Sidecars (from this app or others) fill in photos new to us.
+        let read_sidecars = self
+            .settings
+            .sidecars
+            .read_on_import
+            .then_some(self.settings.sidecars.include_edits);
         self.is_importing = true;
         self.status_message = Some(format!("Scanning {}…", self.catalog_def.name).into());
         if let Some(folder) = folders.last() {
@@ -112,9 +118,23 @@ impl Workspace {
                         let mut assets = rustyedit_io::scan_folder(folder);
                         assets.retain(|asset| !excluded.contains(&asset.path));
                         let mut missing = Vec::new();
+                        let mut known: HashSet<PathBuf> = HashSet::new();
                         if let Some(saved) = rustyedit_io::load_catalog(folder) {
                             rustyedit_io::merge_saved_state(&mut assets, &saved);
                             missing = rustyedit_io::missing_assets(&saved);
+                            known.extend(saved.assets.iter().map(|a| a.path.clone()));
+                        }
+                        // Photos neither the folder's catalog nor the
+                        // library has seen: take what their sidecars say.
+                        if let Some(with_edits) = read_sidecars {
+                            for asset in assets.iter_mut().filter(|a| {
+                                !known.contains(&a.path)
+                                    && !current.contains_key(&(a.path.clone(), None))
+                            }) {
+                                if let Some(data) = rustyedit_io::xmp::read_sidecar(&asset.path) {
+                                    data.apply_to(asset, with_edits);
+                                }
+                            }
                         }
                         missing.retain(|asset| !excluded.contains(&asset.path));
                         all.extend(assets);
