@@ -22,7 +22,7 @@ mod title_bar;
 mod tooltip;
 mod scale;
 
-pub use button::{chrome_button, chrome_icon_button, glyph_button};
+pub use button::{chrome_button, chrome_bottom_tab, chrome_icon_button, chrome_tab, glyph_button};
 pub use controls::{mini_toggle_switch, stepper, toggle_switch};
 pub use cull_bar::{
     cull_bar, cull_button, cull_group, cull_nav_button, label_swatch, CULL_BAR_HEIGHT,
@@ -49,6 +49,6 @@ pub use slider::{
 };
 pub use status_bar::{status_bar, status_divider, STATUS_BAR_HEIGHT};
 pub use theme::Theme;
-pub use title_bar::{title_bar, TITLE_BAR_HEIGHT};
+pub use title_bar::{title_bar, CloseWindow, TITLE_BAR_HEIGHT};
 pub use tooltip::tip;
 pub use scale::{set_ui_scale, sp, ui_scale};

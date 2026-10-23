@@ -37,6 +37,7 @@ mod rail;
 mod resize;
 mod selection;
 mod settings_view;
+mod quit_prompt;
 mod size_menu;
 mod stacks;
 mod sync_settings;
@@ -150,7 +151,8 @@ fn main() {
             KeyBinding::new("escape", CloseSettings, Some("SettingsModal")),
         ]);
 
-        cx.on_action(|_: &Quit, cx| cx.quit());
+        cx.on_action(|_: &Quit, cx| quit_prompt::request_quit(cx));
+        cx.on_action(|_: &rustyedit_ui::CloseWindow, cx| quit_prompt::request_quit(cx));
 
         cx.set_menus(vec![
             Menu {
@@ -217,6 +219,7 @@ fn main() {
                 ..Default::default()
             },
             |window, cx| {
+                window.on_window_should_close(cx, quit_prompt::should_close);
                 let workspace = cx.new(Workspace::new);
                 window.focus(&workspace.read(cx).focus_handle.clone());
                 workspace

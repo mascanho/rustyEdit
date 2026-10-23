@@ -6,6 +6,12 @@ use gpui::{
 
 use crate::theme::Theme;
 
+gpui::actions!(title_bar, [
+    /// Sent by the close caption button on Linux, where nothing native
+    /// handles it; the app answers it (and may ask before closing).
+    CloseWindow
+]);
+
 /// Height of the custom title bar, in pixels.
 pub const TITLE_BAR_HEIGHT: f32 = 38.0;
 
@@ -128,7 +134,12 @@ fn caption_buttons(theme: &Theme) -> impl IntoElement {
                 }
             })
             .child(glyph)
-            .on_click(move |_: &ClickEvent, window, cx| action(window, cx))
+            // On Windows the OS acts on the control area at mouse-up and gpui
+            // still delivers the click, so handling it too would act twice
+            // (maximise then immediately restore).
+            .when(!cfg!(target_os = "windows"), |el| {
+                el.on_click(move |_: &ClickEvent, window, cx| action(window, cx))
+            })
     };
     let glyph = |text: &'static str| div().text_size(sp(12.0)).child(text).into_any_element();
     div()
@@ -162,6 +173,7 @@ fn caption_buttons(theme: &Theme) -> impl IntoElement {
             WindowControlArea::Close,
             true,
             glyph("\u{2715}"),
-            |_, cx| cx.quit(),
+            // The app decides (it asks first), so hand it an action.
+            |window, cx| window.dispatch_action(Box::new(CloseWindow), cx),
         ))
 }

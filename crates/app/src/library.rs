@@ -221,7 +221,7 @@ impl Workspace {
             });
         }
 
-        let footer = self.library_dock_footer(panels, cx);
+        let footer = self.library_dock_footer(side, cx);
         let (id, panel_side, collapsed) = match side {
             DockSide::Left => (
                 "library-dock-left",
@@ -270,7 +270,7 @@ impl Workspace {
                             .into_any_element()
                     })
                 },
-                footer,
+                Some(footer),
                 children,
             )
             .into_any_element(),
@@ -507,7 +507,7 @@ impl Workspace {
                     .flex()
                     .flex_row()
                     .gap_1()
-                    .child(rustyedit_ui::chrome_button(
+                    .child(rustyedit_ui::chrome_bottom_tab(
                         "library-view-loupe",
                         "Loupe",
                         self.library_view == LibraryView::Loupe,
@@ -516,41 +516,13 @@ impl Workspace {
                             this.set_library_view(LibraryView::Loupe, cx);
                         }),
                     ))
-                    .child(rustyedit_ui::chrome_button(
+                    .child(rustyedit_ui::chrome_bottom_tab(
                         "library-view-grid",
                         "Grid",
                         self.library_view == LibraryView::Grid,
                         &theme,
                         cx.listener(|this, _: &ClickEvent, _window, cx| {
                             this.set_library_view(LibraryView::Grid, cx);
-                        }),
-                    ))
-                    .child(rustyedit_ui::chrome_button(
-                        "library-view-compare",
-                        "Compare",
-                        self.library_view == LibraryView::Compare,
-                        &theme,
-                        cx.listener(|this, _: &ClickEvent, _window, cx| {
-                            this.set_library_view(LibraryView::Compare, cx);
-                        }),
-                    ))
-                    .child(rustyedit_ui::chrome_button(
-                        "library-view-survey",
-                        "Survey",
-                        self.library_view == LibraryView::Survey,
-                        &theme,
-                        cx.listener(|this, _: &ClickEvent, _window, cx| {
-                            this.set_library_view(LibraryView::Survey, cx);
-                        }),
-                    ))
-                    .child(div().w(sp(1.0)).h(sp(16.0)).mx_1().bg(theme.border))
-                    .child(rustyedit_ui::chrome_button(
-                        "library-presets",
-                        "Presets",
-                        self.library_presets_open(),
-                        &theme,
-                        cx.listener(|this, _: &ClickEvent, _window, cx| {
-                            this.toggle_library_presets(cx);
                         }),
                     )),
             )

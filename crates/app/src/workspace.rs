@@ -895,7 +895,7 @@ impl Workspace {
         ];
 
         let right = vec![
-            rustyedit_ui::chrome_button(
+            rustyedit_ui::chrome_tab(
                 "mode-library",
                 "Library",
                 self.mode == Mode::Library,
@@ -903,7 +903,7 @@ impl Workspace {
                 cx.listener(Self::click_go_library),
             )
             .into_any_element(),
-            rustyedit_ui::chrome_button(
+            rustyedit_ui::chrome_tab(
                 "mode-develop",
                 "Develop",
                 self.mode == Mode::Develop,
@@ -911,7 +911,7 @@ impl Workspace {
                 cx.listener(Self::click_go_develop),
             )
             .into_any_element(),
-            rustyedit_ui::chrome_button(
+            rustyedit_ui::chrome_tab(
                 "mode-export",
                 "Export",
                 self.mode == Mode::Export,
