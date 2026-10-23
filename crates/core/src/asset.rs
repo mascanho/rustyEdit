@@ -58,6 +58,7 @@ pub struct AssetState {
     pub keywords: Vec<String>,
     pub stack_id: Option<u64>,
     pub stack_cover: bool,
+    pub applied_presets: Vec<String>,
 }
 
 /// A single photo known to the catalog.
@@ -116,6 +117,11 @@ pub struct Asset {
     /// the original (master) photo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copy_name: Option<String>,
+    /// Names of the presets that make up the photo's current look, in the
+    /// order they were applied. Cleared when the edits are reset or a
+    /// preset replaces the whole look.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub applied_presets: Vec<String>,
     /// Set when the file recorded in the catalog no longer exists on disk.
     /// Runtime-only: it is recomputed on every scan, so it is never saved.
     #[serde(skip)]
@@ -148,7 +154,44 @@ impl Asset {
             history: Vec::new(),
             snapshots: Vec::new(),
             copy_name: None,
+            applied_presets: Vec::new(),
             missing: false,
+        }
+    }
+
+    /// Takes everything set on `old` (the same photo as previously loaded):
+    /// culling, edits, metadata, stacking, history, and the facts read from
+    /// the file, so a rescan never loses work. The file-system side (path,
+    /// thumbnail, missing) stays as scanned.
+    pub fn carry_over_from(&mut self, old: &Asset) {
+        self.flag = old.flag;
+        self.rating = old.rating;
+        self.color_label = old.color_label;
+        self.develop = old.develop;
+        self.title = old.title.clone();
+        self.caption = old.caption.clone();
+        self.creator = old.creator.clone();
+        self.copyright = old.copyright.clone();
+        self.keywords = old.keywords.clone();
+        self.stack_id = old.stack_id;
+        self.stack_cover = old.stack_cover;
+        self.history = old.history.clone();
+        self.snapshots = old.snapshots.clone();
+        self.copy_name = old.copy_name.clone();
+        self.applied_presets = old.applied_presets.clone();
+        if old.content_hash != 0 {
+            self.content_hash = old.content_hash;
+        }
+        if old.phash != 0 {
+            self.phash = old.phash;
+        }
+        if old.width > 0 && old.height > 0 {
+            self.width = old.width;
+            self.height = old.height;
+            self.orientation = old.orientation;
+        }
+        if old.meta != PhotoMeta::default() {
+            self.meta = old.meta.clone();
         }
     }
 
@@ -226,6 +269,7 @@ impl Asset {
             keywords: self.keywords.clone(),
             stack_id: self.stack_id,
             stack_cover: self.stack_cover,
+            applied_presets: self.applied_presets.clone(),
         }
     }
 

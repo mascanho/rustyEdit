@@ -122,7 +122,9 @@ impl Workspace {
         self.edited_thumbs.busy = true;
 
         let render = cx.background_executor().spawn(async move {
-            let source = image::open(&job.thumbnail).ok()?;
+            let image = image::open(&job.thumbnail).ok()?;
+            // Cached thumbnails are sRGB JPEGs.
+            let source = rustyedit_processing::DevelopSource::from_image(&image, None);
             let rendered = rustyedit_processing::apply(&source, &job.settings);
             let dir = cache_dir();
             std::fs::create_dir_all(&dir).ok()?;

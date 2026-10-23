@@ -229,6 +229,13 @@ pub struct Workspace {
     /// the sections last chosen in it.
     pub(crate) sync_dialog: Option<crate::sync_settings::SyncDialog>,
     pub(crate) sync_choice: Vec<rustyedit_core::DevelopSection>,
+
+    /// Grid thumbnails rendered with each photo's edits (see
+    /// `edited_thumbs.rs`).
+    pub(crate) edited_thumbs: crate::edited_thumbs::EditedThumbs,
+    /// The scan under way is an import: select the first new photo and
+    /// report how many were added.
+    pub(crate) import_append: bool,
 }
 
 impl Workspace {
@@ -362,6 +369,8 @@ impl Workspace {
             preview_epoch: 0,
             sync_dialog: None,
             sync_choice: crate::sync_settings::default_choice(),
+            edited_thumbs: Default::default(),
+            import_append: false,
         };
         // Pick up where the last session left off.
         if !this.catalog_def.folders.is_empty() {

@@ -85,12 +85,14 @@ impl Workspace {
         let excluded: HashSet<PathBuf> = self.catalog_def.excluded.iter().cloned().collect();
         let before_paths: HashSet<PathBuf> =
             self.catalog.assets.iter().map(|a| a.path.clone()).collect();
-        let current: std::collections::HashMap<PathBuf, rustyedit_core::Asset> = self
-            .catalog
-            .assets
-            .iter()
-            .map(|a| (a.path.clone(), a.clone()))
-            .collect();
+        // Keyed by file and copy name: a virtual copy is a separate entry
+        // for the same file.
+        let current: std::collections::HashMap<(PathBuf, Option<String>), rustyedit_core::Asset> =
+            self.catalog
+                .assets
+                .iter()
+                .map(|a| ((a.path.clone(), a.copy_name.clone()), a.clone()))
+                .collect();
         let import_append = std::mem::take(&mut self.import_append);
         self.is_importing = true;
         self.status_message = Some(format!("Scanning {}…", self.catalog_def.name).into());
@@ -121,13 +123,15 @@ impl Workspace {
                     }
                     // The same file under two folders (a parent and a child
                     // added separately) is listed once.
+                    // Virtual copies share their original's file, so they
+                    // count by file and copy name.
                     let mut seen = HashSet::new();
-                    all.retain(|asset| seen.insert(asset.path.clone()));
+                    all.retain(|asset| seen.insert((asset.path.clone(), asset.copy_name.clone())));
                     // Photos already in the library keep everything set on
                     // them, even if a folder's saved catalog didn't have it
                     // (e.g. a parent folder absorbing a child's).
                     for asset in all.iter_mut() {
-                        if let Some(old) = current.get(&asset.path) {
+                        if let Some(old) = current.get(&(asset.path.clone(), asset.copy_name.clone())) {
                             asset.carry_over_from(old);
                         }
                     }

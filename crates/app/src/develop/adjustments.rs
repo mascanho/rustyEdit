@@ -140,6 +140,25 @@ impl Workspace {
         self.replace_develop_each(updates, undo_label, note, cx);
     }
 
+    /// [`Self::replace_develop`], also running `also` on each changed photo
+    /// (with its previous settings) inside the same undo step, e.g. to note
+    /// which presets it now has.
+    pub(crate) fn replace_develop_and(
+        &mut self,
+        targets: Vec<usize>,
+        undo_label: &str,
+        note: HistoryNote,
+        cx: &mut Context<Self>,
+        new: impl Fn(&DevelopSettings) -> DevelopSettings,
+        also: impl Fn(&mut rustyedit_core::Asset, &DevelopSettings),
+    ) {
+        let updates = targets
+            .into_iter()
+            .filter_map(|ix| Some((ix, new(&self.catalog.assets.get(ix)?.develop))))
+            .collect();
+        self.replace_develop_each_and(updates, undo_label, note, cx, also);
+    }
+
     /// Gives each photo in `updates` its own new Develop settings, as one
     /// undo step named `undo_label`.
     pub(crate) fn replace_develop_each(
@@ -148,6 +167,17 @@ impl Workspace {
         undo_label: &str,
         note: HistoryNote,
         cx: &mut Context<Self>,
+    ) {
+        self.replace_develop_each_and(updates, undo_label, note, cx, |_, _| {});
+    }
+
+    fn replace_develop_each_and(
+        &mut self,
+        updates: Vec<(usize, DevelopSettings)>,
+        undo_label: &str,
+        note: HistoryNote,
+        cx: &mut Context<Self>,
+        also: impl Fn(&mut rustyedit_core::Asset, &DevelopSettings),
     ) {
         let mut changes = Vec::new();
         for (ix, develop) in updates {
@@ -159,6 +189,7 @@ impl Workspace {
             if asset.develop == before.develop {
                 continue;
             }
+            also(asset, &before.develop);
             if let HistoryNote::Record { title, detail } = note {
                 asset.record_develop_change(title, "", detail);
             }

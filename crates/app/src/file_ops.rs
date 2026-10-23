@@ -53,11 +53,28 @@ impl Workspace {
     }
 
     pub(crate) fn delete_selected(&mut self, from_disk: bool, cx: &mut Context<Self>) {
+        self.delete_photos(self.target_indices(), from_disk, cx);
+    }
+
+    /// "Delete rejected photos…": every rejected photo goes to the Trash,
+    /// after confirming (virtual copies just leave the catalog).
+    pub(crate) fn delete_rejected(&mut self, cx: &mut Context<Self>) {
+        let rejected: Vec<usize> = self
+            .catalog
+            .assets
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.flag == rustyedit_core::Flag::Rejected)
+            .map(|(ix, _)| ix)
+            .collect();
+        self.delete_photos(rejected, true, cx);
+    }
+
+    fn delete_photos(&mut self, targets: Vec<usize>, from_disk: bool, cx: &mut Context<Self>) {
         if !self.lifecycle_allowed() {
             return;
         }
-        let targets: Vec<usize> = self
-            .target_indices()
+        let targets: Vec<usize> = targets
             .into_iter()
             .filter(|&ix| self.catalog.assets.get(ix).is_some_and(|a| !a.missing))
             .collect();
