@@ -59,7 +59,7 @@ use zoom::DevelopZoom;
 
 use std::{cell::Cell, rc::Rc};
 
-use gpui::{div, prelude::*, AnyElement, Bounds, Context, Pixels, ScrollHandle, Window};
+use gpui::{div, prelude::*, AnyElement, Bounds, Context, Pixels, Point, ScrollHandle, Window};
 use rustyedit_core::{
     settings::DockSide, Adjustment, CurveChannel, DevelopSection, MixerProp, Presets, Settings,
 };
@@ -121,6 +121,9 @@ pub(crate) struct DevelopUi {
     /// The Crop tool is picked, and the drag in progress on its box.
     pub(crate) crop_tool: bool,
     pub(crate) crop_drag: Option<crop_tool::CropDrag>,
+    /// What the pointer is over on the crop box, and where it is.
+    pub(crate) crop_hover: Option<crop_tool::CropHit>,
+    pub(crate) crop_pointer: Point<Pixels>,
     /// The curve target picker is picked.
     pub(crate) curve_target: bool,
     /// The white-balance eyedropper is picked.
@@ -161,6 +164,8 @@ impl DevelopUi {
             gradients: GradientUi::default(),
             crop_tool: false,
             crop_drag: None,
+            crop_hover: None,
+            crop_pointer: Point::default(),
             curve_target: false,
             wb_picker: false,
             auto_busy: false,

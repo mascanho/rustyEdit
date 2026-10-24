@@ -6,13 +6,15 @@
 //! or edge to resize it, the inside to move it, or anywhere outside to draw
 //! a new one. An aspect lock from the Crop section is kept. Thirds are
 //! drawn inside the box, or the composition guide chosen in the View menu.
-//! Esc, the tool's button, or a double-click inside the box puts it down.
+//! Drag just outside a corner to turn the photo under the box (straighten);
+//! X flips the box between landscape and portrait. Esc, the tool's button,
+//! or a double-click inside the box puts it down.
 
 use gpui::{
     canvas, div, fill, point, prelude::*, px, AnyElement, Bounds, Context, MouseButton,
     MouseDownEvent, PathBuilder, Pixels, Point,
 };
-use rustyedit_core::{drag_crop_rect, CropHandle};
+use rustyedit_core::{drag_crop_rect, CropHandle, MAX_STRAIGHTEN};
 
 use crate::{
     actions::ToolCrop,
@@ -23,15 +25,50 @@ use crate::{
 const HANDLE_REACH: f32 = 11.0;
 /// How far a new box must be dragged before it replaces the old one.
 const NEW_BOX_THRESHOLD: f32 = 0.004;
+/// How far outside a corner (screen pixels) a drag turns the photo rather
+/// than drawing a new box.
+const ROTATE_REACH: f32 = 46.0;
+
+/// What the pointer is over on the crop overlay.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum CropHit {
+    Handle(CropHandle),
+    Move,
+    /// Just outside a corner: a drag turns the photo.
+    Rotate,
+    /// Elsewhere on the canvas: a drag draws a new box.
+    New,
+}
 
 /// A drag in progress.
 #[derive(Clone, Copy)]
-pub(crate) struct CropDrag {
-    handle: CropHandle,
-    /// The box when the drag started, and where on the canvas (fractions)
-    /// the pointer was.
-    start: (f32, f32, f32, f32),
-    at: (f32, f32),
+pub(crate) enum CropDrag {
+    /// Resizing, moving or drawing the box: the handle, the box when the
+    /// drag started, and where on the canvas (fractions) the pointer was.
+    Box {
+        handle: CropHandle,
+        start: (f32, f32, f32, f32),
+        at: (f32, f32),
+    },
+    /// Turning the photo about the box's middle (screen pixels): where the
+    /// pointer's angle started, and the straightening then.
+    Rotate {
+        centre: (f32, f32),
+        from: f32,
+        angle: f32,
+    },
+}
+
+/// The straightening after the pointer, which was at `from` degrees round
+/// `centre` when the drag began, has moved to `to` (screen pixels). A turn
+/// clockwise on screen is a positive angle.
+fn rotated_angle(start_angle: f32, centre: (f32, f32), from: f32, to: (f32, f32)) -> f32 {
+    let now = (to.1 - centre.1).atan2(to.0 - centre.0).to_degrees();
+    let mut delta = (now - from).rem_euclid(360.0);
+    if delta > 180.0 {
+        delta -= 360.0;
+    }
+    (start_angle + delta).clamp(-MAX_STRAIGHTEN, MAX_STRAIGHTEN)
 }
 
 impl Workspace {
@@ -39,6 +76,20 @@ impl Workspace {
         if self.mode == Mode::Develop {
             self.toggle_photo_tool(super::tool_strip::PhotoTool::Crop, cx);
         }
+    }
+
+    /// X: turns the box between landscape and portrait.
+    pub(crate) fn flip_crop_orientation(&mut self, cx: &mut Context<Self>) {
+        let Some(asset) = self.catalog.selected_asset() else {
+            return;
+        };
+        let (w, h) = (asset.width.max(1) as f32, asset.height.max(1) as f32);
+        self.edit_develop(
+            "Crop orientation",
+            |d| d.crop = d.crop.with_flipped_orientation(w, h),
+            |_| (String::new(), "flipped".to_string()),
+            cx,
+        );
     }
 
     /// Whether the viewer should show the whole canvas for cropping.
@@ -65,6 +116,29 @@ impl Workspace {
         }
         let (photo, (cx0, cy0, cw, ch)) = self.crop_space()?;
         let clip = self.develop_ui.zoom.viewer_bounds.get();
+        let theme = self.theme;
+        // Where the pointer is just outside a corner (or turning), a turn
+        // symbol stands in for the system cursor.
+        let turning = matches!(self.develop_ui.crop_drag, Some(CropDrag::Rotate { .. }))
+            || (self.develop_ui.crop_drag.is_none() && self.develop_ui.crop_hover == Some(CropHit::Rotate));
+        let turn_glyph = turning.then(|| {
+            let at = self.develop_ui.crop_pointer;
+            div()
+                .absolute()
+                .left(at.x - gpui::px(11.0))
+                .top(at.y - gpui::px(11.0))
+                .child(
+                    div()
+                        .size(gpui::px(22.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded_full()
+                        .bg(gpui::black().opacity(0.6))
+                        .child(rustyedit_ui::icon(rustyedit_ui::Icon::Reset, 14.0, gpui::white())),
+                )
+        });
+        let (hint_bg, hint_border, hint_text) = (theme.surface.opacity(0.9), theme.border, theme.text);
         let thirds = self.develop_ui.grid_overlay == super::grid_overlay::GridOverlay::Off;
         let (pw, ph) = (f32::from(photo.size.width), f32::from(photo.size.height));
         // The box on screen.
@@ -77,7 +151,14 @@ impl Workspace {
                 .id("crop-overlay")
                 .absolute()
                 .inset_0()
-                .cursor_crosshair()
+                .cursor(self.crop_cursor())
+                .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _w, cx| {
+                    // A drag in progress is followed elsewhere.
+                    if this.develop_ui.crop_drag.is_none() {
+                        this.crop_hover(event.position, cx);
+                    }
+                }))
+                .children(turn_glyph)
                 .child(
                     canvas(
                         |_, _, _| {},
@@ -141,6 +222,29 @@ impl Workspace {
                     .absolute()
                     .size_full(),
                 )
+                .child(
+                    div()
+                        .absolute()
+                        .top(gpui::px(8.0))
+                        .left_0()
+                        .right_0()
+                        .flex()
+                        .justify_center()
+                        .child(
+                            div()
+                                .px_2()
+                                .h(gpui::px(22.0))
+                                .flex()
+                                .items_center()
+                                .rounded_md()
+                                .bg(hint_bg)
+                                .border_1()
+                                .border_color(hint_border)
+                                .text_size(gpui::px(10.5))
+                                .text_color(hint_text)
+                                .child("Drag a corner or edge to resize \u{00B7} just outside a corner to rotate \u{00B7} X flips \u{00B7} double-click to finish"),
+                        ),
+                )
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(|this, event: &MouseDownEvent, _w, cx| {
@@ -159,6 +263,94 @@ impl Workspace {
         (x.clamp(0.0, 1.0), y.clamp(0.0, 1.0))
     }
 
+    /// What the pointer is over: a handle, the inside of the box, just
+    /// outside a corner (turns the photo), or the rest of the canvas (draws
+    /// a new box).
+    fn crop_hit(position: Point<Pixels>, photo: Bounds<Pixels>, rect: (f32, f32, f32, f32)) -> CropHit {
+        let (pw, ph) = (f32::from(photo.size.width), f32::from(photo.size.height));
+        let (px_, py_) = (f32::from(position.x), f32::from(position.y));
+        let screen = |fx: f32, fy: f32| {
+            (
+                f32::from(photo.origin.x) + fx * pw,
+                f32::from(photo.origin.y) + fy * ph,
+            )
+        };
+        let (x, y, w, h) = rect;
+        // Corners win over edges when the box is small.
+        let handle = CropHandle::EDGES
+            .iter()
+            .copied()
+            .filter(|handle| {
+                let (fx, fy) = handle.at();
+                let (sx, sy) = screen(x + fx * w, y + fy * h);
+                (px_ - sx).abs() <= HANDLE_REACH && (py_ - sy).abs() <= HANDLE_REACH
+            })
+            .min_by_key(|handle| {
+                let (fx, fy) = handle.at();
+                (fx == 0.5 || fy == 0.5) as u8
+            });
+        if let Some(handle) = handle {
+            return CropHit::Handle(handle);
+        }
+        let at = Self::crop_point(position, photo);
+        if at.0 >= x && at.0 <= x + w && at.1 >= y && at.1 <= y + h {
+            return CropHit::Move;
+        }
+        let near_corner = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)].iter().any(|&(fx, fy)| {
+            let (sx, sy) = screen(x + fx * w, y + fy * h);
+            (px_ - sx).hypot(py_ - sy) <= ROTATE_REACH
+        });
+        if near_corner {
+            CropHit::Rotate
+        } else {
+            CropHit::New
+        }
+    }
+
+    /// Tracks what the pointer is over, so the cursor can say what a drag
+    /// would do. Redraws only when that changes (or, while turning, as the
+    /// turn glyph follows the pointer).
+    fn crop_hover(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let Some((photo, rect)) = self.crop_space() else {
+            return;
+        };
+        let hit = photo
+            .contains(&position)
+            .then(|| Self::crop_hit(position, photo, rect));
+        let moved = hit == Some(CropHit::Rotate) && self.develop_ui.crop_pointer != position;
+        self.develop_ui.crop_pointer = position;
+        if hit != self.develop_ui.crop_hover || moved {
+            self.develop_ui.crop_hover = hit;
+            cx.notify();
+        }
+    }
+
+    /// The cursor for the crop overlay: by what a drag in progress is, or
+    /// else by what the pointer is over.
+    fn crop_cursor(&self) -> gpui::CursorStyle {
+        use gpui::CursorStyle as C;
+        let hit = match self.develop_ui.crop_drag {
+            Some(CropDrag::Rotate { .. }) => Some(CropHit::Rotate),
+            Some(CropDrag::Box { handle: CropHandle::Move, .. }) => {
+                return rustyedit_ui::GRABBING_CURSOR;
+            }
+            Some(CropDrag::Box { handle: CropHandle::New, .. }) => Some(CropHit::New),
+            Some(CropDrag::Box { handle, .. }) => Some(CropHit::Handle(handle)),
+            None => self.develop_ui.crop_hover,
+        };
+        match hit {
+            Some(CropHit::Handle(CropHandle::TopLeft | CropHandle::BottomRight)) => C::ResizeUpLeftDownRight,
+            Some(CropHit::Handle(CropHandle::TopRight | CropHandle::BottomLeft)) => C::ResizeUpRightDownLeft,
+            Some(CropHit::Handle(CropHandle::Top | CropHandle::Bottom)) => C::ResizeUpDown,
+            Some(CropHit::Handle(CropHandle::Left | CropHandle::Right)) => C::ResizeLeftRight,
+            Some(CropHit::Handle(_)) => C::Crosshair,
+            Some(CropHit::Move) => rustyedit_ui::GRAB_CURSOR,
+            // A turn glyph follows the pointer instead (see the overlay).
+            Some(CropHit::Rotate) => C::None,
+            Some(CropHit::New) | None => C::Crosshair,
+        }
+    }
+
     fn crop_pointer_down(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
         let Some((photo, rect)) = self.crop_space() else {
             return;
@@ -168,33 +360,29 @@ impl Workspace {
         }
         let at = Self::crop_point(event.position, photo);
         let (pw, ph) = (f32::from(photo.size.width), f32::from(photo.size.height));
-        let near = |hx: f32, hy: f32| {
-            let sx = f32::from(photo.origin.x) + hx * pw;
-            let sy = f32::from(photo.origin.y) + hy * ph;
-            (f32::from(event.position.x) - sx).abs() <= HANDLE_REACH
-                && (f32::from(event.position.y) - sy).abs() <= HANDLE_REACH
-        };
-        // Corners win over edges when the box is small.
         let (x, y, w, h) = rect;
-        let handle = CropHandle::EDGES
-            .iter()
-            .copied()
-            .filter(|handle| {
-                let (fx, fy) = handle.at();
-                near(x + fx * w, y + fy * h)
-            })
-            .min_by_key(|handle| {
-                let (fx, fy) = handle.at();
-                // Corners first.
-                (fx == 0.5 || fy == 0.5) as u8
-            })
-            .unwrap_or_else(|| {
-                if at.0 >= x && at.0 <= x + w && at.1 >= y && at.1 <= y + h {
-                    CropHandle::Move
-                } else {
-                    CropHandle::New
-                }
-            });
+        let handle = match Self::crop_hit(event.position, photo, rect) {
+            CropHit::Handle(handle) => handle,
+            CropHit::Move => CropHandle::Move,
+            CropHit::New => CropHandle::New,
+            CropHit::Rotate => {
+                // Turn the photo under the box, about the box's middle.
+                let centre = (
+                    f32::from(photo.origin.x) + (x + w / 2.0) * pw,
+                    f32::from(photo.origin.y) + (y + h / 2.0) * ph,
+                );
+                let from = (f32::from(event.position.y) - centre.1)
+                    .atan2(f32::from(event.position.x) - centre.0)
+                    .to_degrees();
+                let angle = self
+                    .catalog
+                    .selected_asset()
+                    .map_or(0.0, |a| a.develop.crop.angle);
+                self.develop_ui.crop_drag = Some(CropDrag::Rotate { centre, from, angle });
+                cx.notify();
+                return;
+            }
+        };
         if handle == CropHandle::Move && event.click_count >= 2 {
             // Done: put the tool down.
             self.toggle_photo_tool(super::tool_strip::PhotoTool::Crop, cx);
@@ -205,8 +393,17 @@ impl Workspace {
         } else {
             rect
         };
-        self.develop_ui.crop_drag = Some(CropDrag { handle, start, at });
+        self.develop_ui.crop_drag = Some(CropDrag::Box { handle, start, at });
         cx.notify();
+    }
+
+    /// Enter: done cropping.
+    pub(crate) fn finish_crop(&mut self, cx: &mut Context<Self>) -> bool {
+        if !self.crop_in_view() {
+            return false;
+        }
+        self.toggle_photo_tool(super::tool_strip::PhotoTool::Crop, cx);
+        true
     }
 
     /// Follows a drag of the crop box; `true` while one is in progress.
@@ -224,6 +421,20 @@ impl Workspace {
             cx.notify();
             return true;
         }
+        self.develop_ui.crop_pointer = position;
+        if let CropDrag::Rotate { centre, from, angle } = drag {
+            let turned = rotated_angle(angle, centre, from, (f32::from(position.x), f32::from(position.y)));
+            self.edit_develop(
+                "Straighten",
+                |d| d.crop.angle = turned,
+                |d| (String::new(), format!("{:+.1}\u{b0}", d.crop.angle)),
+                cx,
+            );
+            return true;
+        }
+        let CropDrag::Box { handle, start, at } = drag else {
+            return true;
+        };
         let Some((photo, _)) = self.crop_space() else {
             return true;
         };
@@ -231,9 +442,9 @@ impl Workspace {
             return true;
         };
         let now = Self::crop_point(position, photo);
-        let (du, dv) = (now.0 - drag.at.0, now.1 - drag.at.1);
+        let (du, dv) = (now.0 - at.0, now.1 - at.1);
         // A click outside the box without dragging leaves it be.
-        if drag.handle == CropHandle::New && du.abs() < NEW_BOX_THRESHOLD && dv.abs() < NEW_BOX_THRESHOLD {
+        if handle == CropHandle::New && du.abs() < NEW_BOX_THRESHOLD && dv.abs() < NEW_BOX_THRESHOLD {
             return true;
         }
         let (w, h) = (asset.width.max(1) as f32, asset.height.max(1) as f32);
@@ -245,7 +456,7 @@ impl Workspace {
             .aspect
             .ratio(w, h)
             .map(|shape| shape / (w / h));
-        let rect = drag_crop_rect(drag.start, drag.handle, du, dv, ratio);
+        let rect = drag_crop_rect(start, handle, du, dv, ratio);
         self.edit_develop(
             "Crop",
             |d| d.crop.rect = rect,
@@ -256,5 +467,36 @@ impl Workspace {
             cx,
         );
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dragging_clockwise_round_the_box_turns_the_photo_clockwise() {
+        let centre = (100.0, 100.0);
+        // Start to the right of the centre (0°), move down (90° on screen).
+        let angle = rotated_angle(0.0, centre, 0.0, (100.0, 200.0));
+        assert!((angle - 45.0).abs() < 1e-3 || angle == MAX_STRAIGHTEN, "{angle}");
+        // A small step is a small angle, and adds to where it was.
+        let angle = rotated_angle(2.0, centre, 0.0, (200.0, 105.0));
+        assert!(angle > 2.0 && angle < 5.0, "{angle}");
+        let back = rotated_angle(2.0, centre, 0.0, (200.0, 95.0));
+        assert!(back < 2.0 && back > -1.0, "{back}");
+    }
+
+    #[test]
+    fn the_turn_wraps_the_short_way_and_stops_at_the_limit() {
+        let centre = (0.0, 0.0);
+        // From just above the left side (179°) to just below it (-179°) is
+        // 2° the short way, not 358°.
+        let from = 179.0f32;
+        let to = ((-179.0f32).to_radians().cos() * 100.0, (-179.0f32).to_radians().sin() * 100.0);
+        let angle = rotated_angle(0.0, centre, from, to);
+        assert!((angle - 2.0).abs() < 0.01, "{angle}");
+        assert_eq!(rotated_angle(40.0, centre, 0.0, (0.0, 100.0)), MAX_STRAIGHTEN);
+        assert_eq!(rotated_angle(-40.0, centre, 0.0, (0.0, -100.0)), -MAX_STRAIGHTEN);
     }
 }

@@ -286,6 +286,15 @@ impl Workspace {
         _w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Enter finishes cropping.
+        if event.keystroke.key == "enter"
+            && self.text_draft.is_none()
+            && !event.keystroke.modifiers.modified()
+            && self.finish_crop(cx)
+        {
+            cx.stop_propagation();
+            return;
+        }
         if event.keystroke.key == "space" && self.mode == Mode::Develop && self.text_draft.is_none()
         {
             if !self.develop_ui.zoom.space_held {

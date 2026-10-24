@@ -315,6 +315,38 @@ impl Crop {
         }
     }
 
+    /// The box turned from landscape to portrait or back, about its
+    /// centre, on a `width` × `height` photo: its width and height in
+    /// pixels trade places (shrunk to fit if that doesn't fit), and a locked
+    /// shape is flipped with it.
+    pub fn with_flipped_orientation(&self, width: f32, height: f32) -> Crop {
+        let (x, y, w, h) = self.rect;
+        let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+        let (pw, ph) = (w * width, h * height);
+        // Swapped, as fractions of the photo.
+        let (mut nw, mut nh) = (ph / width.max(1.0), pw / height.max(1.0));
+        // Shrink both by the same factor until it fits about the centre.
+        let room_w = 2.0 * cx.min(1.0 - cx);
+        let room_h = 2.0 * cy.min(1.0 - cy);
+        let fit = (room_w / nw).min(room_h / nh).min(1.0);
+        if fit < 1.0 {
+            nw *= fit;
+            nh *= fit;
+        }
+        let aspect = match self.aspect {
+            AspectLock::Ratio(r) => AspectLock::Ratio(1.0 / r),
+            // The photo's own shape, flipped, is a fixed ratio now.
+            AspectLock::Original => AspectLock::Ratio(height / width.max(1.0)),
+            AspectLock::Free => AspectLock::Free,
+        };
+        Crop {
+            rect: (cx - nw / 2.0, cy - nh / 2.0, nw, nh),
+            aspect,
+            ..*self
+        }
+        .clamped()
+    }
+
     /// Shrinks the rectangle about its centre until every corner lies on
     /// the picture (not the empty corners straightening leaves), on a
     /// `width` × `height` photo.
@@ -429,6 +461,54 @@ mod tests {
     use super::*;
 
     const WHOLE: (f32, f32, f32, f32) = (0.0, 0.0, 1.0, 1.0);
+
+    #[test]
+    fn flipping_the_box_trades_its_width_and_height() {
+        // A 300 x 200 photo with a 150 x 100 landscape box in the middle.
+        let crop = Crop {
+            rect: (0.25, 0.25, 0.5, 0.5),
+            aspect: AspectLock::Ratio(1.5),
+            ..Default::default()
+        };
+        let flipped = crop.with_flipped_orientation(300.0, 200.0);
+        let (_, _, w, h) = flipped.rect;
+        assert!((w * 300.0 - 100.0).abs() < 0.5 && (h * 200.0 - 150.0).abs() < 0.5, "{:?}", flipped.rect);
+        assert_eq!(flipped.aspect, AspectLock::Ratio(1.0 / 1.5));
+        // Still centred where it was.
+        let (x, y, ..) = flipped.rect;
+        assert!(((x + w / 2.0) - 0.5).abs() < 1e-4 && ((y + h / 2.0) - 0.5).abs() < 1e-4);
+        // And back again.
+        let back = flipped.with_flipped_orientation(300.0, 200.0);
+        for (a, b) in [(back.rect.2, 0.5), (back.rect.3, 0.5)] {
+            assert!((a - b).abs() < 1e-3, "{:?}", back.rect);
+        }
+    }
+
+    #[test]
+    fn a_box_that_cannot_turn_in_place_shrinks_to_fit() {
+        // A full-width box on a wide photo: turned, it would be taller
+        // than the photo.
+        let crop = Crop {
+            rect: (0.0, 0.3, 1.0, 0.4),
+            ..Default::default()
+        };
+        let flipped = crop.with_flipped_orientation(300.0, 200.0);
+        let (x, y, w, h) = flipped.rect;
+        assert!(x >= 0.0 && y >= 0.0 && x + w <= 1.0 + 1e-5 && y + h <= 1.0 + 1e-5, "{:?}", flipped.rect);
+        // Its shape in pixels is the old one turned: 80 x 300 became 300 x 80
+        // → shrunk, but still tall and thin the other way round.
+        assert!(h * 200.0 > w * 300.0);
+    }
+
+    #[test]
+    fn the_originals_shape_becomes_a_fixed_ratio_when_flipped() {
+        let crop = Crop {
+            aspect: AspectLock::Original,
+            ..Default::default()
+        };
+        let flipped = crop.with_flipped_orientation(300.0, 200.0);
+        assert_eq!(flipped.aspect, AspectLock::Ratio(200.0 / 300.0));
+    }
 
     #[test]
     fn dragging_an_edge_moves_just_that_edge() {

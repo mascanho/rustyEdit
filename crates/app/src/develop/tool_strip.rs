@@ -126,6 +126,7 @@ impl Workspace {
         ui.gradients.range_pick = None;
         ui.crop_tool = false;
         ui.crop_drag = None;
+        ui.crop_hover = None;
         ui.curve_target = false;
         ui.wb_picker = false;
         if picking {
@@ -232,14 +233,6 @@ impl Workspace {
             )
         });
 
-        let zoom = self.strip_button(
-            "tool-zoom".into(),
-            Icon::ZoomIn,
-            "Zoom to 100% / Fit (Z)",
-            self.develop_ui.zoom.scale.is_some(),
-            cx.listener(|this, _: &ClickEvent, _w, cx| this.toggle_develop_zoom(cx)),
-        );
-
         let theme = self.theme;
         div()
             .flex()
@@ -259,7 +252,6 @@ impl Workspace {
                     .items_center()
                     .gap_0p5()
                     .child(div().w(sp(1.0)).h(sp(16.0)).mx_1().bg(theme.border))
-                    .child(zoom)
                     // Only an edited photo has anything to compare.
                     .when(self.ba_photo_edited(), |el| {
                         el.child(self.before_after_menu_button(cx))

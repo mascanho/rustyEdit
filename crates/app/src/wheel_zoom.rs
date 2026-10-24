@@ -1,6 +1,7 @@
 //! Ctrl + mouse wheel zooms the photos in every module: the loupe steps
 //! through its zoom levels, the grid resizes its cards, and Develop zooms
-//! smoothly around the pointer.
+//! smoothly around the pointer. In Develop the plain wheel does it too,
+//! over the photo (over the panels it still scrolls them).
 //!
 //! The wheel is intercepted in the capture phase, before any scroll
 //! container sees it, so zooming never scrolls the list underneath.
@@ -32,11 +33,15 @@ impl Workspace {
             move |_, _, window, _| {
                 let entity = entity.clone();
                 window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
-                    if phase != DispatchPhase::Capture || !event.modifiers.control {
+                    if phase != DispatchPhase::Capture {
                         return;
                     }
                     let delta = event.delta.pixel_delta(window.line_height());
                     let handled = entity.update(cx, |this, cx| {
+                        let plain = this.plain_wheel_zooms(event);
+                        if !event.modifiers.control && !plain {
+                            return false;
+                        }
                         this.wheel_zoom(f32::from(delta.y), event.position, cx)
                     });
                     if handled {
@@ -48,6 +53,21 @@ impl Workspace {
         .absolute()
         .size(sp(0.0))
         .into_any_element()
+    }
+
+    /// In Develop the wheel alone zooms when it's over the photo, and no
+    /// modifier is held (Shift and Alt nudge sliders; ⌘ is the system's).
+    /// While the Crop tool is out the photo stays fitted, so it doesn't.
+    fn plain_wheel_zooms(&self, event: &ScrollWheelEvent) -> bool {
+        let m = event.modifiers;
+        self.mode == Mode::Develop
+            && !self.settings_open
+            && !m.shift
+            && !m.alt
+            && !m.platform
+            && !m.control
+            && !self.develop_ui.crop_tool
+            && self.develop_ui.zoom.viewer_bounds.get().contains(&event.position)
     }
 
     /// Grows (positive) or shrinks the grid cards by `steps` size steps.
@@ -90,7 +110,11 @@ impl Workspace {
         if !zoomable {
             return false;
         }
-        // Develop zooms continuously rather than in steps.
+        // Develop zooms continuously rather than in steps. (Not while the
+        // Crop tool is out: it works on the fitted photo.)
+        if self.mode == Mode::Develop && self.develop_ui.crop_tool {
+            return true;
+        }
         if self.mode == Mode::Develop {
             self.zoom_develop_by(delta_y, pointer, cx);
             return true;

@@ -796,6 +796,11 @@ impl Workspace {
     }
 
     pub fn flag_reject(&mut self, _: &FlagReject, _window: &mut Window, cx: &mut Context<Self>) {
+        // With the Crop tool out, X flips the box instead.
+        if self.crop_in_view() {
+            self.flip_crop_orientation(cx);
+            return;
+        }
         self.apply_cull(CullOp::Flag(Flag::Rejected), cx);
     }
 
