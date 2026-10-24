@@ -3,7 +3,7 @@
 
 use rustyedit_ui::sp;
 use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString};
-use rustyedit_core::{AspectLock, MAX_STRAIGHTEN};
+use rustyedit_core::{AspectLock, MAX_PERSPECTIVE, MAX_STRAIGHTEN};
 use rustyedit_ui::{SliderSpec, SliderTrack};
 
 use crate::workspace::Workspace;
@@ -46,9 +46,35 @@ impl Workspace {
             },
         );
 
+        let perspective_spec = SliderSpec {
+            min: -MAX_PERSPECTIVE,
+            max: MAX_PERSPECTIVE,
+            default: 0.0,
+            signed: true,
+            track: SliderTrack::Accent,
+        };
+        let perspective = |id: &'static str, label: &'static str, value: f32, vertical: bool| {
+            let entity = cx.entity();
+            rustyedit_ui::labeled_slider(
+                id,
+                label,
+                value,
+                perspective_spec,
+                &self.theme,
+                move |value, _window, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.set_crop_perspective(vertical, value, width, height, cx)
+                    });
+                },
+            )
+            .into_any_element()
+        };
+
         vec![
             aspects.into_any_element(),
             straighten.into_any_element(),
+            perspective("crop-vertical", "Vertical", crop.vertical, true),
+            perspective("crop-horizontal", "Horizontal", crop.horizontal, false),
         ]
     }
 
@@ -132,6 +158,39 @@ impl Workspace {
                     format!("{:+.1}\u{b0}", develop.crop.angle),
                 )
             },
+            cx,
+        );
+    }
+
+    /// Sets the vertical or horizontal perspective correction, pulling the
+    /// crop back onto the picture where the correction leaves empty corners.
+    fn set_crop_perspective(
+        &mut self,
+        vertical: bool,
+        value: f32,
+        width: f32,
+        height: f32,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(before) = self.catalog.selected_asset().map(|asset| {
+            let crop = asset.develop.crop;
+            if vertical { crop.vertical } else { crop.horizontal }
+        }) else {
+            return;
+        };
+        let value = value.clamp(-MAX_PERSPECTIVE, MAX_PERSPECTIVE);
+        self.edit_develop(
+            if vertical { "Vertical Perspective" } else { "Horizontal Perspective" },
+            |develop| {
+                if vertical {
+                    develop.crop.vertical = value;
+                } else {
+                    develop.crop.horizontal = value;
+                }
+                develop.crop.fit_inside(width, height);
+                develop.crop = develop.crop.clamped();
+            },
+            |_| (format!("{before:+.0}"), format!("{value:+.0}")),
             cx,
         );
     }

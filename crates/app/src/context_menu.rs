@@ -348,6 +348,20 @@ impl Workspace {
                 },
             ));
         }
+        if self.targets_have_sidecars() {
+            entries.push(action(
+                "ctx-read-sidecar",
+                "\u{21E3}",
+                "Read from XMP sidecar",
+                |this, _w, cx| this.read_from_sidecars(cx),
+            ));
+        }
+        entries.push(action(
+            "ctx-write-sidecar",
+            "\u{21E1}",
+            "Write XMP sidecar",
+            |this, _w, cx| this.write_sidecars_now(cx),
+        ));
         entries.push(Entry::Separator);
 
         // --- File ---------------------------------------------------------------

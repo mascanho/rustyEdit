@@ -109,6 +109,14 @@ impl Workspace {
                 })
                 .collect(),
         };
+        // Photos clicked in the filmstrip join the queue after the rest.
+        for &id in &self.export_added {
+            if let Some(ix) = assets.iter().position(|a| a.id == id) {
+                if !indices.contains(&ix) {
+                    indices.push(ix);
+                }
+            }
+        }
         indices.retain(|&ix| {
             assets.get(ix).is_some_and(|a| {
                 !a.missing
@@ -117,6 +125,32 @@ impl Workspace {
             })
         });
         indices
+    }
+
+    /// In the Export module, clicking a photo in the filmstrip adds it to
+    /// the queue (bringing it back if it was removed) rather than
+    /// replacing what's queued.
+    pub(crate) fn add_to_export_queue(&mut self, ix: usize) {
+        // With "Selected", the queue *is* the selection, which the click is
+        // about to replace: keep what's there.
+        if self.export_options.scope == ExportScope::Selected {
+            let current: Vec<u64> = self
+                .target_indices()
+                .into_iter()
+                .filter_map(|i| self.catalog.assets.get(i).map(|a| a.id))
+                .collect();
+            for id in current {
+                if !self.export_added.contains(&id) {
+                    self.export_added.push(id);
+                }
+            }
+        }
+        if let Some(id) = self.catalog.assets.get(ix).map(|a| a.id) {
+            self.export_excluded.remove(&id);
+            if !self.export_added.contains(&id) {
+                self.export_added.push(id);
+            }
+        }
     }
 
     fn update_export(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut ExportOptions)) {
@@ -599,6 +633,9 @@ impl Workspace {
             - 64.0)
             .max(TILE_MIN);
         let (tile_w, cols) = tile_width(avail);
+        // The tiles are dressed like the filmstrip, in whatever style it's set to.
+        let look = rustyedit_ui::FilmLook::for_style(self.settings.filmstrip.style, &theme);
+        let show_edge_print = self.settings.filmstrip.show_edge_print;
 
         // `top` is pinned above the photos, `bottom` (run progress) below them;
         // `body` scrolls between.
@@ -634,6 +671,8 @@ impl Workspace {
             }
             body.push(tile_grid(
                 &theme,
+                &look,
+                show_edge_print,
                 &run.tiles[start..end],
                 Some(&statuses[start..end]),
                 tile_w,
@@ -670,7 +709,7 @@ impl Workspace {
                         .into_any_element(),
                 );
             } else {
-                body.push(tile_grid(&theme, &tiles, None, tile_w, 0, Some(&entity)));
+                body.push(tile_grid(&theme, &look, show_edge_print, &tiles, None, tile_w, 0, Some(&entity)));
                 if count > tiles.len() {
                     body.push(
                         div()
@@ -901,6 +940,7 @@ impl Workspace {
                             .filter_map(|ix| this.catalog.assets.get(ix).map(|a| a.id))
                             .collect();
                         this.export_excluded.extend(ids);
+                        this.export_added.clear();
                         cx.notify();
                     }),
                 ))
@@ -1256,6 +1296,8 @@ fn labelled(theme: &Theme, label: &'static str, control: AnyElement) -> AnyEleme
 /// a green tick when done, a red cross (and the reason) when it failed.
 fn tile_grid(
     theme: &Theme,
+    look: &rustyedit_ui::FilmLook,
+    show_edge_print: bool,
     tiles: &[Tile],
     statuses: Option<&[ItemStatus]>,
     tile_w: f32,
@@ -1270,6 +1312,8 @@ fn tile_grid(
         .children(tiles.iter().enumerate().take(MAX_TILES).map(|(i, tile)| {
             tile_view(
                 theme,
+                look,
+                show_edge_print,
                 offset + i,
                 tile,
                 statuses.and_then(|s| s.get(i)),
@@ -1282,6 +1326,8 @@ fn tile_grid(
 
 fn tile_view(
     theme: &Theme,
+    look: &rustyedit_ui::FilmLook,
+    show_edge_print: bool,
     ix: usize,
     tile: &Tile,
     status: Option<&ItemStatus>,
@@ -1299,8 +1345,18 @@ fn tile_view(
         _ => theme.border_subtle,
     };
     let photo = match &tile.thumbnail {
+        // Landscapes fill the frame; portraits are shown whole with black
+        // at the sides.
         Some(path) => img(path.clone())
-            .object_fit(ObjectFit::Cover)
+            .object_fit(if crate::filmstrip::thumb_is_portrait_of(path, (0, 0)) {
+                ObjectFit::Contain
+            } else {
+                ObjectFit::Cover
+            })
+            .grayscale(look.monochrome)
+            .absolute()
+            .top_0()
+            .left_0()
             .size_full()
             .into_any_element(),
         None => div()
@@ -1308,11 +1364,52 @@ fn tile_view(
             .bg(theme.surface_elevated)
             .into_any_element(),
     };
+    // Dressed like the filmstrip: its base, perforations, edge print, and
+    // the print border of the instant style.
+    let look = *look;
+    let edge_print = look.edge_print.filter(|_| show_edge_print).map(|edge| {
+        let (left, right) = (edge.label)(ix + 1);
+        div()
+            .flex()
+            .flex_row()
+            .flex_shrink_0()
+            .justify_between()
+            .h(px(crate::filmstrip::EDGE_PRINT_HEIGHT))
+            .px(sp(6.0))
+            .when(look.monospace, |el| el.font_family(crate::filmstrip::EDGE_PRINT_FONT))
+            .text_size(sp(8.0))
+            .text_color(edge.color)
+            .child(SharedString::from(left))
+            .child(SharedString::from(right))
+    });
+    let picture = div()
+        .relative()
+        .flex_1()
+        .min_h(sp(0.0))
+        .mx(px(look.picture_inset.min(6.0)))
+        .overflow_hidden()
+        .rounded(px(look.picture_radius))
+        .bg(gpui::black())
+        .border_1()
+        .border_color(look.picture_border)
+        .child(photo);
+    let photo = div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .bg(look.mat.unwrap_or(look.base_bottom))
+        .when(look.sprockets.is_none(), |el| el.py(sp(4.0)))
+        .children(look.sprockets.map(crate::filmstrip::sprocket_row))
+        .children(edge_print)
+        .child(picture)
+        .children(look.sprockets.map(crate::filmstrip::sprocket_row))
+        .into_any_element();
 
     let mut frame = div()
         .id(("export-tile", ix))
         .relative()
         .overflow_hidden()
+        .flex_shrink_0()
         .w(px(w))
         .h(px(h))
         .rounded_lg()
@@ -1441,6 +1538,7 @@ fn tile_view(
         .group(group)
         .flex()
         .flex_col()
+        .flex_shrink_0()
         .gap_1()
         .w(px(w))
         .child(frame)

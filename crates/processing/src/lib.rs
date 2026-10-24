@@ -613,6 +613,18 @@ mod tests {
                 }),
             ),
             (
+                "perspective crop",
+                with(|s| {
+                    s.crop = Crop {
+                        rect: (0.1, 0.1, 0.8, 0.8),
+                        angle: -2.0,
+                        vertical: 45.0,
+                        horizontal: -30.0,
+                        ..Default::default()
+                    }
+                }),
+            ),
+            (
                 "straightened crop",
                 with(|s| {
                     s.crop = Crop {

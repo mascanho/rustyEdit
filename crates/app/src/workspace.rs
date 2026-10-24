@@ -219,6 +219,10 @@ pub struct Workspace {
     pub(crate) export_run: Option<crate::export::ExportRun>,
     /// Photos (by id) the user took out of the export queue.
     pub(crate) export_excluded: HashSet<u64>,
+    /// Photos (by id) added to the export queue by clicking them in the
+    /// filmstrip, in the order they were added; they're exported on top of
+    /// whatever the scope picks.
+    pub(crate) export_added: Vec<u64>,
     pub(crate) export_message: Option<SharedString>,
     /// Active tool on each side's icon rail (see `rail.rs`).
     pub(crate) left_rail_tool: Option<RailTool>,
@@ -426,6 +430,7 @@ impl Workspace {
             ba: Default::default(),
             export_run: None,
             export_excluded: HashSet::new(),
+            export_added: Vec::new(),
             export_message: None,
             left_rail_tool: None,
             right_rail_tool: None,

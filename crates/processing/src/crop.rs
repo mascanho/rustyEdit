@@ -1,10 +1,10 @@
-//! Straighten and crop: turns the picture about its centre and takes the
+//! Straighten, correct perspective and crop: turns the picture about its centre and takes the
 //! crop rectangle out of the turned canvas, sampling bilinearly so
 //! straightened edges stay smooth. Points off the picture (the corners a
 //! turn leaves empty, only visible while editing the crop) are black.
 
 use image::{imageops, RgbImage};
-use rustyedit_core::{rotate_about_centre, Crop};
+use rustyedit_core::Crop;
 
 pub(crate) fn straighten_and_crop(image: RgbImage, crop: &Crop) -> RgbImage {
     if crop.is_identity() {
@@ -16,7 +16,7 @@ pub(crate) fn straighten_and_crop(image: RgbImage, crop: &Crop) -> RgbImage {
     let out_w = ((w * width).round() as u32).max(1);
     let out_h = ((h * height).round() as u32).max(1);
 
-    if crop.angle == 0.0 {
+    if crop.angle == 0.0 && !crop.has_perspective() {
         let left = (x0.round() as u32).min(image.width() - 1);
         let top = (y0.round() as u32).min(image.height() - 1);
         let out_w = out_w.min(image.width() - left);
@@ -41,7 +41,7 @@ pub(crate) fn straighten_and_crop(image: RgbImage, crop: &Crop) -> RgbImage {
                     let oy = (band * rows_per_band + i) as f32;
                     for (ox, px) in row.chunks_exact_mut(3).enumerate() {
                         let canvas = (x0 + ox as f32 + 0.5, y0 + oy + 0.5);
-                        let (sx, sy) = rotate_about_centre(canvas, -crop.angle, width, height);
+                        let (sx, sy) = crop.source_point(canvas, width, height);
                         px.copy_from_slice(&bilinear(source, sx - 0.5, sy - 0.5));
                     }
                 }
@@ -91,6 +91,7 @@ mod tests {
             rect: (0.5, 0.0, 0.5, 1.0),
             angle: 0.0,
             aspect: AspectLock::Free,
+            ..Default::default()
         };
         let out = straighten_and_crop(image, &crop);
         assert_eq!(out.dimensions(), (50, 50));

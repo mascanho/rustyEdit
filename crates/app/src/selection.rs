@@ -106,6 +106,9 @@ impl Workspace {
             self.select_range_to(ix);
             self.on_selection_changed(cx);
         } else {
+            if self.mode == crate::workspace::Mode::Export {
+                self.add_to_export_queue(ix);
+            }
             self.selection_anchor = Some(ix);
             self.select_asset(ix, cx);
         }

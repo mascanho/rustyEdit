@@ -39,7 +39,7 @@ pub use catalog::{Catalog, CatalogCounts, FilterMode, RatingFilter, SortKey, Sor
 pub use catalog_def::CatalogDef;
 pub use collections::{default_keyword_sets, KeywordSet, SmartCollection, SmartCollections};
 pub use color_label::ColorLabel;
-pub use crop::{rotate_about_centre, AspectLock, Crop, CropView, MAX_STRAIGHTEN};
+pub use crop::{rotate_about_centre, AspectLock, Crop, CropView, MAX_PERSPECTIVE, MAX_STRAIGHTEN};
 pub use curves::{CurveChannel, CurvePreset, ToneCurve, ToneCurves, MAX_CURVE_POINTS};
 pub use develop::{Adjustment, DevelopSettings};
 pub use duplicates::{

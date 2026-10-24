@@ -16,7 +16,7 @@ use crate::workspace::Workspace;
 // The picture height is user-resizable; the frame keeps this aspect to it.
 const FRAME_ASPECT: f32 = 132.0 / 80.0;
 const SPROCKET_ROW_HEIGHT: f32 = 14.0;
-const EDGE_PRINT_HEIGHT: f32 = 12.0;
+pub(crate) const EDGE_PRINT_HEIGHT: f32 = 12.0;
 const META_ROW_HEIGHT: f32 = 16.0;
 const ARROW_WIDTH: f32 = 30.0;
 const HEADER_HEIGHT: f32 = 20.0;
@@ -36,7 +36,7 @@ const FALLBACK_VIEWPORT_WIDTH: f32 = 4096.0;
 /// Pixels scrolled per "line" for mouse wheels that report line deltas.
 const WHEEL_LINE_PX: f32 = 40.0;
 
-const EDGE_PRINT_FONT: &str = "Menlo";
+pub(crate) const EDGE_PRINT_FONT: &str = "Menlo";
 
 /// Everything in a frame that doesn't scale with the picture.
 pub(crate) const FILM_FIXED_HEIGHT: f32 =
@@ -578,7 +578,7 @@ fn film_frame(
 }
 
 /// A row of perforations, evenly spaced across a frame.
-fn sprocket_row(sprockets: Sprockets) -> impl IntoElement {
+pub(crate) fn sprocket_row(sprockets: Sprockets) -> impl IntoElement {
     div()
         .flex()
         .flex_row()
@@ -616,8 +616,9 @@ fn film_stars(value: u8, look: &FilmLook) -> impl IntoElement {
 
 /// Whether the thumbnail at `path` is taller than wide. Read from the
 /// image itself, since the catalog's recorded size can be stale or
-/// unrotated; remembered so each file's header is read once.
-pub(crate) fn thumb_is_portrait(path: &std::path::Path, asset: &Asset) -> bool {
+/// unrotated; remembered so each file's header is read once. `fallback`
+/// (width, height) is used if the file can't be read.
+pub(crate) fn thumb_is_portrait_of(path: &std::path::Path, fallback: (u32, u32)) -> bool {
     use std::{collections::HashMap, path::PathBuf, sync::Mutex};
     static SIZES: Mutex<Option<HashMap<PathBuf, (u32, u32)>>> = Mutex::new(None);
     let mut sizes = SIZES.lock().unwrap_or_else(|e| e.into_inner());
@@ -629,10 +630,14 @@ pub(crate) fn thumb_is_portrait(path: &std::path::Path, asset: &Asset) -> bool {
                 sizes.insert(path.to_path_buf(), size);
                 size
             }
-            Err(_) => (asset.width, asset.height),
+            Err(_) => fallback,
         },
     };
     h > w
+}
+
+pub(crate) fn thumb_is_portrait(path: &std::path::Path, asset: &Asset) -> bool {
+    thumb_is_portrait_of(path, (asset.width, asset.height))
 }
 
 #[cfg(test)]

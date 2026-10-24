@@ -37,6 +37,7 @@ mod panel_footers;
 mod rail;
 mod resize;
 mod selection;
+mod sidecars;
 mod settings_view;
 mod quit_prompt;
 mod size_menu;

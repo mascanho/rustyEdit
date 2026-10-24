@@ -46,6 +46,8 @@ struct Params {
     lut_size: u32, off_x: u32, off_y: u32, full_w: u32,
     // Spot removal: the spot's table in `aux` (see gpu.rs `plan_spots`).
     full_h: u32, src_off_x: u32, src_off_y: u32, spot_offset: u32,
+    // Perspective correction (Crop::perspective_strength).
+    persp_x: f32, persp_y: f32, pad0: f32, pad1: f32,
 }
 
 const F_CURVES: u32 = 1u;
@@ -940,8 +942,11 @@ fn crop_finish(@builtin(global_invocation_id) id: vec3<u32>) {
         let cy = f32(p.full_h) / 2.0;
         let dx = p.crop_x0 + f32(ox) + 0.5 - cx;
         let dy = p.crop_y0 + f32(oy) + 0.5 - cy;
-        let sx = cx + dx * p.crop_cos - dy * p.crop_sin;
-        let sy = cy + dx * p.crop_sin + dy * p.crop_cos;
+        let rx = dx * p.crop_cos - dy * p.crop_sin;
+        let ry = dx * p.crop_sin + dy * p.crop_cos;
+        let w = max(1.0 + p.persp_x * rx / cx + p.persp_y * ry / cy, 0.05);
+        let sx = cx + rx / w;
+        let sy = cy + ry / w;
         c = crop_bilinear(sx - 0.5, sy - 0.5);
     } else {
         c = src_at(i32(p.crop_left + ox), i32(p.crop_top + oy));

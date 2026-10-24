@@ -5,6 +5,9 @@
 //! on a canvas of the same size; the crop rectangle is then taken from
 //! that canvas, as fractions of its width and height.
 //!
+//! Perspective correction (vertical and horizontal keystone) is applied to
+//! the picture before it is turned: see [`Crop::source_point`].
+//!
 //! [`CropView`] maps points between the oriented photo and the cropped,
 //! straightened result as shown, so tools drawn on the photo (spots,
 //! gradients) stay on the right pixels.
@@ -13,6 +16,11 @@ use serde::{Deserialize, Serialize};
 
 /// Largest straightening angle, either way.
 pub const MAX_STRAIGHTEN: f32 = 45.0;
+/// Largest perspective correction, either way, on each axis.
+pub const MAX_PERSPECTIVE: f32 = 100.0;
+/// How much of the picture's half size a full-strength correction pulls
+/// the far edge in by.
+const PERSPECTIVE_STRENGTH: f32 = 0.35;
 /// Smallest crop side, as a fraction of the photo.
 const MIN_SIDE: f32 = 0.02;
 
@@ -30,11 +38,13 @@ pub enum AspectLock {
 
 impl AspectLock {
     /// The presets offered, with their labels.
-    pub const PRESETS: [(&'static str, AspectLock); 7] = [
+    pub const PRESETS: [(&'static str, AspectLock); 9] = [
         ("Free", AspectLock::Free),
         ("Original", AspectLock::Original),
         ("1:1", AspectLock::Ratio(1.0)),
         ("4:5", AspectLock::Ratio(0.8)),
+        ("5:4", AspectLock::Ratio(1.25)),
+        ("7:5", AspectLock::Ratio(1.4)),
         ("3:2", AspectLock::Ratio(1.5)),
         ("4:3", AspectLock::Ratio(4.0 / 3.0)),
         ("16:9", AspectLock::Ratio(16.0 / 9.0)),
@@ -59,6 +69,12 @@ pub struct Crop {
     /// Straightening, in degrees; positive turns the picture clockwise.
     pub angle: f32,
     pub aspect: AspectLock,
+    /// -100..=100: corrects converging verticals (a building seen from
+    /// below); positive narrows the top.
+    pub vertical: f32,
+    /// -100..=100: corrects converging horizontals; positive narrows the
+    /// right side.
+    pub horizontal: f32,
 }
 
 impl Default for Crop {
@@ -67,6 +83,8 @@ impl Default for Crop {
             rect: (0.0, 0.0, 1.0, 1.0),
             angle: 0.0,
             aspect: AspectLock::Free,
+            vertical: 0.0,
+            horizontal: 0.0,
         }
     }
 }
@@ -74,7 +92,45 @@ impl Default for Crop {
 impl Crop {
     /// Whether the crop changes anything (its aspect lock alone doesn't).
     pub fn is_identity(&self) -> bool {
-        self.rect == (0.0, 0.0, 1.0, 1.0) && self.angle == 0.0
+        self.rect == (0.0, 0.0, 1.0, 1.0) && self.angle == 0.0 && !self.has_perspective()
+    }
+
+    /// Whether any perspective correction is set.
+    pub fn has_perspective(&self) -> bool {
+        self.vertical != 0.0 || self.horizontal != 0.0
+    }
+
+    /// The correction as the `(x, y)` strengths [`Crop::source_point`]
+    /// uses, for renderers that apply the same mapping.
+    pub fn perspective_strength(&self) -> (f32, f32) {
+        // Positive vertical narrows the top: the picture grows with y.
+        (
+            self.horizontal.clamp(-MAX_PERSPECTIVE, MAX_PERSPECTIVE) / MAX_PERSPECTIVE
+                * PERSPECTIVE_STRENGTH,
+            self.vertical.clamp(-MAX_PERSPECTIVE, MAX_PERSPECTIVE) / MAX_PERSPECTIVE
+                * PERSPECTIVE_STRENGTH,
+        )
+    }
+
+    /// The point of a `width` × `height` photo that canvas pixel `p` (on
+    /// the straightened, corrected canvas) shows: turned back by the
+    /// angle, then taken through the perspective correction.
+    pub fn source_point(&self, p: (f32, f32), width: f32, height: f32) -> (f32, f32) {
+        let (rx, ry) = rotate_about_centre(p, -self.angle, width, height);
+        let (cx, cy) = (width / 2.0, height / 2.0);
+        let (px, py) = self.perspective_strength();
+        let w = (1.0 + px * (rx - cx) / cx.max(1e-6) + py * (ry - cy) / cy.max(1e-6)).max(0.05);
+        (cx + (rx - cx) / w, cy + (ry - cy) / w)
+    }
+
+    /// The inverse of [`Crop::source_point`]: where photo point `s` lands
+    /// on the canvas.
+    pub fn canvas_point(&self, s: (f32, f32), width: f32, height: f32) -> (f32, f32) {
+        let (cx, cy) = (width / 2.0, height / 2.0);
+        let (px, py) = self.perspective_strength();
+        let (dx, dy) = (s.0 - cx, s.1 - cy);
+        let w = 1.0 / (1.0 - px * dx / cx.max(1e-6) - py * dy / cy.max(1e-6)).max(0.05);
+        rotate_about_centre((cx + dx * w, cy + dy * w), self.angle, width, height)
     }
 
     /// The crop after the photo turns a quarter clockwise (or back), so it
@@ -107,7 +163,7 @@ impl Crop {
             let (hw, hh) = (w * s / 2.0, h * s / 2.0);
             [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)]
                 .iter()
-                .all(|(dx, dy)| on_picture((cx + dx, cy + dy), self.angle, width, height))
+                .all(|(dx, dy)| self.on_picture((cx + dx, cy + dy), width, height))
         };
         if corners_ok(1.0) {
             return;
@@ -143,6 +199,14 @@ impl Crop {
         crop
     }
 
+    /// Whether canvas point `p` (fractions) shows picture rather than an
+    /// empty corner, on a `width` × `height` canvas.
+    fn on_picture(&self, p: (f32, f32), width: f32, height: f32) -> bool {
+        let (x, y) = self.source_point((p.0 * width, p.1 * height), width, height);
+        let eps = 1e-3;
+        x >= -eps && y >= -eps && x <= width + eps && y <= height + eps
+    }
+
     /// Clamps the rectangle onto the canvas and to a minimum size.
     pub fn clamped(mut self) -> Crop {
         let (x, y, w, h) = self.rect;
@@ -152,15 +216,6 @@ impl Crop {
         self.angle = self.angle.clamp(-MAX_STRAIGHTEN, MAX_STRAIGHTEN);
         self
     }
-}
-
-/// Whether canvas point `p` (fractions) shows picture rather than an empty
-/// corner, with the picture turned by `angle` on a `width` × `height`
-/// canvas.
-fn on_picture(p: (f32, f32), angle: f32, width: f32, height: f32) -> bool {
-    let (x, y) = rotate_about_centre((p.0 * width, p.1 * height), -angle, width, height);
-    let eps = 1e-3;
-    x >= -eps && y >= -eps && x <= width + eps && y <= height + eps
 }
 
 /// Turns pixel point `p` by `degrees` (clockwise on screen) about the
@@ -187,12 +242,9 @@ impl CropView {
     /// A point on the oriented photo (fractions) → the view (in units,
     /// from the crop's top-left).
     pub fn to_view(&self, p: (f32, f32)) -> (f32, f32) {
-        let (x, y) = rotate_about_centre(
-            (p.0 * self.width, p.1 * self.height),
-            self.crop.angle,
-            self.width,
-            self.height,
-        );
+        let (x, y) = self
+            .crop
+            .canvas_point((p.0 * self.width, p.1 * self.height), self.width, self.height);
         (
             x - self.crop.rect.0 * self.width,
             y - self.crop.rect.1 * self.height,
@@ -205,7 +257,7 @@ impl CropView {
             v.0 + self.crop.rect.0 * self.width,
             v.1 + self.crop.rect.1 * self.height,
         );
-        let (x, y) = rotate_about_centre(canvas, -self.crop.angle, self.width, self.height);
+        let (x, y) = self.crop.source_point(canvas, self.width, self.height);
         (x / self.width.max(1e-6), y / self.height.max(1e-6))
     }
 }
@@ -221,6 +273,8 @@ mod tests {
                 rect: (0.1, 0.2, 0.6, 0.5),
                 angle: 7.0,
                 aspect: AspectLock::Free,
+                vertical: 40.0,
+                horizontal: -25.0,
             },
             width: 300.0,
             height: 200.0,
@@ -228,6 +282,36 @@ mod tests {
         let p = (0.4, 0.6);
         let back = view.from_view(view.to_view(p));
         assert!((back.0 - p.0).abs() < 1e-4 && (back.1 - p.1).abs() < 1e-4);
+    }
+
+    #[test]
+    fn perspective_maps_back_and_forth() {
+        let crop = Crop {
+            angle: -4.0,
+            vertical: 60.0,
+            horizontal: 30.0,
+            ..Default::default()
+        };
+        let p = (130.0, 70.0);
+        let back = crop.canvas_point(crop.source_point(p, 300.0, 200.0), 300.0, 200.0);
+        assert!((back.0 - p.0).abs() < 1e-2 && (back.1 - p.1).abs() < 1e-2);
+        // The centre stays put.
+        let c = crop.source_point((150.0, 100.0), 300.0, 200.0);
+        assert!((c.0 - 150.0).abs() < 1e-3 && (c.1 - 100.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn perspective_crop_stays_on_the_picture() {
+        let mut crop = Crop {
+            vertical: 80.0,
+            ..Default::default()
+        };
+        assert!(!crop.is_identity());
+        crop.fit_inside(300.0, 200.0);
+        let (x, y, w, h) = crop.rect;
+        for corner in [(x, y), (x + w, y), (x + w, y + h), (x, y + h)] {
+            assert!(crop.on_picture(corner, 300.0, 200.0));
+        }
     }
 
     #[test]
@@ -240,7 +324,7 @@ mod tests {
         let (x, y, w, h) = crop.rect;
         assert!(w < 1.0 && h < 1.0);
         for corner in [(x, y), (x + w, y), (x + w, y + h), (x, y + h)] {
-            assert!(on_picture(corner, 10.0, 300.0, 200.0));
+            assert!(crop.on_picture(corner, 300.0, 200.0));
         }
     }
 

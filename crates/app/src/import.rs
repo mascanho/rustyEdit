@@ -344,6 +344,7 @@ impl Workspace {
         // Keyed by asset id, and ids are reassigned on every load.
         self.edited_thumbs = Default::default();
         self.export_excluded.clear();
+        self.export_added.clear();
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.loupe_zoom = None;

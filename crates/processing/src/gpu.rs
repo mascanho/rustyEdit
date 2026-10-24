@@ -113,9 +113,13 @@ struct Params {
     src_off_x: u32,
     src_off_y: u32,
     spot_offset: u32,
+    /// Perspective correction strengths (Crop::perspective_strength).
+    persp_x: f32,
+    persp_y: f32,
+    _pad: [f32; 2],
 }
 
-const _: () = assert!(std::mem::size_of::<Params>() == 288);
+const _: () = assert!(std::mem::size_of::<Params>() == 304);
 
 /// `resize_filter` values.
 const TRIANGLE: u32 = 0;
@@ -1850,6 +1854,8 @@ struct CropGeometry {
     cos: f32,
     canvas: (f32, f32),
     identity: bool,
+    persp: (f32, f32),
+    crop: rustyedit_core::Crop,
 }
 
 impl CropGeometry {
@@ -1867,6 +1873,8 @@ impl CropGeometry {
             cos: 1.0,
             canvas: (fw, fh),
             identity: crop.is_identity(),
+            persp: crop.perspective_strength(),
+            crop: *crop,
         };
         if geometry.identity {
             return geometry;
@@ -1875,7 +1883,7 @@ impl CropGeometry {
         let (x0, y0) = (x * fw, y * fh);
         geometry.out_w = ((w * fw).round() as u32).max(1);
         geometry.out_h = ((h * fh).round() as u32).max(1);
-        if crop.angle == 0.0 {
+        if crop.angle == 0.0 && !crop.has_perspective() {
             geometry.left = (x0.round() as u32).min(width - 1);
             geometry.top = (y0.round() as u32).min(height - 1);
             geometry.out_w = geometry.out_w.min(width - geometry.left);
@@ -1906,7 +1914,6 @@ impl CropGeometry {
     /// reads, grown by `margin` and kept on the photo.
     fn window_for(&self, [x, y, w, h]: [u32; 4], margin: u32, width: u32, height: u32) -> [u32; 4] {
         let (min, max) = if self.rotated {
-            let (cx, cy) = (self.canvas.0 / 2.0, self.canvas.1 / 2.0);
             let corners = [
                 (x as f32, y as f32),
                 ((x + w) as f32, y as f32),
@@ -1916,10 +1923,11 @@ impl CropGeometry {
             let mut min = (f32::MAX, f32::MAX);
             let mut max = (f32::MIN, f32::MIN);
             for (ox, oy) in corners {
-                let dx = self.x0 + ox - cx;
-                let dy = self.y0 + oy - cy;
-                let sx = cx + dx * self.cos - dy * self.sin;
-                let sy = cy + dx * self.sin + dy * self.cos;
+                let (sx, sy) = self.crop.source_point(
+                    (self.x0 + ox, self.y0 + oy),
+                    self.canvas.0,
+                    self.canvas.1,
+                );
                 min = (min.0.min(sx), min.1.min(sy));
                 max = (max.0.max(sx), max.1.max(sy));
             }
@@ -1953,6 +1961,7 @@ fn plan_crop(
         params.crop_y0 = crop.y0;
         params.crop_sin = crop.sin;
         params.crop_cos = crop.cos;
+        (params.persp_x, params.persp_y) = crop.persp;
     } else {
         params.crop_left = crop.left;
         params.crop_top = crop.top;

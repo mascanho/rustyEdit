@@ -86,12 +86,26 @@ pub fn to_xmp(asset: &Asset, include_edits: bool) -> String {
             ("Contrast2012", d.contrast),
             ("Highlights2012", d.highlights),
             ("Shadows2012", d.shadows),
+            ("Whites2012", d.whites),
+            ("Blacks2012", d.blacks),
             ("Vibrance", d.vibrance),
             ("Saturation", d.saturation),
             ("Clarity2012", d.clarity),
             ("Dehaze", d.dehaze),
         ] {
             attrs.push(format!(r#"crs:{name}="{:+.0}""#, value));
+        }
+        // A plain crop, as Camera Raw writes it (fractions from each edge).
+        // Straightened or perspective-corrected crops mean something else
+        // there, so they're left to this app's own copy of the settings.
+        let (x, y, w, h) = d.crop.rect;
+        if d.crop.angle == 0.0 && !d.crop.has_perspective() && !d.crop.is_identity() {
+            attrs.push(r#"crs:HasCrop="True""#.to_string());
+            attrs.push(format!(r#"crs:CropLeft="{:.6}""#, x));
+            attrs.push(format!(r#"crs:CropTop="{:.6}""#, y));
+            attrs.push(format!(r#"crs:CropRight="{:.6}""#, x + w));
+            attrs.push(format!(r#"crs:CropBottom="{:.6}""#, y + h));
+            attrs.push(r#"crs:CropAngle="0""#.to_string());
         }
     }
 
@@ -236,6 +250,10 @@ pub struct SidecarData {
     pub copyright: Option<String>,
     /// Only from sidecars this app wrote.
     pub develop: Option<DevelopSettings>,
+    /// The Camera Raw (`crs:`) edits another app (Lightroom, Bridge)
+    /// wrote, as far as this app has matching tools: the basic tone and
+    /// colour sliders and a plain crop.
+    pub camera_raw: Option<DevelopSettings>,
 }
 
 impl SidecarData {
@@ -266,6 +284,12 @@ impl SidecarData {
         if with_edits {
             if let Some(develop) = self.develop {
                 asset.develop = develop;
+            } else if let Some(develop) = self.camera_raw {
+                // Another app's edits only start a photo off; they never
+                // replace edits made here.
+                if !asset.develop.is_edited() {
+                    asset.develop = develop;
+                }
             }
         }
     }
@@ -337,6 +361,9 @@ fn parse_xmp(text: &str) -> Option<SidecarData> {
     data.caption = first("description");
     data.creator = first("creator");
     data.copyright = first("rights");
+    if !own {
+        data.camera_raw = camera_raw_settings(&simple);
+    }
     if own {
         data.develop = doc
             .descendants()
@@ -345,6 +372,52 @@ fn parse_xmp(text: &str) -> Option<SidecarData> {
             .and_then(|json| serde_json::from_str(json).ok());
     }
     Some(data)
+}
+
+/// The edits a Camera Raw (`crs:`) sidecar holds that this app has tools
+/// for, or `None` if it has none.
+fn camera_raw_settings(simple: &dyn Fn(&str, &str) -> Option<String>) -> Option<DevelopSettings> {
+    const CRS: &str = "http://ns.adobe.com/camera-raw-settings/1.0/";
+    let number = |name: &str| {
+        simple(CRS, name).and_then(|v| v.trim().parse::<f32>().ok()).filter(|v| v.is_finite())
+    };
+    let mut d = DevelopSettings::default();
+    let mut found = false;
+    let mut set = |field: &mut f32, value: Option<f32>, scale: f32| {
+        if let Some(value) = value {
+            *field = (value * scale).clamp(-100.0, 100.0);
+            found |= value != 0.0;
+        }
+    };
+    // This app's exposure runs -100..100 for Camera Raw's -5..+5 stops.
+    set(&mut d.exposure, number("Exposure2012"), 50.0);
+    set(&mut d.contrast, number("Contrast2012"), 1.0);
+    set(&mut d.highlights, number("Highlights2012"), 1.0);
+    set(&mut d.shadows, number("Shadows2012"), 1.0);
+    set(&mut d.whites, number("Whites2012"), 1.0);
+    set(&mut d.blacks, number("Blacks2012"), 1.0);
+    set(&mut d.vibrance, number("Vibrance"), 1.0);
+    set(&mut d.saturation, number("Saturation"), 1.0);
+    set(&mut d.clarity, number("Clarity2012"), 1.0);
+    set(&mut d.dehaze, number("Dehaze"), 1.0);
+
+    let has_crop = simple(CRS, "HasCrop").is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    let angle = number("CropAngle").unwrap_or(0.0);
+    if has_crop && angle == 0.0 {
+        if let (Some(l), Some(t), Some(r), Some(b)) = (
+            number("CropLeft"),
+            number("CropTop"),
+            number("CropRight"),
+            number("CropBottom"),
+        ) {
+            if r > l && b > t {
+                d.crop.rect = (l, t, r - l, b - t);
+                d.crop = d.crop.clamped();
+                found |= !d.crop.is_identity();
+            }
+        }
+    }
+    found.then_some(d)
 }
 
 #[cfg(test)]
@@ -405,6 +478,46 @@ mod tests {
         assert_eq!(data.keywords, vec!["Travel", "Lisbon"]);
         // Not ours: edits are never taken from it.
         assert_eq!(data.develop, None);
+    }
+
+    #[test]
+    fn takes_camera_raw_edits_from_a_lightroom_sidecar() {
+        let xmp = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+ <rdf:Description rdf:about="" xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/"
+   crs:Exposure2012="+0.50" crs:Contrast2012="+12" crs:Shadows2012="+30" crs:Vibrance="-5"
+   crs:HasCrop="True" crs:CropLeft="0.1" crs:CropTop="0.2" crs:CropRight="0.9" crs:CropBottom="0.8" crs:CropAngle="0"/>
+ </rdf:RDF></x:xmpmeta>"#;
+        let data = parse_xmp(xmp).unwrap();
+        let d = data.camera_raw.unwrap();
+        assert!((d.exposure - 25.0).abs() < 1e-4);
+        assert_eq!((d.contrast, d.shadows, d.vibrance), (12.0, 30.0, -5.0));
+        let (x, y, w, h) = d.crop.rect;
+        assert!((x - 0.1).abs() < 1e-5 && (y - 0.2).abs() < 1e-5);
+        assert!((w - 0.8).abs() < 1e-5 && (h - 0.6).abs() < 1e-5);
+
+        // They start an unedited photo off, and never replace its edits.
+        let mut fresh = Asset::new(1, PathBuf::from("/p/a.jpg"));
+        data.apply_to(&mut fresh, true);
+        assert_eq!(fresh.develop.contrast, 12.0);
+        let mut edited = Asset::new(2, PathBuf::from("/p/b.jpg"));
+        edited.develop.contrast = -40.0;
+        data.apply_to(&mut edited, true);
+        assert_eq!(edited.develop.contrast, -40.0);
+        // Without "read edits" they are ignored.
+        let mut plain = Asset::new(3, PathBuf::from("/p/c.jpg"));
+        data.apply_to(&mut plain, false);
+        assert!(!plain.develop.is_edited());
+    }
+
+    #[test]
+    fn writes_a_plain_crop_for_camera_raw() {
+        let mut asset = photo();
+        asset.develop.crop.rect = (0.1, 0.2, 0.8, 0.6);
+        let xmp = to_xmp(&asset, true);
+        assert!(xmp.contains(r#"crs:CropRight="0.900000""#));
+        assert!(xmp.contains(r#"crs:CropBottom="0.800000""#));
+        asset.develop.crop.angle = 3.0;
+        assert!(!to_xmp(&asset, true).contains("crs:CropLeft"));
     }
 
     #[test]
