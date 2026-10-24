@@ -203,13 +203,13 @@ impl Workspace {
             .items_center()
             .justify_center()
             .overflow_hidden()
-            .when(style != GridStyle::Bare, |el| el.bg(theme.background))
+            // Black shows either side of a portrait, which is kept whole.
+            .bg(gpui::black())
             .when(style == GridStyle::Bare, |el| el.rounded_sm())
             .child(thumb_image(
                 asset,
                 self.display_thumbnail(asset),
                 asset_ix,
-                grid.crop_to_fill,
                 &theme,
             ))
             .when(style == GridStyle::Minimal, |el| {
@@ -319,15 +319,16 @@ fn thumb_image(
     asset: &Asset,
     thumbnail: Option<std::path::PathBuf>,
     asset_ix: usize,
-    crop: bool,
     theme: &Theme,
 ) -> AnyElement {
     match thumbnail {
         Some(path) => img(path)
-            .object_fit(if crop {
-                ObjectFit::Cover
-            } else {
+            // Landscapes fill the frame with no gaps; portraits are shown
+            // whole with black at the sides rather than zoomed in.
+            .object_fit(if asset.height > asset.width {
                 ObjectFit::Contain
+            } else {
+                ObjectFit::Cover
             })
             .size_full()
             .into_any_element(),

@@ -420,7 +420,13 @@ fn film_frame(
 
     let image: AnyElement = match asset.thumbnail_path.as_ref() {
         Some(path) => img(path.clone())
-            .object_fit(ObjectFit::Contain)
+            // Landscapes fill the frame with no gaps; portraits are shown
+            // whole with black at the sides rather than zoomed in.
+            .object_fit(if asset.height > asset.width {
+                ObjectFit::Contain
+            } else {
+                ObjectFit::Cover
+            })
             .grayscale(look.monochrome)
             .size_full()
             .into_any_element(),
@@ -442,7 +448,8 @@ fn film_frame(
         .mx(px(look.picture_inset))
         .rounded(px(look.picture_radius))
         .overflow_hidden()
-        .bg(look.picture_border)
+        // Black fills what a portrait leaves either side of the picture.
+        .bg(gpui::black())
         .border_2()
         .border_color(if is_selected {
             look.selected
