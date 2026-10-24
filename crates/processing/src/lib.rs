@@ -53,6 +53,7 @@ pub use maskview::overlay_mask;
 pub fn mix_colour(mixer: &rustyedit_core::ColorMixer, rgb: [f32; 3]) -> [f32; 3] {
     finishing::mix_colour(mixer, rgb)
 }
+pub use camera::{match_camera, CameraMatch};
 pub use look::{match_look, preset_from_look, LookStats};
 pub use frame::{frame_bgra, frame_rgb16, frame_rgb8, framed_size};
 pub use watermark::apply_watermark;

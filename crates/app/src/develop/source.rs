@@ -44,6 +44,9 @@ impl Workspace {
                     this.source_image_for = Some(asset_id);
                     this.source_image_path = Some(source_path);
                     this.request_preview_update(cx);
+                    // A RAW photo opened for the first time starts from
+                    // the camera (when that's switched on).
+                    this.match_camera_on_open(cx);
                 }
                 cx.notify();
             })

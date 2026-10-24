@@ -23,6 +23,7 @@
 
 mod adjustments;
 mod auto;
+mod camera;
 mod color_grading;
 mod color_mixer;
 mod crop;

@@ -139,6 +139,46 @@ impl Workspace {
             ),
         }
 
+        // For lenses the profiles don't know: the camera's own correction.
+        if self.selected_is_raw() {
+            rows.push(
+                div()
+                    .id("lens-match-camera")
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .px_2()
+                    .py_1p5()
+                    .cursor_pointer()
+                    .border_1()
+                    .border_color(theme.border)
+                    .hover(|el| el.bg(theme.surface_elevated).border_color(theme.accent))
+                    .child(
+                        div()
+                            .text_size(sp(11.5))
+                            .text_color(theme.text)
+                            .child("Match the camera's corrections"),
+                    )
+                    .child(
+                        div()
+                            .text_size(sp(10.0))
+                            .text_color(theme.text_faint)
+                            .child("Distortion and vignetting as the camera corrected them in its preview"),
+                    )
+                    .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                        this.match_camera(
+                            rustyedit_processing::CameraMatch {
+                                look: false,
+                                lens: true,
+                            },
+                            false,
+                            cx,
+                        )
+                    }))
+                    .into_any_element(),
+            );
+        }
+
         rows.extend(self.adjustment_sliders(&Adjustment::LENS, cx));
         // Where the measured profiles come from.
         rows.push(

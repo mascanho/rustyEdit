@@ -274,18 +274,49 @@ impl Workspace {
     pub(super) fn auto_tone_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
         let busy = self.develop_ui.auto_busy;
+        let raw = self.selected_is_raw();
+        let auto = small_button(
+            "develop-auto-tone",
+            Icon::Auto,
+            if busy { "Working\u{2026}" } else { "Auto" },
+            "Set the tone sliders from this photo (\u{2318}U)",
+            false,
+            !busy,
+            &theme,
+            cx.listener(|this, _: &ClickEvent, _w, cx| this.run_auto_tone(cx)),
+        );
+        let camera = small_button(
+            "develop-camera-look",
+            Icon::Camera,
+            "Camera",
+            if raw {
+                "Match the camera's own tone and colour (from the preview in the RAW file)"
+            } else {
+                "Camera matching works on RAW photos"
+            },
+            false,
+            raw && !busy,
+            &theme,
+            cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.match_camera(
+                    rustyedit_processing::CameraMatch {
+                        look: true,
+                        lens: false,
+                    },
+                    false,
+                    cx,
+                )
+            }),
+        );
         section_row(
             "Tone",
-            small_button(
-                "develop-auto-tone",
-                Icon::Auto,
-                if busy { "Working\u{2026}" } else { "Auto" },
-                "Set the tone sliders from this photo (\u{2318}U)",
-                false,
-                !busy,
-                &theme,
-                cx.listener(|this, _: &ClickEvent, _w, cx| this.run_auto_tone(cx)),
-            ),
+            gpui::div()
+                .flex()
+                .flex_row()
+                .gap_1()
+                .child(camera)
+                .child(auto)
+                .into_any_element(),
             &theme,
         )
     }
