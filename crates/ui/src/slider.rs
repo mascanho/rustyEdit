@@ -285,6 +285,19 @@ pub struct SliderSpec {
     pub track: SliderTrack,
 }
 
+/// How far in from the track's ends the handle's centre can go: its radius
+/// plus a little air, so at either end it sits clear of the border rather
+/// than flush against (or over) it. The track and fill run the same
+/// stretch, and so does the pointer's reach.
+const LABELED_INSET: f32 = 9.0;
+const COMPACT_INSET: f32 = 8.0;
+
+/// Where `x` falls along a slider of `width` starting at `origin`, over the
+/// stretch left after `inset` pixels at each end (0..=1).
+fn fraction_along(x: f32, origin: f32, width: f32, inset: f32) -> f32 {
+    ((x - origin - inset) / (width - 2.0 * inset).max(1.0)).clamp(0.0, 1.0)
+}
+
 /// A horizontal, draggable slider for a single develop adjustment. `value`
 /// is expected to already be clamped to the spec's range by the caller
 /// (the `Adjustment` enum in `rustyedit-core` owns that clamping).
@@ -437,29 +450,39 @@ pub fn labeled_slider(
                 .flex()
                 .items_center()
                 .cursor(CursorStyle::ResizeLeftRight)
-                .child(track_background(track, &theme))
-                .when(matches!(track, SliderTrack::Accent | SliderTrack::Amount), |el| {
-                    // Fill from the neutral point to the value, so a
-                    // bipolar slider fills left or right of centre; an
-                    // amount always fills from the left.
-                    let (lo, hi) = match track {
-                        SliderTrack::Amount => (0.0, fraction),
-                        _ => {
-                            let d = to_fraction(default);
-                            (d.min(fraction), d.max(fraction))
-                        }
-                    };
-                    el.child(
-                        div()
-                            .absolute()
-                            .left(relative(lo))
-                            .w(relative(hi - lo))
-                            .h(sp(4.0))
-                            .rounded_full()
-                            .bg(theme.accent),
-                    )
-                })
-                .child(slider_handle(fraction, 12.0, 1.0, focused, group, &theme))
+                .child(
+                    div()
+                        .absolute()
+                        .left(sp(LABELED_INSET))
+                        .right(sp(LABELED_INSET))
+                        .top_0()
+                        .bottom_0()
+                        .flex()
+                        .items_center()
+                        .child(track_background(track, &theme))
+                        .when(matches!(track, SliderTrack::Accent | SliderTrack::Amount), |el| {
+                            // Fill from the neutral point to the value, so a
+                            // bipolar slider fills left or right of centre; an
+                            // amount always fills from the left.
+                            let (lo, hi) = match track {
+                                SliderTrack::Amount => (0.0, fraction),
+                                _ => {
+                                    let d = to_fraction(default);
+                                    (d.min(fraction), d.max(fraction))
+                                }
+                            };
+                            el.child(
+                                div()
+                                    .absolute()
+                                    .left(relative(lo))
+                                    .w(relative(hi - lo))
+                                    .h(sp(4.0))
+                                    .rounded_full()
+                                    .bg(theme.accent),
+                            )
+                        })
+                        .child(slider_handle(fraction, 12.0, 1.0, focused, group, &theme)),
+                )
                 // Shift/Alt + scroll nudges the value: 1% of the range per
                 // notch with Shift, 0.1% with Alt. Plain scrolling is left
                 // to the panel.
@@ -504,7 +527,7 @@ pub fn labeled_slider(
                         let factor = precision_factor(event.event.modifiers);
                         if factor >= 1.0 {
                             FINE_ANCHOR.with(|a| *a.borrow_mut() = None);
-                            let fraction = ((x - origin_x) / width).clamp(0.0, 1.0);
+                            let fraction = fraction_along(x, origin_x, width, f32::from(sp(LABELED_INSET)));
                             on_change(min + fraction * (max - min), window, cx);
                             return;
                         }
@@ -526,7 +549,8 @@ pub fn labeled_slider(
                                 }
                             }
                         });
-                        let delta = (x - anchor_x) / width * (max - min) * factor;
+                        let reach = (width - 2.0 * f32::from(sp(LABELED_INSET))).max(1.0);
+                        let delta = (x - anchor_x) / reach * (max - min) * factor;
                         on_change((anchor_value + delta).clamp(min, max), window, cx);
                     },
                 )
@@ -680,31 +704,42 @@ pub fn compact_slider(
         .child(
             div()
                 .absolute()
-                .left_0()
-                .right_0()
-                .h(sp(3.0))
-                .rounded_full()
-                .bg(theme.border),
+                .left(sp(COMPACT_INSET))
+                .right(sp(COMPACT_INSET))
+                .top_0()
+                .bottom_0()
+                .flex()
+                .items_center()
+                .child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .h(sp(3.0))
+                        .rounded_full()
+                        .bg(theme.border),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .w(relative(fraction))
+                        .h(sp(3.0))
+                        .rounded_full()
+                        .bg(theme.accent),
+                )
+                .child(slider_handle(fraction, 10.0, 2.0, false, group, &theme)),
         )
-        .child(
-            div()
-                .absolute()
-                .left_0()
-                .w(relative(fraction))
-                .h(sp(3.0))
-                .rounded_full()
-                .bg(theme.accent),
-        )
-        .child(slider_handle(fraction, 10.0, 2.0, false, group, &theme))
         .on_drag(SliderDrag(id), move |_, _, _, cx| cx.new(|_| DragGhost))
         .on_drag_move(
             move |event: &DragMoveEvent<SliderDrag>, window: &mut Window, cx: &mut App| {
                 if event.drag(cx).0 != drag_id {
                     return;
                 }
-                let x = f32::from(event.event.position.x - event.bounds.origin.x);
                 let width = f32::from(event.bounds.size.width).max(1.0);
-                on_change((x / width).clamp(0.0, 1.0), window, cx);
+                let origin = f32::from(event.bounds.origin.x);
+                let x = f32::from(event.event.position.x);
+                on_change(fraction_along(x, origin, width, f32::from(sp(COMPACT_INSET))), window, cx);
             },
         )
 }
@@ -712,6 +747,19 @@ pub fn compact_slider(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_handle_stays_clear_of_the_ends() {
+        // A 200 wide slider with 9px of air each end: the ends of the
+        // value range are reached 9px in, and the middle stays the middle.
+        assert_eq!(fraction_along(9.0, 0.0, 200.0, 9.0), 0.0);
+        assert_eq!(fraction_along(191.0, 0.0, 200.0, 9.0), 1.0);
+        assert_eq!(fraction_along(100.0, 0.0, 200.0, 9.0), 0.5);
+        // Past the ends is held there; an origin that isn't zero counts.
+        assert_eq!(fraction_along(-50.0, 0.0, 200.0, 9.0), 0.0);
+        assert_eq!(fraction_along(400.0, 0.0, 200.0, 9.0), 1.0);
+        assert_eq!(fraction_along(150.0, 50.0, 200.0, 9.0), 0.5);
+    }
 
     #[test]
     fn arrow_steps_are_a_unit_or_a_tenth() {
