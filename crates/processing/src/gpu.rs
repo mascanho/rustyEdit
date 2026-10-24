@@ -1703,13 +1703,15 @@ fn plan_develop(plan: &mut Planner, s: &DevelopSettings, raw: bool) {
         };
         plan.step(Kernel::ToneColor, params, Buf::NoInput, Buf::NoInput);
         // detail.rs
-        if base.clarity.abs() > 0.5 {
-            let amount = (base.clarity / 100.0) * 0.6;
-            plan.unsharpen(12.0, (amount * 40.0) as i32);
-        }
-        if base.sharpening.abs() > 0.5 {
-            let amount = (base.sharpening / 100.0).max(0.0) * 0.8;
-            plan.unsharpen(1.0, (amount * 40.0) as i32);
+        if base.clarity.abs() > 0.5 && plan.full_w >= 3 && plan.full_h >= 3 {
+            // Clarity: pushed away from (negative: towards) a wide blur.
+            plan.blur(crate::detail::clarity_sigma(plan.full_w, plan.full_h), Buf::BlurA);
+            let params = Params {
+                sharpen_strength: crate::detail::clarity_amount(base.clarity),
+                sharpen_masking: 0,
+                ..plan.params()
+            };
+            plan.step(Kernel::Sharpen, params, Buf::BlurA, Buf::NoInput);
         }
     }
 
@@ -1729,7 +1731,7 @@ fn plan_develop(plan: &mut Planner, s: &DevelopSettings, raw: bool) {
 }
 
 fn custom_sharpen_sigma(s: &DevelopSettings) -> f32 {
-    0.3 + s.sharpen_radius.clamp(0.0, 100.0) / 100.0 * 1.4
+    crate::sharpen::sharpen_sigma(s.sharpen_radius)
 }
 
 /// Blur radii of the local adjustments (finishing/local.rs): they follow
@@ -1749,10 +1751,7 @@ fn margin(s: &DevelopSettings, raw: bool, full: (u32, u32)) -> u32 {
     let mut m = 6 + 2 + 2;
     if crate::has_base_edits(&base) {
         if base.clarity.abs() > 0.5 {
-            m += blur_radius(12.0);
-        }
-        if base.sharpening.abs() > 0.5 {
-            m += blur_radius(1.0);
+            m += blur_radius(crate::detail::clarity_sigma(full.0, full.1));
         }
     }
     if custom {

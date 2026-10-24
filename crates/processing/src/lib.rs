@@ -304,17 +304,16 @@ fn apply_cpu(source: &DevelopSource, settings: &DevelopSettings) -> RgbImage {
     buffer
 }
 
-/// The settings for the base stage, and whether sharpening instead runs
-/// after it (`sharpen`): sharpening with a custom radius or an edge mask
-/// isn't part of the base stage.
+/// The settings for the base stage, and whether sharpening runs after it
+/// (`sharpen`), as its own stage with its radius and edge masking. Any
+/// sharpening does; it is no part of the base stage.
 pub(crate) fn split_sharpening(settings: &DevelopSettings) -> (DevelopSettings, bool) {
-    let custom = settings.sharpening > 0.5
-        && (settings.sharpen_masking > 0.5 || (settings.sharpen_radius - 50.0).abs() > 0.5);
+    let sharpen = settings.sharpening > 0.5;
     let base = DevelopSettings {
-        sharpening: if custom { 0.0 } else { settings.sharpening },
+        sharpening: 0.0,
         ..*settings
     };
-    (base, custom)
+    (base, sharpen)
 }
 
 /// Whether any of the base stage's sliders is off neutral.
@@ -562,6 +561,11 @@ mod tests {
                     s.grading.highlights.hue = 50.0;
                     s.grading.highlights.saturation = 80.0;
                     s.grading.balance = 20.0;
+                    s.grading.shadows.luminance = 35.0;
+                    s.grading.highlights.luminance = -25.0;
+                    s.grading.global.hue = 200.0;
+                    s.grading.global.saturation = 15.0;
+                    s.grading.global.luminance = 8.0;
                 }),
             ),
             (
@@ -1095,5 +1099,90 @@ mod tests {
         let corner = darker.get_pixel(60, 60);
         assert!(corner[0] < 250, "{corner:?}");
         assert!((corner[0] as i32 - corner[1] as i32).abs() < 12, "{corner:?}");
+    }
+}
+
+#[cfg(test)]
+mod detail_tests {
+    use super::*;
+    use image::Rgb;
+
+    /// A flat noisy half, an edge, and a textured half.
+    fn scene() -> RgbImage {
+        let mut seed = 7u32;
+        let mut rnd = move || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 16) as f32 / 65536.0 - 0.5
+        };
+        RgbImage::from_fn(256, 128, |x, y| {
+            let base = if x < 128 { 110.0 } else { 150.0 };
+            let tex = if x >= 128 { ((x as f32 * 0.5).sin() * (y as f32 * 0.5).cos()) * 12.0 } else { 0.0 };
+            let n = rnd() * 24.0;
+            let cn = [rnd() * 24.0, rnd() * 24.0, rnd() * 24.0];
+            let c = |k: usize| (base + tex + n + cn[k]).clamp(0.0, 255.0) as u8;
+            Rgb([c(0), c(1), c(2)])
+        })
+    }
+
+    /// Spread of `f` over a block of the picture.
+    fn spread(img: &RgbImage, x0: u32, x1: u32, f: impl Fn([u8; 3]) -> f32) -> f32 {
+        let vals: Vec<f32> = (8..120)
+            .flat_map(|y| (x0..x1).map(move |x| (x, y)))
+            .map(|(x, y)| f(img.get_pixel(x, y).0))
+            .collect();
+        let mean = vals.iter().sum::<f32>() / vals.len() as f32;
+        (vals.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / vals.len() as f32).sqrt()
+    }
+
+    fn luma(p: [u8; 3]) -> f32 {
+        0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32
+    }
+
+    fn flat_spread(set: impl Fn(&mut DevelopSettings)) -> f32 {
+        let src = DevelopSource::from_image(&image::DynamicImage::ImageRgb8(scene()), None);
+        let mut settings = DevelopSettings::default();
+        set(&mut settings);
+        spread(&apply(&src, &settings), 8, 120, luma)
+    }
+
+    #[test]
+    fn clarity_adds_local_contrast_going_up_and_softens_going_down() {
+        let none = flat_spread(|_| {});
+        let soft = flat_spread(|s| s.clarity = -60.0);
+        let a_little = flat_spread(|s| s.clarity = 30.0);
+        let a_lot = flat_spread(|s| s.clarity = 80.0);
+        assert!(soft < none * 0.7, "softer: {none} -> {soft}");
+        assert!(a_little > none && a_lot > a_little, "{none} {a_little} {a_lot}");
+    }
+
+    #[test]
+    fn sharpening_grows_with_the_slider_and_radius_and_masking_shape_it() {
+        let none = flat_spread(|_| {});
+        let some = flat_spread(|s| s.sharpening = 30.0);
+        let more = flat_spread(|s| s.sharpening = 80.0);
+        assert!(some > none && more > some, "{none} {some} {more}");
+        // A wider radius reaches further; masking keeps it off flat noise.
+        let narrow = flat_spread(|s| { s.sharpening = 60.0; s.sharpen_radius = 0.0; });
+        let wide = flat_spread(|s| { s.sharpening = 60.0; s.sharpen_radius = 100.0; });
+        assert!(narrow > none && wide > narrow, "{none} {narrow} {wide}");
+        let masked = flat_spread(|s| { s.sharpening = 60.0; s.sharpen_masking = 80.0; });
+        assert!(masked < more * 0.6, "masking holds it back from the noise: {masked} {more}");
+        // Below zero isn't a thing (the slider doesn't go there); it does nothing.
+        assert!((flat_spread(|s| s.sharpening = -60.0) - none).abs() < 0.2);
+    }
+
+    #[test]
+    fn noise_reduction_quiets_the_matching_kind_of_noise() {
+        let src = DevelopSource::from_image(&image::DynamicImage::ImageRgb8(scene()), None);
+        let chroma = |p: [u8; 3]| p[0] as f32 - p[2] as f32;
+        let render = |luma_nr: f32, colour_nr: f32| {
+            let s = DevelopSettings { noise_luma: luma_nr, noise_color: colour_nr, ..Default::default() };
+            apply(&src, &s)
+        };
+        let base = render(0.0, 0.0);
+        let luma_nr = render(80.0, 0.0);
+        let colour_nr = render(0.0, 80.0);
+        assert!(spread(&luma_nr, 8, 120, luma) < spread(&base, 8, 120, luma) * 0.5);
+        assert!(spread(&colour_nr, 8, 120, chroma) < spread(&base, 8, 120, chroma) * 0.5);
     }
 }

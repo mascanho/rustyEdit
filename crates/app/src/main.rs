@@ -208,7 +208,15 @@ fn main() {
             },
         ]);
 
-        let bounds = Bounds::centered(None, size(px(1440.0), px(900.0)), cx);
+        // 20% bigger than the old 1440 x 900, but never larger than the
+        // screen it opens on.
+        let (mut width, mut height) = (1728.0f32, 1080.0f32);
+        if let Some(display) = cx.primary_display() {
+            let screen = display.bounds().size;
+            width = width.min(f32::from(screen.width));
+            height = height.min(f32::from(screen.height));
+        }
+        let bounds = Bounds::centered(None, size(px(width), px(height)), cx);
 
         cx.open_window(
             WindowOptions {

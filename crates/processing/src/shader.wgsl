@@ -697,7 +697,8 @@ fn sharpen(@builtin(global_invocation_id) id: vec3<u32>) {
         m = t * t * (3.0 - 2.0 * t) * p.sharpen_strength;
     }
     let v = px_src(i);
-    store(i, v + (v - px_a(i)) * max(m, 0.0));
+    // Negative (Clarity's softening) pulls towards the blur.
+    store(i, v + (v - px_a(i)) * m);
 }
 
 // ------------------------------------------------- finishing

@@ -6,6 +6,12 @@ use image::{imageops, RgbImage};
 
 use crate::parallel::for_row_bands;
 
+/// The blur sharpening works against, from the Radius slider: 0.5 px at the
+/// left end, about 1.1 at the default, 2.5 at the right.
+pub(crate) fn sharpen_sigma(radius: f32) -> f32 {
+    0.5 * 5.0f32.powf(radius.clamp(0.0, 100.0) / 100.0)
+}
+
 /// Sharpens `image` in place. `amount` is 0..=100, `radius` 0..=100 (50 is
 /// about one pixel) and `masking` 0..=100 (0 sharpens everything).
 pub(crate) fn sharpen(image: &mut RgbImage, amount: f32, radius: f32, masking: f32) {
@@ -14,7 +20,7 @@ pub(crate) fn sharpen(image: &mut RgbImage, amount: f32, radius: f32, masking: f
         return;
     }
     let strength = amount / 100.0 * 1.6;
-    let sigma = 0.3 + radius.clamp(0.0, 100.0) / 100.0 * 1.4;
+    let sigma = sharpen_sigma(radius);
     let blurred = imageops::blur(image, sigma);
 
     // Edge strength from the luminance gradient, 0..=1.

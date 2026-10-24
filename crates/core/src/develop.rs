@@ -292,6 +292,7 @@ impl Adjustment {
             Adjustment::Mixer(band, _) => band.label(),
             Adjustment::Grade(_, GradeProp::Hue) => "Hue",
             Adjustment::Grade(_, GradeProp::Saturation) => "Saturation",
+            Adjustment::Grade(_, GradeProp::Luminance) => "Luminance",
             Adjustment::GradingBalance => "Balance",
             Adjustment::Dehaze => "Dehaze",
             Adjustment::Vignette => "Vignette",
@@ -309,6 +310,9 @@ impl Adjustment {
             Adjustment::Grade(zone, GradeProp::Hue) => format!("{} hue", zone.label()),
             Adjustment::Grade(zone, GradeProp::Saturation) => {
                 format!("{} saturation", zone.label())
+            }
+            Adjustment::Grade(zone, GradeProp::Luminance) => {
+                format!("{} luminance", zone.label())
             }
             Adjustment::GradingBalance => "Grading balance".to_string(),
             Adjustment::SharpenRadius => "Sharpening radius".to_string(),
@@ -335,6 +339,7 @@ impl Adjustment {
             | Adjustment::VignetteFeather
             | Adjustment::Grain
             | Adjustment::GrainSize
+            | Adjustment::Sharpening
             | Adjustment::SharpenRadius
             | Adjustment::SharpenMasking
             | Adjustment::NoiseLuma
@@ -393,6 +398,9 @@ impl Adjustment {
             Adjustment::Grade(zone, GradeProp::Saturation) => {
                 settings.grading.zone(*zone).saturation
             }
+            Adjustment::Grade(zone, GradeProp::Luminance) => {
+                settings.grading.zone(*zone).luminance
+            }
             Adjustment::GradingBalance => settings.grading.balance,
             Adjustment::Dehaze => settings.dehaze,
             Adjustment::Vignette => settings.vignette,
@@ -434,6 +442,9 @@ impl Adjustment {
             Adjustment::Grade(zone, GradeProp::Hue) => settings.grading.zone_mut(*zone).hue = v,
             Adjustment::Grade(zone, GradeProp::Saturation) => {
                 settings.grading.zone_mut(*zone).saturation = v
+            }
+            Adjustment::Grade(zone, GradeProp::Luminance) => {
+                settings.grading.zone_mut(*zone).luminance = v
             }
             Adjustment::GradingBalance => settings.grading.balance = v,
             Adjustment::Dehaze => settings.dehaze = v,
@@ -478,9 +489,10 @@ mod tests {
                 all.push(Adjustment::Mixer(band, prop));
             }
         }
-        for zone in ToneZone::ALL {
+        for zone in ToneZone::WHEELS {
             all.push(Adjustment::Grade(zone, GradeProp::Hue));
             all.push(Adjustment::Grade(zone, GradeProp::Saturation));
+            all.push(Adjustment::Grade(zone, GradeProp::Luminance));
         }
         all.push(Adjustment::GradingBalance);
 

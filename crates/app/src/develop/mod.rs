@@ -99,6 +99,16 @@ pub(crate) struct DevelopUi {
     pub(crate) curve_drag: Option<usize>,
     /// Where the curve graph was painted, for mapping the pointer onto it.
     pub(crate) curve_bounds: Rc<Cell<Bounds<Pixels>>>,
+    /// The colour wheel being dragged, and where each was painted.
+    pub(crate) wheel_drag: Option<rustyedit_core::ToneZone>,
+    pub(crate) wheel_bounds: [Rc<Cell<Bounds<Pixels>>>; 4],
+    /// The Color Grading section also shows plain sliders.
+    pub(crate) grading_sliders: bool,
+    /// The Color Mixer wheel being dragged, and where each was painted.
+    pub(crate) mixer_drag: Option<rustyedit_core::ColorBand>,
+    pub(crate) mixer_bounds: [Rc<Cell<Bounds<Pixels>>>; 8],
+    /// The Color Mixer also shows its tabbed sliders.
+    pub(crate) mixer_sliders: bool,
     /// The Color Mixer tab shown.
     pub(crate) mixer_prop: MixerProp,
     /// Heal / Clone tool state.
@@ -131,6 +141,12 @@ impl DevelopUi {
             curve_parametric: false,
             curve_drag: None,
             curve_bounds: Rc::new(Cell::new(Bounds::default())),
+            wheel_drag: None,
+            wheel_bounds: std::array::from_fn(|_| Rc::new(Cell::new(Bounds::default()))),
+            grading_sliders: false,
+            mixer_drag: None,
+            mixer_bounds: std::array::from_fn(|_| Rc::new(Cell::new(Bounds::default()))),
+            mixer_sliders: false,
             mixer_prop: MixerProp::default(),
             retouch: RetouchUi::default(),
             gradients: GradientUi::default(),
