@@ -255,7 +255,7 @@ fn slider_track(adjustment: Adjustment, develop: &DevelopSettings) -> SliderTrac
     }
 }
 
-fn mixer_track(band: ColorBand, prop: MixerProp) -> SliderTrack {
+pub(super) fn mixer_track(band: ColorBand, prop: MixerProp) -> SliderTrack {
     let hue = band.hue();
     match prop {
         MixerProp::Hue => {

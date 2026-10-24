@@ -14,6 +14,11 @@ pub(crate) mod grading;
 mod local;
 mod mixer;
 
+/// The Color Mixer applied to one colour.
+pub(crate) fn mix_colour(mixer: &rustyedit_core::ColorMixer, rgb: [f32; 3]) -> [f32; 3] {
+    mixer::Mixer::new(mixer).map_or(rgb, |m| m.apply(rgb))
+}
+
 use image::RgbImage;
 use rustyedit_core::DevelopSettings;
 

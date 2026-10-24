@@ -1,67 +1,93 @@
-//! The Color Mixer section, laid out like Color Grading: one wheel for each
-//! of the eight colour ranges, a master slider under it for that colour's
-//! brightness, readouts and a reset.
+//! The Color Mixer section: a spectrum that shows what the mixer does to
+//! every colour, a row of swatches to pick the colour range to work on,
+//! and a pad for that range.
 //!
-//! On a mixer wheel the puck says what happens to the colour's own hue: it
-//! starts on the colour's tick on the ring. Slide it round the ring to
-//! shift the hue (up to 30° either way), and towards the centre or the rim
-//! to desaturate or saturate it. The ring through the middle of the disc is
-//! "no change". Double-click a wheel to put it back.
+//! - **The spectrum.** Two strips: the colours as they are, and what the
+//!   mixer turns each into. Where the lower strip differs from the upper
+//!   one is where the picture will change. Ticks mark the eight ranges.
+//! - **The swatches.** One per range; the picked one is ringed, and a dot
+//!   marks those that have been changed.
+//! - **The pad.** Drag across it to shift the range's hue (left and right)
+//!   and its saturation (down and up). Its background paints what the
+//!   range's colour becomes at each spot, so the puck is dragged to a
+//!   colour rather than to a number. A slider under it sets the range's
+//!   brightness. Double-click the pad to put the range back.
 //!
 //! The Hue / Saturation / Luminance tabs of sliders are still there, under
 //! "Sliders".
 
 use gpui::{
-    canvas, div, prelude::*, AnyElement, ClickEvent, Context, MouseButton, MouseDownEvent,
-    Pixels, Point, SharedString,
+    canvas, div, fill, point, prelude::*, px, AnyElement, Bounds, ClickEvent, Context, Hsla,
+    MouseButton, MouseDownEvent, PathBuilder, Pixels, Point, Rgba, SharedString,
 };
-use rustyedit_core::{Adjustment, ColorBand, HistogramChannel, MixerProp};
+use rustyedit_core::{Adjustment, ColorBand, ColorMixer, HistogramChannel, MixerProp};
 use rustyedit_ui::{sp, HistogramProps};
 
-use super::{
-    adjustments::wheel,
-    color_grading::{paint_wheel, WheelFace, DISC, WHEEL_SIZE},
-};
+use super::adjustments::wheel;
 use crate::workspace::Workspace;
 
-/// Height of the histogram strip above the wheels.
-const HISTOGRAM_STRIP: f32 = 64.0;
-/// The most a colour's hue moves, in degrees: what the Hue slider's ends
-/// mean (see `finishing/mixer.rs`).
-const MAX_HUE_SHIFT: f32 = 30.0;
+/// Height of the histogram strip above the spectrum.
+const HISTOGRAM_STRIP: f32 = 56.0;
+/// Height of each spectrum strip, and of the pad.
+const STRIP_HEIGHT: f32 = 14.0;
+const PAD_HEIGHT: f32 = 128.0;
+/// How many cells the pad's background is painted in.
+const PAD_COLUMNS: usize = 28;
+const PAD_ROWS: usize = 16;
+/// How many segments each spectrum strip is drawn in.
+const STRIP_SEGMENTS: usize = 90;
+/// Within this much of the middle the pad snaps to "no change".
+const SNAP: f32 = 3.0;
 
-/// Where a band's puck sits on its wheel: the angle, and how far out as a
-/// fraction of the disc (the middle ring is no change).
-fn mixer_puck(band: ColorBand, hue: f32, saturation: f32) -> (f32, f32) {
-    let angle = (band.hue() + hue / 100.0 * MAX_HUE_SHIFT).rem_euclid(360.0);
-    let frac = (0.5 + saturation / 200.0).clamp(0.0, 1.0);
-    (angle, frac)
+/// A colour at hue `hue` as the mixer shows it: a clear, medium colour.
+fn sample(hue: f32) -> [f32; 3] {
+    let c = wheel(hue, 0.75, 0.5);
+    let rgba: Rgba = c.into();
+    [rgba.r, rgba.g, rgba.b]
 }
 
-/// The inverse: the hue and saturation sliders for a pointer `dx`, `dy`
-/// from the centre of a wheel of `radius`. The hue is `None` too near the
-/// centre to say.
-fn mixer_value(band: ColorBand, dx: f32, dy: f32, radius: f32) -> (Option<f32>, f32) {
-    let reach = (radius * DISC).max(1.0);
-    let distance = dx.hypot(dy);
-    let saturation = ((distance / reach).clamp(0.0, 1.0) - 0.5) * 200.0;
-    let hue = (distance > 2.0).then(|| {
-        let angle = (dy.atan2(dx).to_degrees() + 90.0).rem_euclid(360.0);
-        let mut diff = (angle - band.hue()).rem_euclid(360.0);
-        if diff > 180.0 {
-            diff -= 360.0;
-        }
-        diff.clamp(-MAX_HUE_SHIFT, MAX_HUE_SHIFT) / MAX_HUE_SHIFT * 100.0
-    });
-    (hue, saturation)
+fn colour([r, g, b]: [f32; 3]) -> Hsla {
+    Rgba { r, g, b, a: 1.0 }.into()
+}
+
+/// A mixer with only `band` changed, as the pad's background shows.
+fn only(band: ColorBand, hue: f32, saturation: f32, luminance: f32) -> ColorMixer {
+    let mut mixer = ColorMixer::default();
+    let adjust = &mut mixer[band.index()];
+    adjust.set(MixerProp::Hue, hue);
+    adjust.set(MixerProp::Saturation, saturation);
+    adjust.set(MixerProp::Luminance, luminance);
+    mixer
+}
+
+/// The hue and saturation sliders for a pointer at (`x`, `y`) in a pad
+/// `width` × `height`: hue across, saturation up.
+fn pad_value(x: f32, y: f32, width: f32, height: f32) -> (f32, f32) {
+    let snap = |v: f32| if v.abs() < SNAP { 0.0 } else { v.round() };
+    let hue = ((x / width.max(1.0)).clamp(0.0, 1.0) - 0.5) * 200.0;
+    let saturation = (0.5 - (y / height.max(1.0)).clamp(0.0, 1.0)) * 200.0;
+    (snap(hue), snap(saturation))
+}
+
+/// Where the puck sits in a pad `width` × `height`, the inverse of
+/// [`pad_value`].
+fn puck_position(hue: f32, saturation: f32, width: f32, height: f32) -> (f32, f32) {
+    (
+        (0.5 + hue / 200.0).clamp(0.0, 1.0) * width,
+        (0.5 - saturation / 200.0).clamp(0.0, 1.0) * height,
+    )
 }
 
 impl Workspace {
     pub(super) fn color_mixer_section(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let theme = self.theme;
-        if self.catalog.selected_asset().is_none() {
+        let Some(mixer) = self.catalog.selected_asset().map(|a| a.develop.mixer) else {
             return Vec::new();
-        }
+        };
+        let band = self.develop_ui.mixer_band;
+        let adjust = mixer[band.index()];
+        let band_colour = wheel(band.hue(), 0.85, 0.55);
+
         let (histogram, _) = self.current_histogram();
         let mut rows = vec![rustyedit_ui::histogram_view_with_height(
             &theme,
@@ -77,17 +103,296 @@ impl Workspace {
         )
         .into_any_element()];
 
-        for pair in ColorBand::ALL.chunks(2) {
-            rows.push(
+        // --- The spectrum, before and after ---------------------------------
+        let caption = |text: &'static str| {
+            div()
+                .text_size(sp(8.5))
+                .text_color(theme.text_faint)
+                .child(text)
+        };
+        let selected_hue = band.hue();
+        let strips = canvas(
+            |_, _, _| {},
+            move |b, _, window, _| {
+                let (w, h) = (f32::from(b.size.width), f32::from(b.size.height));
+                let each = h / 2.0 - 1.0;
+                for i in 0..STRIP_SEGMENTS {
+                    let x0 = i as f32 / STRIP_SEGMENTS as f32 * w;
+                    let x1 = (i + 1) as f32 / STRIP_SEGMENTS as f32 * w;
+                    let hue = (i as f32 + 0.5) / STRIP_SEGMENTS as f32 * 360.0;
+                    let original = sample(hue);
+                    let result = rustyedit_processing::mix_colour(&mixer, original);
+                    for (row, c) in [(0.0, original), (each + 2.0, result)] {
+                        let cell = Bounds {
+                            origin: b.origin + point(px(x0), px(row)),
+                            size: gpui::size(px(x1 - x0 + 0.6), px(each)),
+                        };
+                        window.paint_quad(fill(cell, colour(c)));
+                    }
+                }
+                // A tick for each range, the picked one bolder.
+                for other in ColorBand::ALL {
+                    let x = other.hue() / 360.0 * w;
+                    let on = other.hue() == selected_hue;
+                    let tick = Bounds {
+                        origin: b.origin + point(px(x - if on { 1.0 } else { 0.5 }), px(0.0)),
+                        size: gpui::size(px(if on { 2.0 } else { 1.0 }), px(h)),
+                    };
+                    window.paint_quad(fill(
+                        tick,
+                        if on { gpui::white() } else { gpui::black().opacity(0.45) },
+                    ));
+                }
+            },
+        )
+        .w_full()
+        .h(sp(STRIP_HEIGHT * 2.0 + 2.0));
+        rows.push(
+            div()
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .pt_2()
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .justify_between()
+                        .child(caption("ORIGINAL"))
+                        .child(caption("RESULT")),
+                )
+                .child(strips)
+                .into_any_element(),
+        );
+
+        // --- The swatches ----------------------------------------------------
+        let swatches = ColorBand::ALL.iter().map(|&other| {
+            let selected = other == band;
+            let edited = mixer[other.index()] != Default::default();
+            let c = wheel(other.hue(), 0.8, 0.5);
+            div()
+                .id(("mixer-swatch", other.index()))
+                .relative()
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(sp(24.0))
+                .rounded_full()
+                .cursor_pointer()
+                .border_2()
+                .border_color(if selected { gpui::white() } else { gpui::transparent_black() })
+                .child(div().size(sp(16.0)).rounded_full().bg(c))
+                .when(edited, |el| {
+                    el.child(
+                        div()
+                            .absolute()
+                            .bottom(sp(-1.0))
+                            .right(sp(-1.0))
+                            .size(sp(7.0))
+                            .rounded_full()
+                            .bg(theme.text)
+                            .border_1()
+                            .border_color(theme.background),
+                    )
+                })
+                .tooltip(rustyedit_ui::tip(other.label(), &theme))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                    this.develop_ui.mixer_band = other;
+                    cx.notify();
+                }))
+        });
+        rows.push(
+            div()
+                .flex()
+                .flex_row()
+                .justify_between()
+                .pt_2()
+                .children(swatches)
+                .into_any_element(),
+        );
+
+        // --- The picked range: header, pad -------------------------------------
+        let changed = adjust != Default::default();
+        rows.push(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .pt_2()
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap_1p5()
+                        .child(div().size(sp(9.0)).rounded_full().bg(band_colour))
+                        .child(
+                            div()
+                                .text_size(sp(11.0))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(theme.text)
+                                .child(band.label().to_uppercase()),
+                        ),
+                )
+                .child(rustyedit_ui::reset_button(
+                    SharedString::from(format!("mixer-reset-{}", band.label())),
+                    changed,
+                    &theme,
+                    cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                        this.reset_mixer_band(band, true, cx)
+                    }),
+                ))
+                .into_any_element(),
+        );
+
+        let pad_bounds = self.develop_ui.mixer_pad.clone();
+        let luminance = adjust.luminance;
+        let (hue_value, sat_value) = (adjust.hue, adjust.saturation);
+        let pad = div()
+            .id("mixer-pad")
+            .relative()
+            .w_full()
+            .h(sp(PAD_HEIGHT))
+            .rounded_md()
+            .overflow_hidden()
+            .border_1()
+            .border_color(theme.border)
+            .cursor_crosshair()
+            .child(
+                canvas(
+                    move |b, _, _| pad_bounds.set(b),
+                    move |b, _, window, _| {
+                        let (w, h) = (f32::from(b.size.width), f32::from(b.size.height));
+                        let base = sample(band.hue());
+                        // What the range's colour becomes at each spot.
+                        for row in 0..PAD_ROWS {
+                            for col in 0..PAD_COLUMNS {
+                                let hue = ((col as f32 + 0.5) / PAD_COLUMNS as f32 - 0.5) * 200.0;
+                                let sat = (0.5 - (row as f32 + 0.5) / PAD_ROWS as f32) * 200.0;
+                                let result = rustyedit_processing::mix_colour(
+                                    &only(band, hue, sat, luminance),
+                                    base,
+                                );
+                                let (x0, x1) = (
+                                    col as f32 / PAD_COLUMNS as f32 * w,
+                                    (col + 1) as f32 / PAD_COLUMNS as f32 * w,
+                                );
+                                let (y0, y1) = (
+                                    row as f32 / PAD_ROWS as f32 * h,
+                                    (row + 1) as f32 / PAD_ROWS as f32 * h,
+                                );
+                                let cell = Bounds {
+                                    origin: b.origin + point(px(x0), px(y0)),
+                                    size: gpui::size(px(x1 - x0 + 0.6), px(y1 - y0 + 0.6)),
+                                };
+                                window.paint_quad(fill(cell, colour(result)));
+                            }
+                        }
+                        // The "no change" cross.
+                        let line = |window: &mut gpui::Window, a: Point<Pixels>, c: Point<Pixels>| {
+                            let mut path = PathBuilder::stroke(px(1.0));
+                            path.add_polygon(&[a, c], false);
+                            if let Ok(path) = path.build() {
+                                window.paint_path(path, gpui::white().opacity(0.45));
+                            }
+                        };
+                        line(window, b.origin + point(px(w / 2.0), px(0.0)), b.origin + point(px(w / 2.0), px(h)));
+                        line(window, b.origin + point(px(0.0), px(h / 2.0)), b.origin + point(px(w), px(h / 2.0)));
+                        // The puck.
+                        let (px_x, px_y) = puck_position(hue_value, sat_value, w, h);
+                        let centre = b.origin + point(px(px_x), px(px_y));
+                        let circle = |r: f32| -> Vec<Point<Pixels>> {
+                            (0..28)
+                                .map(|i| {
+                                    let a = i as f32 / 28.0 * std::f32::consts::TAU;
+                                    centre + point(px(a.cos() * r), px(a.sin() * r))
+                                })
+                                .collect()
+                        };
+                        // A white ring over a dark one, to read on any colour.
+                        for (r, c, width) in [
+                            (8.0, gpui::black().opacity(0.5), 3.0),
+                            (7.0, gpui::white(), 2.0),
+                        ] {
+                            let mut path = PathBuilder::stroke(px(width));
+                            path.add_polygon(&circle(r), true);
+                            if let Ok(path) = path.build() {
+                                window.paint_path(path, c);
+                            }
+                        }
+                    },
+                )
+                .absolute()
+                .size_full(),
+            )
+            // Axis hints in the corners.
+            .child(
                 div()
-                    .flex()
-                    .flex_row()
-                    .justify_around()
-                    .pt_2()
-                    .children(pair.iter().map(|band| self.mixer_cell(*band, cx)))
-                    .into_any_element(),
+                    .absolute()
+                    .top(sp(3.0))
+                    .left(sp(5.0))
+                    .text_size(sp(8.5))
+                    .text_color(gpui::white().opacity(0.8))
+                    .child("+ SAT"),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .bottom(sp(3.0))
+                    .left(sp(5.0))
+                    .text_size(sp(8.5))
+                    .text_color(gpui::white().opacity(0.8))
+                    .child("\u{2212} SAT"),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top(sp(3.0))
+                    .right(sp(5.0))
+                    .text_size(sp(8.5))
+                    .text_color(gpui::white().opacity(0.8))
+                    .child("HUE \u{25B6}"),
+            )
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &MouseDownEvent, _w, cx| {
+                    cx.stop_propagation();
+                    if event.click_count >= 2 {
+                        this.reset_mixer_band(band, false, cx);
+                        return;
+                    }
+                    this.develop_ui.mixer_pad_drag = true;
+                    this.set_mixer_from_pointer(event.position, cx);
+                }),
             );
-        }
+        rows.push(div().pt_1().child(pad).into_any_element());
+
+        // The range's brightness, then what it's at.
+        rows.push(self.adjustment_slider(Adjustment::Mixer(band, MixerProp::Luminance), cx));
+        let readout = |label: &'static str, value: f32| {
+            div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .child(div().text_size(sp(8.5)).text_color(theme.text_faint).child(label))
+                .child(
+                    div()
+                        .text_size(sp(10.5))
+                        .text_color(if value == 0.0 { theme.text_muted } else { theme.text })
+                        .child(format!("{value:+.0}")),
+                )
+        };
+        rows.push(
+            div()
+                .flex()
+                .flex_row()
+                .justify_around()
+                .child(readout("HUE", adjust.hue))
+                .child(readout("SAT", adjust.saturation))
+                .child(readout("LUM", adjust.luminance))
+                .into_any_element(),
+        );
 
         // The tabbed sliders, for typing and keyboard nudges.
         let show = self.develop_ui.mixer_sliders;
@@ -123,126 +428,6 @@ impl Workspace {
             rows.extend(self.mixer_slider_tabs(cx));
         }
         rows
-    }
-
-    /// One colour's wheel with its name, reset, master slider and readouts.
-    fn mixer_cell(&self, band: ColorBand, cx: &mut Context<Self>) -> AnyElement {
-        let theme = self.theme;
-        let adjust = self
-            .catalog
-            .selected_asset()
-            .map(|a| a.develop.mixer[band.index()])
-            .unwrap_or_default();
-        let (hue, saturation, luminance) = (adjust.hue, adjust.saturation, adjust.luminance);
-        let changed = hue != 0.0 || saturation != 0.0 || luminance != 0.0;
-        let bounds = self.develop_ui.mixer_bounds[band.index()].clone();
-        let size = sp(WHEEL_SIZE);
-        let colour = wheel(band.hue(), 0.85, 0.55);
-
-        let header = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .w(size)
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_1p5()
-                    .child(div().size(sp(8.0)).rounded_full().bg(colour))
-                    .child(
-                        div()
-                            .text_size(sp(10.5))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.text_muted)
-                            .child(band.label().to_uppercase()),
-                    ),
-            )
-            .child(rustyedit_ui::reset_button(
-                SharedString::from(format!("mixer-reset-{}", band.label())),
-                changed,
-                &theme,
-                cx.listener(move |this, _: &ClickEvent, _w, cx| this.reset_mixer_wheel(band, true, cx)),
-            ));
-
-        let (angle, frac) = mixer_puck(band, hue, saturation);
-        let face = div()
-            .id(SharedString::from(format!("mixer-wheel-{}", band.label())))
-            .relative()
-            .size(size)
-            .cursor_crosshair()
-            .child(
-                canvas(
-                    move |b, _, _| bounds.set(b),
-                    move |b, _, window, _| {
-                        let face = WheelFace {
-                            puck: Some((angle, frac)),
-                            puck_colour: colour,
-                            marker: Some(band.hue()),
-                        };
-                        paint_wheel(window, b, face, &theme)
-                    },
-                )
-                .absolute()
-                .size_full(),
-            )
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this, event: &MouseDownEvent, _w, cx| {
-                    cx.stop_propagation();
-                    if event.click_count >= 2 {
-                        this.reset_mixer_wheel(band, false, cx);
-                        return;
-                    }
-                    this.develop_ui.mixer_drag = Some(band);
-                    this.set_mixer_from_pointer(band, event.position, cx);
-                }),
-            );
-
-        let entity = cx.entity();
-        let master = rustyedit_ui::compact_slider(
-            SharedString::from(format!("mixer-master-{}", band.label())),
-            (luminance + 100.0) / 200.0,
-            WHEEL_SIZE,
-            &theme,
-            move |t, _w, cx| {
-                entity.update(cx, |this, cx| {
-                    let value = ((t * 200.0 - 100.0) / 2.0).round() * 2.0;
-                    let value = if value.abs() < 3.0 { 0.0 } else { value };
-                    this.apply_adjustment(Adjustment::Mixer(band, MixerProp::Luminance), value, cx);
-                });
-            },
-        );
-
-        let readout = |label: &'static str, value: String| {
-            div()
-                .flex()
-                .flex_col()
-                .items_center()
-                .child(div().text_size(sp(8.5)).text_color(theme.text_faint).child(label))
-                .child(div().text_size(sp(10.0)).text_color(theme.text).child(value))
-        };
-        let readouts = div()
-            .flex()
-            .flex_row()
-            .justify_between()
-            .w(size)
-            .child(readout("HUE", format!("{hue:+.0}")))
-            .child(readout("SAT", format!("{saturation:+.0}")))
-            .child(readout("LUM", format!("{luminance:+.0}")));
-
-        div()
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap_1()
-            .child(header)
-            .child(face)
-            .child(master)
-            .child(readouts)
-            .into_any_element()
     }
 
     /// Hue / Saturation / Luminance tabs with a slider per colour.
@@ -290,9 +475,9 @@ impl Workspace {
         rows
     }
 
-    /// Puts a colour's hue and saturation back (and with `all` its
+    /// Puts a colour range's hue and saturation back (and with `all` its
     /// luminance).
-    fn reset_mixer_wheel(&mut self, band: ColorBand, all: bool, cx: &mut Context<Self>) {
+    fn reset_mixer_band(&mut self, band: ColorBand, all: bool, cx: &mut Context<Self>) {
         let label = format!("{} mixer", band.label());
         self.edit_develop(
             &label,
@@ -309,24 +494,23 @@ impl Workspace {
         );
     }
 
-    fn set_mixer_from_pointer(&mut self, band: ColorBand, position: Point<Pixels>, cx: &mut Context<Self>) {
-        let b = self.develop_ui.mixer_bounds[band.index()].get();
+    /// Puts the picked range's puck where the pointer is on the pad.
+    fn set_mixer_from_pointer(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let b = self.develop_ui.mixer_pad.get();
         let (w, h) = (f32::from(b.size.width), f32::from(b.size.height));
         if w <= 0.0 || h <= 0.0 {
             return;
         }
-        let radius = w.min(h) / 2.0;
-        let dx = f32::from(position.x - b.origin.x) - w / 2.0;
-        let dy = f32::from(position.y - b.origin.y) - h / 2.0;
-        let (hue, saturation) = mixer_value(band, dx, dy, radius);
+        let band = self.develop_ui.mixer_band;
+        let x = f32::from(position.x - b.origin.x);
+        let y = f32::from(position.y - b.origin.y);
+        let (hue, saturation) = pad_value(x, y, w, h);
         let label = format!("{} mixer", band.label());
         self.edit_develop(
             &label,
             |d| {
                 let adjust = &mut d.mixer[band.index()];
-                if let Some(hue) = hue {
-                    adjust.set(MixerProp::Hue, hue);
-                }
+                adjust.set(MixerProp::Hue, hue);
                 adjust.set(MixerProp::Saturation, saturation);
             },
             |d| {
@@ -337,69 +521,75 @@ impl Workspace {
         );
     }
 
-    /// Follows a drag on a mixer wheel; `true` while one is in progress.
+    /// Follows a drag on the pad; `true` while one is in progress.
     pub(super) fn mixer_drag_move(
         &mut self,
         position: Point<Pixels>,
         dragging: bool,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(band) = self.develop_ui.mixer_drag else {
+        if !self.develop_ui.mixer_pad_drag {
             return false;
-        };
+        }
         if !dragging {
-            self.develop_ui.mixer_drag = None;
+            self.develop_ui.mixer_pad_drag = false;
             cx.notify();
             return true;
         }
-        self.set_mixer_from_pointer(band, position, cx);
+        self.set_mixer_from_pointer(position, cx);
         true
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::color_grading::puck_offset;
     use super::*;
 
     #[test]
-    fn an_untouched_colour_sits_on_its_tick_on_the_middle_ring() {
-        for band in ColorBand::ALL {
-            let (angle, frac) = mixer_puck(band, 0.0, 0.0);
-            assert_eq!(angle, band.hue());
-            assert_eq!(frac, 0.5);
+    fn the_middle_of_the_pad_is_no_change_and_the_corners_are_the_extremes() {
+        assert_eq!(pad_value(100.0, 60.0, 200.0, 120.0), (0.0, 0.0));
+        assert_eq!(pad_value(0.0, 0.0, 200.0, 120.0), (-100.0, 100.0));
+        assert_eq!(pad_value(200.0, 120.0, 200.0, 120.0), (100.0, -100.0));
+        // Past the edge stays at the extreme.
+        assert_eq!(pad_value(500.0, -40.0, 200.0, 120.0), (100.0, 100.0));
+    }
+
+    #[test]
+    fn the_puck_sits_exactly_under_the_pointer() {
+        let (w, h) = (240.0, 128.0);
+        for (hue, sat) in [(0.0, 0.0), (50.0, -30.0), (-100.0, 100.0), (88.0, 64.0)] {
+            let (x, y) = puck_position(hue, sat, w, h);
+            let (back_hue, back_sat) = pad_value(x, y, w, h);
+            assert!((back_hue - hue).abs() <= 1.0, "{hue}: {back_hue}");
+            assert!((back_sat - sat).abs() <= 1.0, "{sat}: {back_sat}");
         }
     }
 
     #[test]
-    fn the_pointer_and_the_puck_agree() {
-        let r = 100.0;
-        for band in ColorBand::ALL {
-            for (hue, sat) in [(0.0, 0.0), (60.0, 40.0), (-100.0, -80.0), (100.0, 100.0)] {
-                let (angle, frac) = mixer_puck(band, hue, sat);
-                let (ox, oy) = puck_offset(angle, frac * 100.0, r);
-                let (h, s) = mixer_value(band, ox, oy, r);
-                assert!((h.unwrap() - hue).abs() < 0.05, "{band:?} hue {hue}: {h:?}");
-                assert!((s - sat).abs() < 0.05, "{band:?} sat {sat}: {s}");
-            }
-        }
+    fn a_small_wobble_near_the_middle_stays_at_no_change() {
+        let (hue, sat) = pad_value(101.0, 59.0, 200.0, 120.0);
+        assert_eq!((hue, sat), (0.0, 0.0));
     }
 
     #[test]
-    fn the_hue_shift_stops_thirty_degrees_either_side() {
-        // Pointing at the far side of the wheel from red is as far round
-        // as it goes.
-        let (hue, _) = mixer_value(ColorBand::Red, 0.0, 60.0, 100.0);
-        assert!(hue.unwrap().abs() >= 99.9);
-        let (hue, _) = mixer_value(ColorBand::Green, 45.0, -45.0, 100.0);
-        // 45° is 75° short of green's 120°: pinned at -100.
-        assert_eq!(hue.unwrap(), -100.0);
+    fn the_spectrum_shows_a_shifted_range_moving() {
+        // Pushing Green's hue by +100 (30°) changes green but leaves red.
+        let mut mixer = ColorMixer::default();
+        mixer[ColorBand::Green.index()].set(MixerProp::Hue, 100.0);
+        let red = sample(0.0);
+        assert_eq!(rustyedit_processing::mix_colour(&mixer, red), red);
+        let green = sample(120.0);
+        assert_ne!(rustyedit_processing::mix_colour(&mixer, green), green);
     }
 
     #[test]
-    fn the_centre_desaturates_and_the_rim_saturates() {
-        assert_eq!(mixer_value(ColorBand::Blue, 0.0, 0.0, 100.0).1, -100.0);
-        assert!((mixer_value(ColorBand::Blue, 0.0, -78.0, 100.0).1 - 100.0).abs() < 0.01);
-        assert!(mixer_value(ColorBand::Blue, 0.0, 0.0, 100.0).0.is_none());
+    fn the_pad_background_follows_the_range_colour() {
+        // Saturating a range makes its colour more vivid than desaturating.
+        let band = ColorBand::Blue;
+        let base = sample(band.hue());
+        let spread = |c: [f32; 3]| c.iter().cloned().fold(0.0f32, f32::max) - c.iter().cloned().fold(1.0f32, f32::min);
+        let more = rustyedit_processing::mix_colour(&only(band, 0.0, 100.0, 0.0), base);
+        let less = rustyedit_processing::mix_colour(&only(band, 0.0, -100.0, 0.0), base);
+        assert!(spread(less) < spread(base) && spread(base) <= spread(more) + 0.001);
     }
 }

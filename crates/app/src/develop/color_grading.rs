@@ -19,10 +19,10 @@ use crate::workspace::Workspace;
 /// Height of the histogram strip above the wheels.
 const HISTOGRAM_STRIP: f32 = 64.0;
 /// Diameter of a wheel, in logical pixels.
-pub(super) const WHEEL_SIZE: f32 = 116.0;
+const WHEEL_SIZE: f32 = 116.0;
 /// The inner disc, as a fraction of the wheel's radius; the hue ring is
 /// the rest.
-pub(super) const DISC: f32 = 0.78;
+const DISC: f32 = 0.78;
 /// How many wedges the hue ring is drawn in.
 const RING_WEDGES: usize = 72;
 
@@ -164,7 +164,6 @@ impl Workspace {
                         let face = WheelFace {
                             puck: (saturation > 0.0).then_some((hue, saturation / 100.0)),
                             puck_colour: wheel(hue, 0.85, 0.55),
-                            marker: None,
                         };
                         paint_wheel(window, b, face, &theme)
                     },
@@ -312,7 +311,7 @@ impl Workspace {
 /// The hue (degrees, red at the top going clockwise; `None` too near the
 /// centre to say) and strength (0..=100) of a point `dx`, `dy` from the
 /// centre of a wheel of `radius`.
-pub(super) fn wheel_value(dx: f32, dy: f32, radius: f32) -> (Option<f32>, f32) {
+fn wheel_value(dx: f32, dy: f32, radius: f32) -> (Option<f32>, f32) {
     let reach = (radius * DISC).max(1.0);
     let distance = dx.hypot(dy);
     let saturation = (distance / reach).clamp(0.0, 1.0) * 100.0;
@@ -321,23 +320,21 @@ pub(super) fn wheel_value(dx: f32, dy: f32, radius: f32) -> (Option<f32>, f32) {
 }
 
 /// Where a hue and strength sit, as an offset from the wheel's centre.
-pub(super) fn puck_offset(hue: f32, saturation: f32, radius: f32) -> (f32, f32) {
+fn puck_offset(hue: f32, saturation: f32, radius: f32) -> (f32, f32) {
     let angle = (hue - 90.0).to_radians();
     let reach = radius * DISC * (saturation / 100.0).clamp(0.0, 1.0);
     (angle.cos() * reach, angle.sin() * reach)
 }
 
 /// What a wheel shows besides its ring and disc.
-pub(super) struct WheelFace {
+struct WheelFace {
     /// Where the puck sits: the angle (degrees, red at the top) and how far
     /// out, `0..=1` of the disc.
     pub puck: Option<(f32, f32)>,
     pub puck_colour: Hsla,
-    /// A tick on the ring, for a Color Mixer wheel's own colour.
-    pub marker: Option<f32>,
 }
 
-pub(super) fn paint_wheel(window: &mut Window, bounds: Bounds<Pixels>, face: WheelFace, theme: &Theme) {
+fn paint_wheel(window: &mut Window, bounds: Bounds<Pixels>, face: WheelFace, theme: &Theme) {
     let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
     let radius = w.min(h) / 2.0;
     if radius <= 1.0 {
@@ -383,10 +380,6 @@ pub(super) fn paint_wheel(window: &mut Window, bounds: Bounds<Pixels>, face: Whe
     stroke(window, circle(radius * DISC), true, theme.border, 1.0);
     stroke(window, vec![at(0.0, radius * DISC), at(180.0, radius * DISC)], false, guide, 1.0);
     stroke(window, vec![at(90.0, radius * DISC), at(270.0, radius * DISC)], false, guide, 1.0);
-
-    if let Some(angle) = face.marker {
-        stroke(window, vec![at(angle, radius * DISC - 3.0), at(angle, radius + 1.0)], false, gpui::white(), 2.5);
-    }
 
     // The puck, and a line to it from the centre.
     let Some((angle, frac)) = face.puck else {

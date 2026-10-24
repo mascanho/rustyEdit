@@ -104,9 +104,11 @@ pub(crate) struct DevelopUi {
     pub(crate) wheel_bounds: [Rc<Cell<Bounds<Pixels>>>; 4],
     /// The Color Grading section also shows plain sliders.
     pub(crate) grading_sliders: bool,
-    /// The Color Mixer wheel being dragged, and where each was painted.
-    pub(crate) mixer_drag: Option<rustyedit_core::ColorBand>,
-    pub(crate) mixer_bounds: [Rc<Cell<Bounds<Pixels>>>; 8],
+    /// The colour range the Color Mixer is editing, its pad's place on
+    /// screen, and whether the pad is being dragged.
+    pub(crate) mixer_band: rustyedit_core::ColorBand,
+    pub(crate) mixer_pad: Rc<Cell<Bounds<Pixels>>>,
+    pub(crate) mixer_pad_drag: bool,
     /// The Color Mixer also shows its tabbed sliders.
     pub(crate) mixer_sliders: bool,
     /// The Color Mixer tab shown.
@@ -144,8 +146,9 @@ impl DevelopUi {
             wheel_drag: None,
             wheel_bounds: std::array::from_fn(|_| Rc::new(Cell::new(Bounds::default()))),
             grading_sliders: false,
-            mixer_drag: None,
-            mixer_bounds: std::array::from_fn(|_| Rc::new(Cell::new(Bounds::default()))),
+            mixer_band: rustyedit_core::ColorBand::Red,
+            mixer_pad: Rc::new(Cell::new(Bounds::default())),
+            mixer_pad_drag: false,
             mixer_sliders: false,
             mixer_prop: MixerProp::default(),
             retouch: RetouchUi::default(),

@@ -275,7 +275,7 @@ impl Workspace {
         self.develop_ui.navigator_dragging = false;
         self.develop_ui.curve_drag = None;
         self.develop_ui.wheel_drag = None;
-        self.develop_ui.mixer_drag = None;
+        self.develop_ui.mixer_pad_drag = false;
         self.end_retouch_drag();
         self.end_gradient_drag();
     }
