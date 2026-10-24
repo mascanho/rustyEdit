@@ -33,6 +33,8 @@ pub(crate) struct LivePreview {
     shown_frame: FrameSettings,
     /// The mask layer painted over it in red, if any.
     shown_mask: Option<usize>,
+    /// It shows the whole canvas, for the Crop tool.
+    shown_crop_full: bool,
     /// A render is running on the background executor.
     busy: bool,
     /// Adjustments changed while busy; render again when it finishes.
@@ -68,12 +70,17 @@ impl LivePreview {
     }
 
     /// Swaps in a freshly rendered frame, retiring the one it replaces.
-    fn show(&mut self, image: Arc<RenderImage>, frame: FrameSettings, mask: Option<usize>) {
+    pub(crate) fn shown_crop_full(&self) -> bool {
+        self.shown_crop_full
+    }
+
+    fn show(&mut self, image: Arc<RenderImage>, frame: FrameSettings, mask: Option<usize>, crop_full: bool) {
         if let Some(old) = self.image.replace(image) {
             self.retire(old);
         }
         self.shown_frame = frame;
         self.shown_mask = mask;
+        self.shown_crop_full = crop_full;
     }
 
     /// Forgets the current frame (another photo was selected, caches were
@@ -89,6 +96,7 @@ impl LivePreview {
         self.before_key = None;
         self.shown_frame = FrameSettings::default();
         self.shown_mask = None;
+        self.shown_crop_full = false;
     }
 
     /// Frees the GPU memory of retired frames. Call once per render.
@@ -162,6 +170,7 @@ impl Workspace {
         }
         if self.frame_in_view() != self.live_preview.shown_frame
             || self.mask_in_view() != self.live_preview.shown_mask
+            || self.crop_in_view() != self.live_preview.shown_crop_full
         {
             self.request_preview_update(cx);
         }
@@ -220,7 +229,13 @@ impl Workspace {
         }
 
         // A hovered preset is previewed without touching the photo.
-        let settings = self.preview_override.unwrap_or(asset.develop);
+        let crop_full = self.crop_in_view();
+        let mut settings = self.preview_override.unwrap_or(asset.develop);
+        if crop_full {
+            // The Crop tool shows the whole canvas (straightened, with its
+            // perspective) to drag the box on.
+            settings.crop.rect = (0.0, 0.0, 1.0, 1.0);
+        }
         let asset_id = asset.id;
         let epoch = self.preview_epoch;
         let clipping = ClipWarnings {
@@ -287,7 +302,7 @@ impl Workspace {
                 // A render for a photo that's no longer selected is dropped
                 // without ever reaching the GPU.
                 if this.preview_epoch == epoch {
-                    this.live_preview.show(image, framing, mask);
+                    this.live_preview.show(image, framing, mask, crop_full);
                     if let Some(before) = before {
                         this.live_preview.show_before(before, before_key);
                     }

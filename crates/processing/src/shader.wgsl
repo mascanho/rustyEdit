@@ -47,7 +47,7 @@ struct Params {
     // Spot removal: the spot's table in `aux` (see gpu.rs `plan_spots`).
     full_h: u32, src_off_x: u32, src_off_y: u32, spot_offset: u32,
     // Perspective correction (Crop::perspective_strength).
-    persp_x: f32, persp_y: f32, pad0: f32, pad1: f32,
+    persp_x: f32, persp_y: f32, vig_round: f32, pad1: f32,
 }
 
 const F_CURVES: u32 = 1u;
@@ -902,6 +902,7 @@ fn local_adjust(rgb: vec3<f32>, g: u32, strength: f32, i: u32) -> vec3<f32> {
     let haze = aux[g + 17u];
     let clarity = aux[g + 18u];
     let sharpening = aux[g + 19u];
+    let lens_blur = aux[g + 39u];
     let k = strength / 100.0;
 
     if (exposure != 0.0) {
@@ -926,6 +927,9 @@ fn local_adjust(rgb: vec3<f32>, g: u32, strength: f32, i: u32) -> vec3<f32> {
     }
     if (abs(haze * strength) > 0.5) {
         c = dehaze(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), haze * strength / 100.0);
+    }
+    if (lens_blur != 0.0 && (p.flags & F_WIDE) != 0u) {
+        c = c + (px_a(i) - c) * (lens_blur * k);
     }
     if (clarity != 0.0 && (p.flags & F_WIDE) != 0u) {
         c = c + (c - px_a(i)) * (clarity * k * 0.9);
@@ -1047,8 +1051,11 @@ fn crop_finish(@builtin(global_invocation_id) id: vec3<u32>) {
         c = src_at(i32(p.crop_left + ox), i32(p.crop_top + oy));
     }
     if ((p.flags & F_VIGNETTE) != 0u) {
-        let dx = (f32(ox) + 0.5 - p.vig_cx) / max(p.vig_cx, 1.0);
-        let dy = (f32(oy) + 0.5 - p.vig_cy) / max(p.vig_cy, 1.0);
+        let longer = max(p.vig_cx, p.vig_cy);
+        let reach_x = max(p.vig_cx + (longer - p.vig_cx) * p.vig_round, 1.0);
+        let reach_y = max(p.vig_cy + (longer - p.vig_cy) * p.vig_round, 1.0);
+        let dx = (f32(ox) + 0.5 - p.vig_cx) / reach_x;
+        let dy = (f32(oy) + 0.5 - p.vig_cy) / reach_y;
         let r = sqrt(dx * dx + dy * dy) / 1.4142135;
         let v = smoothstep2(p.vig_inner, p.vig_outer, r);
         if (p.vignette < 0.0) {

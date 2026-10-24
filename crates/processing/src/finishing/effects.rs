@@ -38,6 +38,8 @@ pub(crate) struct Vignette {
     pub(crate) centre: (f32, f32),
     pub(crate) inner: f32,
     pub(crate) outer: f32,
+    /// 0..=1: how far the ellipse is made into a circle.
+    pub(crate) round: f32,
 }
 
 impl Vignette {
@@ -52,13 +54,27 @@ impl Vignette {
             centre: (width as f32 / 2.0, height as f32 / 2.0),
             inner,
             outer: inner + feather,
+            round: (settings.vignette_roundness / 100.0).clamp(0.0, 1.0),
         })
+    }
+
+    /// What distances from the centre are measured against, across and
+    /// down: the photo's half sizes for an ellipse, both the longer one
+    /// for a circle.
+    pub(crate) fn reach(&self) -> (f32, f32) {
+        let (cx, cy) = self.centre;
+        let longer = cx.max(cy);
+        (
+            (cx + (longer - cx) * self.round).max(1.0),
+            (cy + (longer - cy) * self.round).max(1.0),
+        )
     }
 
     pub(crate) fn apply(&self, rgb: [f32; 3], x: u32, y: u32) -> [f32; 3] {
         let (cx, cy) = self.centre;
-        let dx = (x as f32 + 0.5 - cx) / cx.max(1.0);
-        let dy = (y as f32 + 0.5 - cy) / cy.max(1.0);
+        let (nx, ny) = self.reach();
+        let dx = (x as f32 + 0.5 - cx) / nx;
+        let dy = (y as f32 + 0.5 - cy) / ny;
         // 0 at the centre, 1 in the corners.
         let r = (dx * dx + dy * dy).sqrt() / std::f32::consts::SQRT_2;
         let v = smoothstep(self.inner, self.outer, r);
@@ -112,4 +128,37 @@ fn hash(x: u32, y: u32) -> f32 {
     h = h.wrapping_mul(0x297a_2d39);
     h ^= h >> 15;
     (h as f32 / u32::MAX as f32) * 2.0 - 1.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn vignette(roundness: f32) -> Vignette {
+        let settings = DevelopSettings {
+            vignette: -100.0,
+            vignette_roundness: roundness,
+            ..Default::default()
+        };
+        Vignette::new(&settings, 400, 200).unwrap()
+    }
+
+    #[test]
+    fn roundness_turns_the_ellipse_into_a_circle() {
+        // On a wide photo, the middle of the top edge is as far out as the
+        // middle of the left edge for an ellipse (both at 1), but nearer
+        // the centre than it for a circle.
+        let ellipse = vignette(0.0).reach();
+        assert_eq!(ellipse, (200.0, 100.0));
+        let circle = vignette(100.0).reach();
+        assert_eq!(circle, (200.0, 200.0));
+        let half = vignette(50.0).reach();
+        assert_eq!(half, (200.0, 150.0));
+    }
+
+    #[test]
+    fn a_round_vignette_leaves_the_short_edges_lighter() {
+        let mid_top = |v: &Vignette| v.apply([1.0; 3], 200, 0)[0];
+        assert!(mid_top(&vignette(100.0)) > mid_top(&vignette(0.0)));
+    }
 }

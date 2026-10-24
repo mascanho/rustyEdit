@@ -114,7 +114,10 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.histogram_drag_move(event, cx) || self.develop_drag_move(event, cx) {
+        if self.histogram_drag_move(event, cx)
+            || self.develop_drag_move(event, cx)
+            || self.survey_drag_move(event.position, event.dragging(), cx)
+        {
             return;
         }
         if let Some((start, start_offset)) = self.loupe_drag {
@@ -203,6 +206,7 @@ impl Workspace {
         }
         self.end_develop_drag();
         self.end_histogram_drag();
+        self.survey_pan = None;
         self.finish_resize(cx);
     }
 

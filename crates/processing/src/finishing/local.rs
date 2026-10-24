@@ -36,10 +36,13 @@ impl LocalAdjustments {
         // Blur radii follow the photo's size, so a layer looks the same on
         // a preview as on the full-size export.
         let scale = width.max(height) as f32 / 2048.0;
+        // A layer that blurs needs a wider blur than clarity's (they share it).
+        let lens = gradients.iter().any(|g| g.adjust.blur != 0.0);
+        let wide_sigma = ((if lens { 16.0 } else { 10.0 }) * scale).max(4.0);
         let wide = gradients
             .iter()
-            .any(|g| g.adjust.clarity != 0.0)
-            .then(|| imageops::blur(image, (10.0 * scale).max(4.0)));
+            .any(|g| g.adjust.clarity != 0.0 || g.adjust.blur != 0.0)
+            .then(|| imageops::blur(image, wide_sigma));
         let narrow = gradients
             .iter()
             .any(|g| g.adjust.sharpening != 0.0)
@@ -134,6 +137,13 @@ fn adjust(
     if let Some(dehaze) = Dehaze::new(adjust.dehaze * strength) {
         c = dehaze.apply(c.map(|v| v.clamp(0.0, 1.0)));
     }
+    // Lens blur: towards the wide blur of the photo.
+    if let (true, Some(blur)) = (adjust.blur != 0.0, wide_blur) {
+        let k = amount(adjust.blur);
+        for i in 0..3 {
+            c[i] += (blur[i] - c[i]) * k;
+        }
+    }
     // Local contrast and sharpness: push the pixel away from (or, when
     // negative, towards) a blurred copy of the photo.
     if let (true, Some(blur)) = (adjust.clarity != 0.0, wide_blur) {
@@ -216,6 +226,35 @@ mod tests {
         let local = LocalAdjustments::new(&settings, &RgbImage::new(100, 100)).unwrap();
         assert!(local.apply([0.5; 3], 25, 50)[0] < 0.2);
         assert_eq!(local.apply([0.5; 3], 80, 50), [0.5; 3]);
+    }
+
+    #[test]
+    fn a_blurring_layer_softens_only_its_area() {
+        // A dot in a dark field: inside the layer it is blurred away.
+        let mut image = RgbImage::from_pixel(64, 64, image::Rgb([20, 20, 20]));
+        for y in 30..34 {
+            for x in 30..34 {
+                image.put_pixel(x, y, image::Rgb([240, 240, 240]));
+            }
+        }
+        let mut settings = DevelopSettings::default();
+        settings.gradients.push(Gradient {
+            kind: GradientKind::Radial,
+            start: (0.5, 0.5),
+            radius: (0.2, 0.2),
+            feather: 0.0,
+            adjust: LocalAdjust {
+                blur: 100.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let local = LocalAdjustments::new(&settings, &image).unwrap();
+        let sharp = [240.0 / 255.0; 3];
+        let inside = local.apply(sharp, 31, 31);
+        assert!(inside[0] < 0.8, "the dot is softened: {inside:?}");
+        let outside = local.apply([0.9; 3], 2, 2);
+        assert_eq!(outside, [0.9; 3]);
     }
 
     #[test]

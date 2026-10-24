@@ -83,6 +83,8 @@ pub struct DevelopSettings {
     pub vignette_midpoint: f32,
     /// 0..=100: how gradually it fades in.
     pub vignette_feather: f32,
+    /// 0..=100: 0 follows the frame's shape (an ellipse), 100 is a circle.
+    pub vignette_roundness: f32,
     pub grain: f32,
     pub grain_size: f32,
 
@@ -134,6 +136,7 @@ impl Default for DevelopSettings {
             vignette: 0.0,
             vignette_midpoint: 50.0,
             vignette_feather: 50.0,
+            vignette_roundness: 0.0,
             grain: 0.0,
             grain_size: 25.0,
             crop: Crop::default(),
@@ -209,6 +212,7 @@ pub enum Adjustment {
     Vignette,
     VignetteMidpoint,
     VignetteFeather,
+    VignetteRoundness,
     Grain,
     GrainSize,
 }
@@ -253,11 +257,12 @@ impl Adjustment {
         Adjustment::CurveShadows,
     ];
 
-    pub const EFFECTS: [Adjustment; 6] = [
+    pub const EFFECTS: [Adjustment; 7] = [
         Adjustment::Dehaze,
         Adjustment::Vignette,
         Adjustment::VignetteMidpoint,
         Adjustment::VignetteFeather,
+        Adjustment::VignetteRoundness,
         Adjustment::Grain,
         Adjustment::GrainSize,
     ];
@@ -298,6 +303,7 @@ impl Adjustment {
             Adjustment::Vignette => "Vignette",
             Adjustment::VignetteMidpoint => "Midpoint",
             Adjustment::VignetteFeather => "Feather",
+            Adjustment::VignetteRoundness => "Roundness",
             Adjustment::Grain => "Grain",
             Adjustment::GrainSize => "Grain size",
         }
@@ -337,6 +343,7 @@ impl Adjustment {
             Adjustment::Grade(_, GradeProp::Saturation)
             | Adjustment::VignetteMidpoint
             | Adjustment::VignetteFeather
+            | Adjustment::VignetteRoundness
             | Adjustment::Grain
             | Adjustment::GrainSize
             | Adjustment::Sharpening
@@ -406,6 +413,7 @@ impl Adjustment {
             Adjustment::Vignette => settings.vignette,
             Adjustment::VignetteMidpoint => settings.vignette_midpoint,
             Adjustment::VignetteFeather => settings.vignette_feather,
+            Adjustment::VignetteRoundness => settings.vignette_roundness,
             Adjustment::Grain => settings.grain,
             Adjustment::GrainSize => settings.grain_size,
         }
@@ -451,6 +459,7 @@ impl Adjustment {
             Adjustment::Vignette => settings.vignette = v,
             Adjustment::VignetteMidpoint => settings.vignette_midpoint = v,
             Adjustment::VignetteFeather => settings.vignette_feather = v,
+            Adjustment::VignetteRoundness => settings.vignette_roundness = v,
             Adjustment::Grain => settings.grain = v,
             Adjustment::GrainSize => settings.grain_size = v,
         }

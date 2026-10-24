@@ -309,6 +309,17 @@ pub struct Workspace {
     pub(crate) cull_cache: std::cell::RefCell<Option<(u64, Rc<rustyedit_core::CullInfo>)>>,
     /// When the cull cache was last checked against the photos, with the
     /// photo count and settings it was checked at (see `cull_info`).
+    /// Measuring photos' exposure in the background: whether a scan runs,
+    /// when the last started, and photos that couldn't be read.
+    /// Survey view: the zoom every tile shares (1 fits), the point they are
+    /// centred on (fractions), a pan in progress, and the tile size.
+    pub(crate) survey_zoom: f32,
+    pub(crate) survey_centre: (f32, f32),
+    pub(crate) survey_pan: Option<(gpui::Point<gpui::Pixels>, (f32, f32))>,
+    pub(crate) survey_tile_size: std::rc::Rc<std::cell::Cell<(f32, f32)>>,
+    pub(crate) exposure_scan_busy: bool,
+    pub(crate) exposure_scan_at: Option<std::time::Instant>,
+    pub(crate) exposure_failed: HashSet<u64>,
     pub(crate) cull_checked: std::cell::Cell<Option<(std::time::Instant, usize, bool, bool)>>,
     pub(crate) cull_view: bool,
     pub(crate) cull_made_fullscreen: bool,
@@ -487,6 +498,13 @@ impl Workspace {
             import_append: false,
             cull_cache: Default::default(),
             cull_checked: Default::default(),
+            survey_zoom: 1.0,
+            survey_centre: (0.5, 0.5),
+            survey_pan: None,
+            survey_tile_size: Default::default(),
+            exposure_scan_busy: false,
+            exposure_scan_at: None,
+            exposure_failed: HashSet::new(),
             cull_view: false,
             cull_made_fullscreen: false,
             xmp_known: Default::default(),
@@ -1134,6 +1152,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::tool_linear_gradient))
             .on_action(cx.listener(Self::tool_radial_gradient))
             .on_action(cx.listener(Self::tool_white_balance))
+            .on_action(cx.listener(Self::tool_crop))
             .on_action(cx.listener(Self::auto_tone_action))
             .on_action(cx.listener(Self::sync_settings_action))
             .on_action(cx.listener(Self::create_virtual_copy))
@@ -1142,6 +1161,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::toggle_cull_view))
             .on_action(cx.listener(Self::pick_best_of_bursts))
             .on_action(cx.listener(Self::reject_soft_photos))
+            .on_action(cx.listener(Self::reject_bad_exposures))
             .on_action(cx.listener(Self::flag_pick))
             .on_action(cx.listener(Self::flag_reject))
             .on_action(cx.listener(Self::flag_unflag))

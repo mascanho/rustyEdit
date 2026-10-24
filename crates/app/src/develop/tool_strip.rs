@@ -31,9 +31,12 @@ pub(crate) enum PhotoTool {
     Linear,
     Radial,
     Brush,
+    Crop,
     WhiteBalance,
     /// Picks the brightness or colour a mask layer's range should select.
     RangePicker,
+    /// Picks a tone in the photo to put a point on the tone curve at.
+    CurveTarget,
 }
 
 impl PhotoTool {
@@ -44,7 +47,10 @@ impl PhotoTool {
             PhotoTool::Linear => Icon::LinearGradient,
             PhotoTool::Radial => Icon::RadialGradient,
             PhotoTool::Brush => Icon::Brush,
-            PhotoTool::WhiteBalance | PhotoTool::RangePicker => Icon::Eyedropper,
+            PhotoTool::Crop => Icon::Crop,
+            PhotoTool::WhiteBalance | PhotoTool::RangePicker | PhotoTool::CurveTarget => {
+                Icon::Eyedropper
+            }
         }
     }
 
@@ -55,8 +61,10 @@ impl PhotoTool {
             PhotoTool::Linear => "Linear gradient (M)",
             PhotoTool::Radial => "Radial gradient (Shift+M)",
             PhotoTool::Brush => "Brush mask: paint where to adjust (Alt erases)",
+            PhotoTool::Crop => "Crop: drag the box on the photo (R)",
             PhotoTool::WhiteBalance => "White balance: click something neutral (W)",
             PhotoTool::RangePicker => "Pick a range: click a tone or colour in the photo",
+            PhotoTool::CurveTarget => "Curve target: click a tone in the photo to add a curve point",
         }
     }
 
@@ -67,6 +75,8 @@ impl PhotoTool {
             PhotoTool::Linear | PhotoTool::Radial | PhotoTool::Brush | PhotoTool::RangePicker => {
                 "develop-gradients"
             },
+            PhotoTool::Crop => "develop-crop",
+            PhotoTool::CurveTarget => "develop-curve",
             PhotoTool::WhiteBalance => "develop-color",
         }
     }
@@ -101,6 +111,8 @@ impl Workspace {
             .map(PhotoTool::from)
             .or(ui.gradients.tool.map(PhotoTool::from))
             .or(ui.gradients.range_pick.map(|_| PhotoTool::RangePicker))
+            .or(ui.crop_tool.then_some(PhotoTool::Crop))
+            .or(ui.curve_target.then_some(PhotoTool::CurveTarget))
             .or(ui.wb_picker.then_some(PhotoTool::WhiteBalance))
     }
 
@@ -112,6 +124,9 @@ impl Workspace {
         ui.retouch.tool = None;
         ui.gradients.tool = None;
         ui.gradients.range_pick = None;
+        ui.crop_tool = false;
+        ui.crop_drag = None;
+        ui.curve_target = false;
         ui.wb_picker = false;
         if picking {
             match tool {
@@ -121,6 +136,12 @@ impl Workspace {
                 PhotoTool::Radial => ui.gradients.tool = Some(GradientKind::Radial),
                 PhotoTool::Brush => ui.gradients.tool = Some(GradientKind::Brush),
                 PhotoTool::WhiteBalance => ui.wb_picker = true,
+                PhotoTool::CurveTarget => ui.curve_target = true,
+                PhotoTool::Crop => {
+                    ui.crop_tool = true;
+                    // The whole canvas is shown, so the box can be dragged.
+                    ui.zoom.scale = None;
+                }
                 PhotoTool::RangePicker => ui.gradients.range_pick = ui.gradients.pending_pick.take(),
             }
             self.collapsed_sections.remove(tool.section_key());
@@ -198,6 +219,7 @@ impl Workspace {
             PhotoTool::Linear,
             PhotoTool::Radial,
             PhotoTool::Brush,
+            PhotoTool::Crop,
             PhotoTool::WhiteBalance,
         ]
         .map(|tool| {

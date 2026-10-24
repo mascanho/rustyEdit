@@ -211,6 +211,63 @@ impl CurvePreset {
     }
 }
 
+/// Looks made of all three colour channels' curves together (the master
+/// curve is left alone).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CurveLook {
+    CrossProcess,
+    WarmFade,
+    CoolShadows,
+    TealAndOrange,
+}
+
+impl CurveLook {
+    pub const ALL: [CurveLook; 4] = [
+        CurveLook::CrossProcess,
+        CurveLook::WarmFade,
+        CurveLook::CoolShadows,
+        CurveLook::TealAndOrange,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            CurveLook::CrossProcess => "Cross process",
+            CurveLook::WarmFade => "Warm fade",
+            CurveLook::CoolShadows => "Cool shadows",
+            CurveLook::TealAndOrange => "Teal & orange",
+        }
+    }
+
+    /// Sets the red, green and blue curves for the look.
+    pub fn apply(&self, curves: &mut ToneCurves) {
+        let (red, green, blue): (&[[f32; 2]], &[[f32; 2]], &[[f32; 2]]) = match self {
+            CurveLook::CrossProcess => (
+                &[[0.0, 0.0], [0.25, 0.15], [0.75, 0.88], [1.0, 1.0]],
+                &[[0.0, 0.0], [0.5, 0.56], [1.0, 1.0]],
+                &[[0.0, 0.1], [0.5, 0.45], [1.0, 0.85]],
+            ),
+            CurveLook::WarmFade => (
+                &[[0.0, 0.06], [0.5, 0.53], [1.0, 1.0]],
+                &[[0.0, 0.04], [0.5, 0.5], [1.0, 0.97]],
+                &[[0.0, 0.0], [0.5, 0.44], [1.0, 0.9]],
+            ),
+            CurveLook::CoolShadows => (
+                &[[0.0, 0.0], [0.3, 0.27], [1.0, 1.0]],
+                &[[0.0, 0.0], [0.3, 0.3], [1.0, 1.0]],
+                &[[0.0, 0.05], [0.3, 0.36], [1.0, 1.0]],
+            ),
+            CurveLook::TealAndOrange => (
+                &[[0.0, 0.0], [0.3, 0.24], [0.7, 0.78], [1.0, 1.0]],
+                &[[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]],
+                &[[0.0, 0.04], [0.3, 0.36], [0.7, 0.66], [1.0, 0.94]],
+            ),
+        };
+        curves.red = ToneCurve::with_points(red);
+        curves.green = ToneCurve::with_points(green);
+        curves.blue = ToneCurve::with_points(blue);
+    }
+}
+
 /// Which curve is being edited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CurveChannel {
@@ -290,6 +347,21 @@ mod tests {
         assert!((strong.evaluate(0.25) - 0.15).abs() < 1e-4);
         assert!((strong.evaluate(0.75) - 0.85).abs() < 1e-4);
         assert!((CurvePreset::Faded.curve().evaluate(0.0) - 0.08).abs() < 1e-4);
+    }
+
+    #[test]
+    fn colour_looks_move_the_channels_and_leave_the_master_curve() {
+        for look in CurveLook::ALL {
+            let mut curves = ToneCurves::default();
+            look.apply(&mut curves);
+            assert!(curves.master.is_identity(), "{}", look.label());
+            assert!(!curves.red.is_identity() || !curves.blue.is_identity(), "{}", look.label());
+        }
+        let mut curves = ToneCurves::default();
+        CurveLook::CrossProcess.apply(&mut curves);
+        // Blue starts lifted and red is steepened: the cross-processed cast.
+        assert!(curves.blue.evaluate(0.0) > 0.05);
+        assert!(curves.red.evaluate(0.75) > 0.8);
     }
 
     #[test]

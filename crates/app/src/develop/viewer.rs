@@ -84,6 +84,8 @@ impl Workspace {
                     .children(self.render_grid_overlay())
                     .children(self.render_retouch_overlay(cx))
                     .children(self.render_gradient_overlay(cx))
+                    .children(self.render_crop_overlay(cx))
+                    .children(self.render_curve_target_overlay(cx))
                     .children(self.render_range_pick_overlay(cx))
                     .children(self.render_white_balance_overlay(cx))
                     .children(self.develop_split_overlay(cx)),
@@ -108,8 +110,19 @@ impl Workspace {
         if ui.grid_overlay == super::grid_overlay::GridOverlay::Off {
             return None;
         }
-        let (w, h) = self.develop_image_size()?;
-        let photo = ui.zoom.photo_rect((w, h))?;
+        let (mut w, mut h) = self.develop_image_size()?;
+        let mut photo = ui.zoom.photo_rect((w, h))?;
+        // With the Crop tool picked the guide goes over the box, not the
+        // whole canvas.
+        if self.crop_in_view() && self.live_preview.shown_crop_full() {
+            let (x, y, cw, ch) = self.catalog.selected_asset()?.develop.crop.rect;
+            let (pw, ph) = (photo.size.width, photo.size.height);
+            photo = gpui::Bounds {
+                origin: photo.origin + gpui::point(pw * x, ph * y),
+                size: gpui::size(pw * cw, ph * ch),
+            };
+            (w, h) = (w * cw, h * ch);
+        }
         let clip = ui.zoom.viewer_bounds.get();
         let lines = ui.grid_overlay.lines(w / h.max(1.0), ui.grid_orientation);
         Some(super::grid_overlay::overlay_canvas(
@@ -254,6 +267,7 @@ impl Workspace {
         if self.curve_drag_move(event.position, event.dragging(), cx)
             || self.wheel_drag_move(event.position, event.dragging(), cx)
             || self.mixer_drag_move(event.position, event.dragging(), cx)
+            || self.crop_drag_move(event.position, event.dragging(), cx)
             || self.retouch_drag_move(event.position, event.dragging(), cx)
             || self.gradient_drag_move(event.position, event.dragging(), cx)
         {
@@ -276,6 +290,7 @@ impl Workspace {
         self.develop_ui.curve_drag = None;
         self.develop_ui.wheel_drag = None;
         self.develop_ui.mixer_pad_drag = false;
+        self.develop_ui.crop_drag = None;
         self.end_retouch_drag();
         self.end_gradient_drag();
     }

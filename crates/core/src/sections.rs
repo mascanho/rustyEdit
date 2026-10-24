@@ -186,6 +186,7 @@ impl DevelopSection {
                 to.vignette = from.vignette;
                 to.vignette_midpoint = from.vignette_midpoint;
                 to.vignette_feather = from.vignette_feather;
+                to.vignette_roundness = from.vignette_roundness;
                 to.grain = from.grain;
                 to.grain_size = from.grain_size;
             }

@@ -64,8 +64,8 @@ use actions::{
     ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
 };
 use actions::{
-    AutoTone, CreateVirtualCopy, MatchLook, PickBestOfBursts, PresetFromPhoto, RejectSoftPhotos,
-    SyncSettings, ToggleCullView, ToolWhiteBalance,
+    AutoTone, CreateVirtualCopy, MatchLook, PickBestOfBursts, PresetFromPhoto, RejectSoftPhotos, RejectBadExposures,
+    SyncSettings, ToggleCullView, ToolWhiteBalance, ToolCrop,
     CycleGridStyle, GridLarger, GridSmaller, ToolLinearGradient, ToolRadialGradient,
     ToolSpotRemoval, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp,
     SelectDown, SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
@@ -121,6 +121,7 @@ fn main() {
             KeyBinding::new("m", ToolLinearGradient, Some(KEY_CONTEXT)),
             KeyBinding::new("shift-m", ToolRadialGradient, Some(KEY_CONTEXT)),
             KeyBinding::new("w", ToolWhiteBalance, Some(KEY_CONTEXT)),
+            KeyBinding::new("r", ToolCrop, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-u", AutoTone, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-shift-s", SyncSettings, Some(KEY_CONTEXT)),
             KeyBinding::new("cmd-'", CreateVirtualCopy, Some(KEY_CONTEXT)),
@@ -192,6 +193,7 @@ fn main() {
                     MenuItem::action("Full-Screen Cull", ToggleCullView),
                     MenuItem::action("Pick Best of Each Burst", PickBestOfBursts),
                     MenuItem::action("Reject Soft Photos", RejectSoftPhotos),
+                    MenuItem::action("Reject Bad Exposures", RejectBadExposures),
                 ],
             },
             Menu {

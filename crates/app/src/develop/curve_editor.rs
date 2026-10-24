@@ -8,7 +8,7 @@ use gpui::{
     MouseDownEvent, PathBuilder, Pixels, Point, Window,
 };
 use rustyedit_core::{
-    Adjustment, CurveChannel, CurvePreset, HistogramChannel, ParametricCurve, ToneCurve, ToneCurves,
+    Adjustment, CurveChannel, CurveLook, CurvePreset, HistogramChannel, ParametricCurve, ToneCurve, ToneCurves,
 };
 use rustyedit_ui::Theme;
 
@@ -55,6 +55,8 @@ impl Workspace {
                 .child(self.curve_toolbar(&develop.curves, channel, cx))
                 .child(self.curve_graph(develop.curves, channel, side, cx))
                 .child(self.curve_presets(channel, cx))
+                .child(self.curve_looks(cx))
+                .child(self.curve_target_button(channel, cx))
                 .child(
                     div()
                         .text_size(sp(9.5))
@@ -133,6 +135,53 @@ impl Workspace {
                         this.edit_curve(channel, cx, |curve| *curve = preset.curve());
                     }))
             }))
+            .into_any_element()
+    }
+
+    /// Colour looks that set the red, green and blue curves together.
+    fn curve_looks(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(
+                div()
+                    .text_size(sp(9.5))
+                    .text_color(theme.text_faint)
+                    .child("COLOUR LOOKS (all three channels)"),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .flex_wrap()
+                    .gap_1()
+                    .children(CurveLook::ALL.iter().map(|&look| {
+                        div()
+                            .id(("curve-look", look as usize))
+                            .flex()
+                            .items_center()
+                            .h(sp(20.0))
+                            .px_1p5()
+                            .cursor_pointer()
+                            .border_1()
+                            .border_color(theme.border_subtle)
+                            .bg(theme.background)
+                            .text_size(sp(10.0))
+                            .text_color(theme.text_muted)
+                            .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                            .child(look.label())
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                                this.edit_develop(
+                                    "Curve look",
+                                    |d| look.apply(&mut d.curves),
+                                    |_| (String::new(), look.label().to_string()),
+                                    cx,
+                                );
+                            }))
+                    })),
+            )
             .into_any_element()
     }
 
@@ -518,3 +567,223 @@ fn paint_curve(
         window.paint_path(path, color);
     }
 }
+
+impl Workspace {
+    /// The eyedropper that adds a curve point from a tone in the photo.
+    fn curve_target_button(&self, channel: CurveChannel, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let active = self.develop_ui.curve_target;
+        div()
+            .id("curve-target")
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_1p5()
+            .h(sp(24.0))
+            .px_2()
+            .rounded_md()
+            .border_1()
+            .cursor_pointer()
+            .text_size(sp(10.5))
+            .when(active, |el| {
+                el.bg(theme.accent_muted)
+                    .border_color(theme.accent)
+                    .text_color(theme.text)
+            })
+            .when(!active, |el| {
+                el.border_color(theme.border_subtle)
+                    .text_color(theme.text_muted)
+                    .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+            })
+            .tooltip(rustyedit_ui::tip(
+                "Click a tone in the photo to put a point on the curve for it",
+                &theme,
+            ))
+            .child(rustyedit_ui::icon(
+                rustyedit_ui::Icon::Eyedropper,
+                13.0,
+                if active { theme.accent } else { theme.text_muted },
+            ))
+            .child(format!("Target a tone ({})", channel.label()))
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.toggle_photo_tool(super::tool_strip::PhotoTool::CurveTarget, cx);
+            }))
+            .into_any_element()
+    }
+
+    /// While the target picker is out: a crosshair over the photo that adds
+    /// a curve point for the tone where it's clicked, and a hint.
+    pub(super) fn render_curve_target_overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.develop_ui.curve_target || self.develop_ui.zoom.space_held {
+            return None;
+        }
+        let theme = self.theme;
+        Some(
+            div()
+                .id("curve-target-overlay")
+                .absolute()
+                .inset_0()
+                .cursor_crosshair()
+                .on_mouse_down(
+                    gpui::MouseButton::Left,
+                    cx.listener(|this, event: &gpui::MouseDownEvent, _w, cx| {
+                        cx.stop_propagation();
+                        this.curve_target_click(event.position, cx);
+                    }),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .top(sp(8.0))
+                        .left_0()
+                        .right_0()
+                        .flex()
+                        .justify_center()
+                        .child(
+                            div()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap_1p5()
+                                .h(sp(24.0))
+                                .px_2()
+                                .rounded_md()
+                                .bg(theme.surface.opacity(0.9))
+                                .border_1()
+                                .border_color(theme.border)
+                                .text_size(sp(11.0))
+                                .text_color(theme.text)
+                                .child(rustyedit_ui::icon(rustyedit_ui::Icon::Eyedropper, 12.0, theme.accent))
+                                .child("Click a tone to add a curve point for it \u{00B7} Esc to cancel"),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
+    fn curve_target_click(&mut self, position: gpui::Point<gpui::Pixels>, cx: &mut Context<Self>) {
+        if self.develop_ui.auto_busy {
+            return;
+        }
+        let Some(size) = self.develop_image_size() else {
+            return;
+        };
+        let Some(rect) = self.develop_ui.zoom.photo_rect(size) else {
+            return;
+        };
+        if !rect.contains(&position) {
+            return;
+        }
+        let at = (
+            f32::from(position.x - rect.origin.x) / f32::from(rect.size.width),
+            f32::from(position.y - rect.origin.y) / f32::from(rect.size.height),
+        );
+        let Some(asset) = self.catalog.selected_asset() else {
+            return;
+        };
+        let (id, develop) = (asset.id, asset.develop);
+        let channel = self.develop_ui.curve_channel;
+        let Some(source) = self
+            .source_image
+            .clone()
+            .filter(|_| self.source_image_for == Some(id))
+        else {
+            self.status_message = Some("Wait for the photo to finish loading.".into());
+            cx.notify();
+            return;
+        };
+        self.develop_ui.auto_busy = true;
+        cx.notify();
+        // The tone as it is before the curve, so the point lands where the
+        // curve will act on it.
+        let work = cx.background_executor().spawn(async move {
+            rustyedit_processing::sample_colour_without(
+                &source,
+                &develop,
+                at,
+                &[rustyedit_core::DevelopSection::ToneCurve, rustyedit_core::DevelopSection::Gradients],
+            )
+        });
+        cx.spawn(async move |this, cx| {
+            let rgb = work.await;
+            this.update(cx, |this, cx| {
+                this.develop_ui.auto_busy = false;
+                if this.catalog.selected_asset().map(|a| a.id) != Some(id) {
+                    return;
+                }
+                let tone = curve_target_tone(&develop, channel, rgb);
+                let mut added = false;
+                this.edit_curve(channel, cx, |curve| {
+                    let y = curve.evaluate(tone);
+                    added = curve.insert(tone, y).is_some();
+                });
+                this.status_message = Some(
+                    if added {
+                        format!("Added a {} curve point at {:.0}%.", channel.label(), tone * 100.0)
+                    } else {
+                        "There's already a point (or no room for one) there.".to_string()
+                    }
+                    .into(),
+                );
+                // Done: put the eyedropper down.
+                if this.develop_ui.curve_target {
+                    this.toggle_photo_tool(super::tool_strip::PhotoTool::CurveTarget, cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+}
+
+/// Where on `channel`'s curve the colour `rgb` (before any curve) falls:
+/// its brightness for the master curve, its own value for a channel's. The
+/// parametric sliders (and, for a channel, the master curve) come first in
+/// the pipeline, so they're applied.
+fn curve_target_tone(
+    develop: &rustyedit_core::DevelopSettings,
+    channel: CurveChannel,
+    rgb: [f32; 3],
+) -> f32 {
+    let value = match channel {
+        CurveChannel::Master => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2],
+        CurveChannel::Red => rgb[0],
+        CurveChannel::Green => rgb[1],
+        CurveChannel::Blue => rgb[2],
+    }
+    .clamp(0.0, 1.0);
+    let shaped = develop.parametric.evaluate(value);
+    match channel {
+        CurveChannel::Master => shaped.clamp(0.0, 1.0),
+        _ => develop.curves.get(CurveChannel::Master).evaluate(shaped).clamp(0.0, 1.0),
+    }
+}
+
+#[cfg(test)]
+mod target_tests {
+    use super::*;
+    use rustyedit_core::DevelopSettings;
+
+    #[test]
+    fn a_plain_photo_targets_its_own_tone() {
+        let develop = DevelopSettings::default();
+        let t = curve_target_tone(&develop, CurveChannel::Master, [0.5, 0.5, 0.5]);
+        assert!((t - 0.5).abs() < 0.01, "{t}");
+        let t = curve_target_tone(&develop, CurveChannel::Red, [0.8, 0.2, 0.2]);
+        assert!((t - 0.8).abs() < 0.01, "{t}");
+    }
+
+    #[test]
+    fn a_channel_target_goes_through_the_master_curve_first() {
+        let mut develop = DevelopSettings::default();
+        develop.curves.master = rustyedit_core::CurvePreset::Brighten.curve();
+        let plain = curve_target_tone(&DevelopSettings::default(), CurveChannel::Green, [0.5; 3]);
+        let lifted = curve_target_tone(&develop, CurveChannel::Green, [0.5; 3]);
+        assert!(lifted > plain + 0.05, "{plain} {lifted}");
+        // The master curve's own target isn't lifted by itself.
+        let master = curve_target_tone(&develop, CurveChannel::Master, [0.5; 3]);
+        assert!((master - 0.5).abs() < 0.01);
+    }
+}
+

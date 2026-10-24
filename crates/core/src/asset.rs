@@ -141,6 +141,10 @@ pub struct Asset {
     /// thumbnail. `None` until measured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sharpness: Option<f32>,
+    /// How its tones sit (see `culling::exposure_stats`), measured on its
+    /// thumbnail. `None` until measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exposure: Option<crate::culling::ExposureStats>,
     /// The preset currently making up the photo's look, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applied_preset: Option<AppliedPreset>,
@@ -182,6 +186,7 @@ impl Asset {
             snapshots: Vec::new(),
             copy_name: None,
             sharpness: None,
+            exposure: None,
             applied_preset: None,
             marked_delete: false,
             missing: false,
@@ -217,6 +222,9 @@ impl Asset {
         }
         if old.sharpness.is_some() {
             self.sharpness = old.sharpness;
+        }
+        if old.exposure.is_some() {
+            self.exposure = old.exposure;
         }
         if old.width > 0 && old.height > 0 {
             self.width = old.width;

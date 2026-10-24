@@ -61,6 +61,168 @@ impl AspectLock {
     }
 }
 
+/// What a drag on the crop box grabbed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CropHandle {
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+    /// The inside of the box: moves it.
+    Move,
+    /// Outside it: draws a new one from where the drag started.
+    New,
+}
+
+impl CropHandle {
+    /// The eight edge and corner handles, in the order they're drawn.
+    pub const EDGES: [CropHandle; 8] = [
+        CropHandle::TopLeft,
+        CropHandle::Top,
+        CropHandle::TopRight,
+        CropHandle::Right,
+        CropHandle::BottomRight,
+        CropHandle::Bottom,
+        CropHandle::BottomLeft,
+        CropHandle::Left,
+    ];
+
+    /// Where the handle sits on a box, as fractions across and down it.
+    pub fn at(&self) -> (f32, f32) {
+        match self {
+            CropHandle::TopLeft => (0.0, 0.0),
+            CropHandle::Top => (0.5, 0.0),
+            CropHandle::TopRight => (1.0, 0.0),
+            CropHandle::Right => (1.0, 0.5),
+            CropHandle::BottomRight => (1.0, 1.0),
+            CropHandle::Bottom => (0.5, 1.0),
+            CropHandle::BottomLeft => (0.0, 1.0),
+            CropHandle::Left => (0.0, 0.5),
+            CropHandle::Move | CropHandle::New => (0.5, 0.5),
+        }
+    }
+}
+
+/// A crop rectangle `(x, y, width, height)` as fractions of the canvas
+/// after dragging `handle` by (`dx`, `dy`) (also fractions of the canvas),
+/// from `start`. `ratio` is the locked width ÷ height *of the rectangle in
+/// those fractions* (see [`Crop::reframed`] for turning a photo shape into
+/// one). A [`CropHandle::New`] drag starts from a zero-size `start` at the
+/// point where it began.
+pub fn drag_crop_rect(
+    start: (f32, f32, f32, f32),
+    handle: CropHandle,
+    dx: f32,
+    dy: f32,
+    ratio: Option<f32>,
+) -> (f32, f32, f32, f32) {
+    let (x, y, w, h) = start;
+    let (left, top, right, bottom) = (x, y, x + w, y + h);
+    let ratio = ratio.filter(|r| *r > 1e-3 && r.is_finite());
+
+    if handle == CropHandle::Move {
+        let nx = (x + dx).clamp(0.0, 1.0 - w);
+        let ny = (y + dy).clamp(0.0, 1.0 - h);
+        return (nx, ny, w, h);
+    }
+
+    // A corner (or a new box): one corner stays put, the other follows.
+    let corner = |anchor: (f32, f32), toward: (f32, f32)| {
+        let (sx, sy) = (
+            if toward.0 >= anchor.0 { 1.0 } else { -1.0 },
+            if toward.1 >= anchor.1 { 1.0 } else { -1.0 },
+        );
+        // Room between the anchor and the canvas edge, each way.
+        let room_w = if sx > 0.0 { 1.0 - anchor.0 } else { anchor.0 };
+        let room_h = if sy > 0.0 { 1.0 - anchor.1 } else { anchor.1 };
+        let mut nw = (toward.0 - anchor.0).abs().min(room_w);
+        let mut nh = (toward.1 - anchor.1).abs().min(room_h);
+        if let Some(r) = ratio {
+            // Follow the larger of the two, then fit what room there is.
+            nw = nw.max(nh * r);
+            nh = nw / r;
+            if nw > room_w {
+                nw = room_w;
+                nh = nw / r;
+            }
+            if nh > room_h {
+                nh = room_h;
+                nw = nh * r;
+            }
+        }
+        let nx = if sx > 0.0 { anchor.0 } else { anchor.0 - nw };
+        let ny = if sy > 0.0 { anchor.1 } else { anchor.1 - nh };
+        (nx, ny, nw, nh)
+    };
+
+    let (rx, ry) = (right + dx, bottom + dy);
+    let (lx, ly) = (left + dx, top + dy);
+    let rect = match handle {
+        CropHandle::New => corner((x, y), (x + dx, y + dy)),
+        CropHandle::TopLeft => corner((right, bottom), (lx, ly)),
+        CropHandle::TopRight => corner((left, bottom), (rx, ly)),
+        CropHandle::BottomLeft => corner((right, top), (lx, ry)),
+        CropHandle::BottomRight => corner((left, top), (rx, ry)),
+        CropHandle::Left | CropHandle::Right | CropHandle::Top | CropHandle::Bottom => {
+            let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+            let horizontal = matches!(handle, CropHandle::Left | CropHandle::Right);
+            let (mut nl, mut nt, mut nr, mut nb) = (left, top, right, bottom);
+            match handle {
+                CropHandle::Left => nl = lx.clamp(0.0, right - MIN_SIDE),
+                CropHandle::Right => nr = rx.clamp(left + MIN_SIDE, 1.0),
+                CropHandle::Top => nt = ly.clamp(0.0, bottom - MIN_SIDE),
+                _ => nb = ry.clamp(top + MIN_SIDE, 1.0),
+            }
+            let (mut nw, mut nh) = (nr - nl, nb - nt);
+            match ratio {
+                // The other side follows, about the middle.
+                Some(r) if horizontal => {
+                    nh = nw / r;
+                    let max_h = 2.0 * cy.min(1.0 - cy);
+                    if nh > max_h {
+                        nh = max_h;
+                        nw = nh * r;
+                        if handle == CropHandle::Left {
+                            nl = nr - nw;
+                        } else {
+                            nr = nl + nw;
+                        }
+                    }
+                    nt = cy - nh / 2.0;
+                    nb = cy + nh / 2.0;
+                }
+                Some(r) => {
+                    nw = nh * r;
+                    let max_w = 2.0 * cx.min(1.0 - cx);
+                    if nw > max_w {
+                        nw = max_w;
+                        nh = nw / r;
+                        if handle == CropHandle::Top {
+                            nt = nb - nh;
+                        } else {
+                            nb = nt + nh;
+                        }
+                    }
+                    nl = cx - nw / 2.0;
+                    nr = cx + nw / 2.0;
+                }
+                None => {}
+            }
+            (nl, nt, nr - nl, nb - nt)
+        }
+        CropHandle::Move => unreachable!("handled above"),
+    };
+    // Never below the smallest box, and always on the canvas.
+    let (nx, ny, nw, nh) = rect;
+    let nw = nw.clamp(MIN_SIDE, 1.0);
+    let nh = nh.clamp(MIN_SIDE, 1.0);
+    (nx.clamp(0.0, 1.0 - nw), ny.clamp(0.0, 1.0 - nh), nw, nh)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Crop {
@@ -265,6 +427,56 @@ impl CropView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const WHOLE: (f32, f32, f32, f32) = (0.0, 0.0, 1.0, 1.0);
+
+    #[test]
+    fn dragging_an_edge_moves_just_that_edge() {
+        let r = drag_crop_rect((0.2, 0.2, 0.6, 0.6), CropHandle::Right, 0.1, 0.3, None);
+        assert!((r.0 - 0.2).abs() < 1e-6 && (r.2 - 0.7).abs() < 1e-6);
+        assert!((r.1 - 0.2).abs() < 1e-6 && (r.3 - 0.6).abs() < 1e-6);
+        let r = drag_crop_rect((0.2, 0.2, 0.6, 0.6), CropHandle::Top, 0.0, 0.1, None);
+        assert!((r.1 - 0.3).abs() < 1e-6 && (r.3 - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_corner_keeps_the_opposite_one_still() {
+        let r = drag_crop_rect((0.2, 0.2, 0.6, 0.6), CropHandle::TopLeft, 0.1, 0.1, None);
+        assert!((r.0 - 0.3).abs() < 1e-6 && (r.1 - 0.3).abs() < 1e-6);
+        assert!((r.0 + r.2 - 0.8).abs() < 1e-6 && (r.1 + r.3 - 0.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_locked_shape_is_kept_by_every_handle() {
+        for handle in CropHandle::EDGES {
+            for (dx, dy) in [(0.1, 0.05), (-0.1, 0.08), (0.2, -0.2), (-0.05, -0.3)] {
+                let r = drag_crop_rect((0.25, 0.25, 0.5, 0.25), handle, dx, dy, Some(2.0));
+                assert!((r.2 / r.3 - 2.0).abs() < 1e-3, "{handle:?} {dx} {dy}: {r:?}");
+                assert!(r.0 >= -1e-6 && r.1 >= -1e-6 && r.0 + r.2 <= 1.0 + 1e-6 && r.1 + r.3 <= 1.0 + 1e-6, "{r:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_box_stays_on_the_canvas_and_above_the_minimum() {
+        let r = drag_crop_rect(WHOLE, CropHandle::BottomRight, 5.0, 5.0, None);
+        assert_eq!(r, WHOLE);
+        let r = drag_crop_rect((0.2, 0.2, 0.3, 0.3), CropHandle::Left, 5.0, 0.0, None);
+        assert!(r.2 >= MIN_SIDE - 1e-6, "{r:?}");
+        let r = drag_crop_rect((0.4, 0.4, 0.2, 0.2), CropHandle::Move, 5.0, -5.0, None);
+        assert_eq!((r.0, r.1, r.2, r.3), (0.8, 0.0, 0.2, 0.2));
+    }
+
+    #[test]
+    fn drawing_a_new_box_works_in_every_direction() {
+        let start = (0.5, 0.5, 0.0, 0.0);
+        let r = drag_crop_rect(start, CropHandle::New, 0.2, 0.1, None);
+        assert!((r.0 - 0.5).abs() < 1e-6 && (r.2 - 0.2).abs() < 1e-6 && (r.3 - 0.1).abs() < 1e-6);
+        let r = drag_crop_rect(start, CropHandle::New, -0.2, -0.1, None);
+        assert!((r.0 - 0.3).abs() < 1e-6 && (r.1 - 0.4).abs() < 1e-6);
+        let r = drag_crop_rect(start, CropHandle::New, 0.2, 0.05, Some(1.0));
+        assert!((r.2 - r.3).abs() < 1e-5, "{r:?}");
+    }
 
     #[test]
     fn view_round_trips() {

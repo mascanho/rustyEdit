@@ -125,8 +125,29 @@ impl Workspace {
             None => "Pick a mask, then drag on the photo (Range needs no dragging)",
         };
 
+        let blur_button = div()
+            .id("gradient-background-blur")
+            .flex()
+            .items_center()
+            .justify_center()
+            .h(sp(24.0))
+            .rounded_md()
+            .border_1()
+            .border_color(theme.border_subtle)
+            .cursor_pointer()
+            .text_size(sp(11.0))
+            .text_color(theme.text_muted)
+            .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+            .tooltip(rustyedit_ui::tip(
+                "Keep the middle sharp and blur the area around it, as a wide lens would",
+                &theme,
+            ))
+            .child("Blur background")
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.add_background_blur(cx)))
+            .into_any_element();
         let mut rows = vec![
             tools.into_any_element(),
+            blur_button,
             div()
                 .text_size(sp(10.0))
                 .text_color(theme.text_faint)
@@ -1075,6 +1096,41 @@ impl Workspace {
             .ok();
         })
         .detach();
+    }
+
+    /// Adds a layer that blurs everything outside a soft oval in the middle
+    /// of the photo: a quick lens-blur background. Move and resize it like
+    /// any radial, and set how much it blurs with its Blur slider.
+    fn add_background_blur(&mut self, cx: &mut Context<Self>) {
+        let layer = Gradient {
+            kind: GradientKind::Radial,
+            start: (0.5, 0.5),
+            radius: (0.32, 0.26),
+            feather: 0.75,
+            invert: true,
+            adjust: LocalAdjust {
+                blur: 70.0,
+                ..Default::default()
+            },
+            ..Gradient::default()
+        };
+        let mut added = None;
+        self.edit_gradients("Blur background", cx, |d| added = d.gradients.push(layer));
+        match added {
+            Some(ix) => {
+                // The radial tool shows its handles to fit it to the subject.
+                if self.active_photo_tool() != Some(super::tool_strip::PhotoTool::Radial) {
+                    self.toggle_photo_tool(super::tool_strip::PhotoTool::Radial, cx);
+                }
+                self.develop_ui.gradients.selected = Some(ix);
+                self.status_message = Some("Blur background: drag its handles to fit your subject.".into());
+            }
+            None => {
+                self.status_message =
+                    Some(format!("A photo can have up to {MAX_GRADIENTS} gradients").into())
+            }
+        }
+        cx.notify();
     }
 
     /// Adds a Range layer: a mask that needs no dragging, starting on the

@@ -26,6 +26,7 @@ mod auto;
 mod color_grading;
 mod color_mixer;
 mod crop;
+mod crop_tool;
 mod curve_editor;
 mod frames;
 mod detail;
@@ -117,6 +118,11 @@ pub(crate) struct DevelopUi {
     pub(crate) retouch: RetouchUi,
     /// Linear / Radial gradient tool state.
     pub(crate) gradients: GradientUi,
+    /// The Crop tool is picked, and the drag in progress on its box.
+    pub(crate) crop_tool: bool,
+    pub(crate) crop_drag: Option<crop_tool::CropDrag>,
+    /// The curve target picker is picked.
+    pub(crate) curve_target: bool,
     /// The white-balance eyedropper is picked.
     pub(crate) wb_picker: bool,
     /// Auto Tone or the eyedropper is measuring the photo.
@@ -153,6 +159,9 @@ impl DevelopUi {
             mixer_prop: MixerProp::default(),
             retouch: RetouchUi::default(),
             gradients: GradientUi::default(),
+            crop_tool: false,
+            crop_drag: None,
+            curve_target: false,
             wb_picker: false,
             auto_busy: false,
         }

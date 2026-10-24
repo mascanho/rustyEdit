@@ -9,6 +9,7 @@
 
 use rustyedit_ui::sp;
 use gpui::{
+    canvas,
     div, img, point, prelude::*, px, AnyElement, ClickEvent, Context, MouseButton, MouseDownEvent,
     ObjectFit, SharedString, Window,
 };
@@ -235,8 +236,72 @@ impl Workspace {
             })
             .collect();
 
+        let zoom = self.survey_zoom;
+        let controls = {
+            let button = |id: &'static str, label: &'static str, factor: f32, cx: &mut Context<Self>| {
+                div()
+                    .id(id)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .min_w(sp(22.0))
+                    .h(sp(20.0))
+                    .px_1()
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .text_size(sp(11.0))
+                    .text_color(theme.text)
+                    .hover(|el| el.bg(theme.surface_elevated))
+                    .child(label)
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                        if factor == 0.0 {
+                            this.survey_zoom = 1.0;
+                            this.survey_centre = (0.5, 0.5);
+                            cx.notify();
+                        } else {
+                            this.zoom_survey(factor, cx);
+                        }
+                    }))
+            };
+            div()
+                .absolute()
+                .top(sp(8.0))
+                .right(sp(12.0))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_0p5()
+                .px_1()
+                .rounded_md()
+                .bg(theme.surface.opacity(0.92))
+                .border_1()
+                .border_color(theme.border)
+                .child(
+                    div()
+                        .px_1()
+                        .text_size(sp(10.0))
+                        .text_color(theme.text_muted)
+                        .child(if zoom <= 1.001 {
+                            "Linked zoom: scroll to zoom".to_string()
+                        } else {
+                            format!("Linked zoom {:.0}%", zoom * 100.0)
+                        }),
+                )
+                .child(button("survey-zoom-out", "\u{2212}", 1.0 / 1.4, cx))
+                .child(button("survey-zoom-in", "+", 1.4, cx))
+                .child(button("survey-zoom-fit", "Fit", 0.0, cx))
+        };
         div()
             .id("library-survey")
+            .relative()
+            .on_scroll_wheel(cx.listener(|this, event: &gpui::ScrollWheelEvent, _w, cx| {
+                let dy = f32::from(event.delta.pixel_delta(sp(16.0)).y);
+                if dy != 0.0 {
+                    cx.stop_propagation();
+                    // Scrolling up zooms in, 12% a notch.
+                    this.zoom_survey(1.12f32.powf((dy / 16.0).clamp(-4.0, 4.0)), cx);
+                }
+            }))
             .flex_1()
             .min_h(sp(0.0))
             .min_w(sp(0.0))
@@ -247,7 +312,106 @@ impl Workspace {
             .p_3()
             .bg(theme.background)
             .children(rows)
+            .child(controls)
             .into_any_element()
+    }
+
+    /// A survey tile's picture: the photo fitted, or, once zoomed, every
+    /// tile enlarged about the same point so the same spot of each photo
+    /// can be compared. Dragging pans them together.
+    fn survey_picture(&self, asset: &rustyedit_core::Asset, cx: &mut Context<Self>) -> AnyElement {
+        let zoom = self.survey_zoom;
+        let size_cell = self.survey_tile_size.clone();
+        let measure = canvas(
+            move |b, _, _| size_cell.set((f32::from(b.size.width), f32::from(b.size.height))),
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full();
+        if zoom <= 1.001 {
+            return div()
+                .relative()
+                .size_full()
+                .p_1()
+                .child(measure)
+                .child(
+                    img(self
+                        .display_thumbnail(asset)
+                        .unwrap_or_else(|| asset.display_source().to_path_buf()))
+                    .object_fit(ObjectFit::Contain)
+                    .size_full(),
+                )
+                .into_any_element();
+        }
+        // Past 2x the thumbnail is too coarse: use the large preview.
+        let source = if zoom >= 2.0 {
+            self.loupe_source(asset)
+        } else {
+            self.display_thumbnail(asset)
+                .unwrap_or_else(|| asset.display_source().to_path_buf())
+        };
+        let (cx0, cy0) = self.survey_centre;
+        div()
+            .id(("survey-zoomed", asset.id as usize))
+            .relative()
+            .size_full()
+            .overflow_hidden()
+            .cursor(rustyedit_ui::GRAB_CURSOR)
+            .child(measure)
+            .child(
+                img(source)
+                    .object_fit(ObjectFit::Contain)
+                    .absolute()
+                    .w(gpui::relative(zoom))
+                    .h(gpui::relative(zoom))
+                    .left(gpui::relative(0.5 - cx0 * zoom))
+                    .top(gpui::relative(0.5 - cy0 * zoom)),
+            )
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, event: &gpui::MouseDownEvent, _w, _cx| {
+                    this.survey_pan = Some((event.position, this.survey_centre));
+                }),
+            )
+            .into_any_element()
+    }
+
+    /// Zooms every survey tile by `factor` (back to fitted at 1).
+    pub(crate) fn zoom_survey(&mut self, factor: f32, cx: &mut Context<Self>) {
+        self.survey_zoom = (self.survey_zoom * factor).clamp(1.0, 8.0);
+        if self.survey_zoom <= 1.001 {
+            self.survey_zoom = 1.0;
+            self.survey_centre = (0.5, 0.5);
+        }
+        cx.notify();
+    }
+
+    /// Follows a pan of the survey tiles; `true` while one is in progress.
+    pub(crate) fn survey_drag_move(
+        &mut self,
+        position: gpui::Point<gpui::Pixels>,
+        dragging: bool,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some((from, centre)) = self.survey_pan else {
+            return false;
+        };
+        if !dragging {
+            self.survey_pan = None;
+            return true;
+        }
+        let (tw, th) = self.survey_tile_size.get();
+        if tw > 0.0 && th > 0.0 {
+            let (dx, dy) = (f32::from(position.x - from.x), f32::from(position.y - from.y));
+            // Dragging moves the picture with the pointer, so the point at
+            // the middle moves the other way.
+            self.survey_centre = (
+                (centre.0 - dx / (tw * self.survey_zoom)).clamp(0.0, 1.0),
+                (centre.1 - dy / (th * self.survey_zoom)).clamp(0.0, 1.0),
+            );
+            cx.notify();
+        }
+        true
     }
 
     fn survey_tile(&self, ix: usize, removable: bool, cx: &mut Context<Self>) -> AnyElement {
@@ -271,15 +435,7 @@ impl Workspace {
                 theme.border_subtle
             })
             .cursor_pointer()
-            .child(
-                div().size_full().p_1().child(
-                    img(self
-                        .display_thumbnail(asset)
-                        .unwrap_or_else(|| asset.display_source().to_path_buf()))
-                        .object_fit(ObjectFit::Contain)
-                        .size_full(),
-                ),
-            )
+            .child(self.survey_picture(asset, cx))
             .child(
                 div()
                     .absolute()

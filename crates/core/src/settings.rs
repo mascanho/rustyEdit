@@ -394,6 +394,8 @@ pub struct CullingSettings {
     pub show_best: bool,
     /// "SOFT" on photos that are probably out of focus.
     pub show_soft: bool,
+    /// "DARK" / "BRIGHT" on photos that are probably under- or overexposed.
+    pub show_exposure: bool,
     /// Frames shot within seconds of each other count as a burst (stacks
     /// always do).
     pub detect_bursts: bool,
@@ -409,6 +411,7 @@ impl Default for CullingSettings {
             enabled: true,
             show_best: true,
             show_soft: true,
+            show_exposure: true,
             detect_bursts: true,
             auto_advance: true,
             full_screen: true,
@@ -1037,6 +1040,15 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                         control: SettingControl::Toggle {
                             get: |s| s.culling.show_soft,
                             set: |s, v| s.culling.show_soft = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Exposure badges",
+                        description: "Mark photos that are probably underexposed (DARK) or \
+                                      overexposed (BRIGHT), measured on their thumbnails.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.culling.show_exposure,
+                            set: |s, v| s.culling.show_exposure = v,
                         },
                     },
                     SettingItem {

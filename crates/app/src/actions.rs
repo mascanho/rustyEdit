@@ -77,6 +77,7 @@ actions!(
         ToolLinearGradient,
         ToolRadialGradient,
         ToolWhiteBalance,
+        ToolCrop,
         AutoTone,
         SyncSettings,
         CreateVirtualCopy,
@@ -85,5 +86,6 @@ actions!(
         ToggleCullView,
         PickBestOfBursts,
         RejectSoftPhotos,
+        RejectBadExposures,
     ]
 );

@@ -1,6 +1,8 @@
 //! Smart culling in the app (see `rustyedit_core::culling`):
 //!
-//! - "Best" and "Soft" badges on grid and filmstrip cells.
+//! - "Best", "Soft", "Dark" and "Bright" badges on grid and filmstrip
+//!   cells (the last two from exposure measured on thumbnails in the
+//!   background).
 //!
 //! Each part can be switched off in Settings ▸ Culling.
 //! - Photo ▸ Pick Best of Each Burst / Reject Soft Photos: one undo step.
@@ -21,7 +23,7 @@ use rustyedit_core::{CullInfo, CullMark, Flag};
 use rustyedit_ui::Theme;
 
 use crate::{
-    actions::{PickBestOfBursts, RejectSoftPhotos, ToggleCullView},
+    actions::{PickBestOfBursts, RejectBadExposures, RejectSoftPhotos, ToggleCullView},
     workspace::{Mode, Workspace},
 };
 
@@ -55,6 +57,7 @@ impl Workspace {
         self.catalog.assets.len().hash(&mut hasher);
         for asset in &self.catalog.assets {
             asset.sharpness.map(f32::to_bits).hash(&mut hasher);
+            asset.exposure.map(|e| e.mean.to_bits()).hash(&mut hasher);
             asset.stack_id.hash(&mut hasher);
             asset.meta.captured.hash(&mut hasher);
             asset.phash.hash(&mut hasher);
@@ -85,6 +88,8 @@ impl Workspace {
         let mut mark = info.mark(index);
         mark.best &= culling.show_best;
         mark.soft &= culling.show_soft;
+        mark.dark &= culling.show_exposure;
+        mark.bright &= culling.show_exposure;
         mark
     }
 
@@ -188,6 +193,101 @@ impl Workspace {
             .into(),
         });
         cx.notify();
+    }
+
+    pub fn reject_bad_exposures(
+        &mut self,
+        _: &RejectBadExposures,
+        _w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.culling_on(cx) {
+            return;
+        }
+        let bad = self.cull_info().badly_exposed();
+        let done = self.flag_photos(&bad, Flag::Rejected, "Reject bad exposures", cx);
+        self.status_message = Some(match done {
+            0 => "No badly exposed photos found yet (they're measured in the background).".into(),
+            n => format!(
+                "Rejected {n} badly exposed photo{} (undo with \u{2318}Z).",
+                if n == 1 { "" } else { "s" }
+            )
+            .into(),
+        });
+        cx.notify();
+    }
+
+    /// Measures the exposure of photos that haven't been, on their cached
+    /// thumbnails, a batch at a time in the background. Cheap to call: it
+    /// looks again at most every few seconds.
+    pub(crate) fn scan_exposure(&mut self, cx: &mut Context<Self>) {
+        const BATCH: usize = 300;
+        const EVERY: std::time::Duration = std::time::Duration::from_secs(3);
+        if !self.settings.culling.enabled
+            || !self.settings.culling.show_exposure
+            || self.exposure_scan_busy
+            || self.exposure_scan_at.is_some_and(|at| at.elapsed() < EVERY)
+        {
+            return;
+        }
+        self.exposure_scan_at = Some(std::time::Instant::now());
+        let jobs: Vec<(u64, std::path::PathBuf)> = self
+            .catalog
+            .assets
+            .iter()
+            .filter(|a| {
+                a.exposure.is_none()
+                    && !a.missing
+                    && !a.is_virtual_copy()
+                    && !self.exposure_failed.contains(&a.id)
+            })
+            .filter_map(|a| Some((a.id, a.thumbnail_path.clone()?)))
+            .take(BATCH)
+            .collect();
+        if jobs.is_empty() {
+            return;
+        }
+        self.exposure_scan_busy = true;
+        let work = cx.background_executor().spawn(async move {
+            jobs.into_iter()
+                .map(|(id, path)| {
+                    let stats = image::open(&path)
+                        .ok()
+                        .and_then(|img| rustyedit_core::culling::exposure_stats(img.to_luma8().as_raw()));
+                    (id, stats)
+                })
+                .collect::<Vec<_>>()
+        });
+        cx.spawn(async move |this, cx| {
+            let results = work.await;
+            this.update(cx, |this, cx| {
+                this.exposure_scan_busy = false;
+                // Ids are positions in the catalog, as long as nothing was
+                // removed meanwhile; check each.
+                let mut any = false;
+                for (id, stats) in results {
+                    match stats {
+                        Some(stats) => {
+                            if let Some(asset) = this.catalog.assets.get_mut(id as usize).filter(|a| a.id == id) {
+                                asset.exposure = Some(stats);
+                                any = true;
+                            }
+                        }
+                        None => {
+                            this.exposure_failed.insert(id);
+                        }
+                    }
+                }
+                if any {
+                    this.mark_catalog_dirty(cx);
+                    // Look for the next batch soon.
+                    this.exposure_scan_at = None;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Flags `indices` (skipping ones already flagged so) as one undo step.
@@ -297,6 +397,12 @@ impl Workspace {
         }
         if mark.soft {
             badges.push(cull_pill("SOFT", theme.star, &theme));
+        }
+        if mark.dark {
+            badges.push(cull_pill("DARK", theme.text_muted, &theme));
+        }
+        if mark.bright {
+            badges.push(cull_pill("BRIGHT", theme.text_muted, &theme));
         }
         if let Some((pos, len)) = mark.burst {
             badges.push(cull_pill(&format!("Burst {pos} of {len}"), theme.text_muted, &theme));
@@ -447,6 +553,12 @@ pub(crate) fn corner_badges(
     }
     if mark.soft {
         pills.push(pill("SOFT".into(), theme.star));
+    }
+    if mark.dark {
+        pills.push(pill("DARK".into(), theme.text_muted));
+    }
+    if mark.bright {
+        pills.push(pill("BRIGHT".into(), theme.text_muted));
     }
     if let Some(name) = copy_name {
         pills.push(pill(name, theme.accent));

@@ -42,7 +42,7 @@ mod tone;
 mod upright;
 mod watermark;
 
-pub use auto::{auto_tone, neutral_white_balance, sample_colour, BalanceError, NeutralBalance};
+pub use auto::{auto_tone, neutral_white_balance, sample_colour, sample_colour_without, BalanceError, NeutralBalance};
 pub use cms::{is_proofing_profile, set_display_profile, OutputSpace};
 pub use proof::{apply_proof, ProofIntent, ProofSettings};
 pub use maskview::overlay_mask;
@@ -641,6 +641,7 @@ mod tests {
                         adjust: LocalAdjust {
                             shadows: 50.0,
                             highlights: -40.0,
+                            blur: 60.0,
                             saturation: -50.0,
                             tint: 30.0,
                             clarity: 80.0,
@@ -698,6 +699,7 @@ mod tests {
                 }),
             ),
             ("light vignette", with(|s| s.vignette = 70.0)),
+            ("round vignette", with(|s| { s.vignette = -60.0; s.vignette_roundness = 70.0; })),
             (
                 "spots",
                 with(|s| {

@@ -24,6 +24,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         self.prepare_file_tree();
+        self.scan_exposure(cx);
         // `overflow_hidden` + `min_w(0)` keep the center column from ever growing
         // past the space between the docks and painting underneath them.
         let center = div()

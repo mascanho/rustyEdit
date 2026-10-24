@@ -127,10 +127,12 @@ pub enum LocalProp {
     Dehaze,
     Clarity,
     Sharpening,
+    /// Softens towards a wide blur: lens blur for a background.
+    Blur,
 }
 
 impl LocalProp {
-    pub const ALL: [LocalProp; 10] = [
+    pub const ALL: [LocalProp; 11] = [
         LocalProp::Exposure,
         LocalProp::Contrast,
         LocalProp::Highlights,
@@ -141,6 +143,7 @@ impl LocalProp {
         LocalProp::Dehaze,
         LocalProp::Clarity,
         LocalProp::Sharpening,
+        LocalProp::Blur,
     ];
 
     /// The slider's value is the stored one times this (see
@@ -154,7 +157,10 @@ impl LocalProp {
 
     /// The `(min, max)` the slider spans.
     pub fn range(&self) -> (f32, f32) {
-        (-100.0, 100.0)
+        match self {
+            LocalProp::Blur => (0.0, 100.0),
+            _ => (-100.0, 100.0),
+        }
     }
 
     pub fn label(&self) -> &'static str {
@@ -169,6 +175,7 @@ impl LocalProp {
             LocalProp::Dehaze => "Dehaze",
             LocalProp::Clarity => "Clarity",
             LocalProp::Sharpening => "Sharpening",
+            LocalProp::Blur => "Blur",
         }
     }
 }
@@ -188,6 +195,8 @@ pub struct LocalAdjust {
     pub clarity: f32,
     /// Local sharpening; negative values soften.
     pub sharpening: f32,
+    /// 0..=100: how far the area is softened into a wide blur.
+    pub blur: f32,
     /// Colour grading of the layer's area: a tint for the shadows,
     /// midtones and highlights.
     pub grading: ColorGrading,
@@ -206,6 +215,7 @@ impl LocalAdjust {
             LocalProp::Dehaze => self.dehaze,
             LocalProp::Clarity => self.clarity,
             LocalProp::Sharpening => self.sharpening,
+            LocalProp::Blur => self.blur,
         }
     }
 
@@ -223,6 +233,7 @@ impl LocalAdjust {
             LocalProp::Dehaze => self.dehaze = v,
             LocalProp::Clarity => self.clarity = v,
             LocalProp::Sharpening => self.sharpening = v,
+            LocalProp::Blur => self.blur = v,
         }
     }
 
@@ -536,6 +547,13 @@ impl Gradients {
     /// Whether any gradient actually changes something.
     pub fn is_active(&self) -> bool {
         self.as_slice().iter().any(Gradient::is_visible)
+    }
+
+    /// Whether any visible layer blurs.
+    pub fn any_blur(&self) -> bool {
+        self.as_slice()
+            .iter()
+            .any(|g| g.is_visible() && g.adjust.blur != 0.0)
     }
 
     /// Moves a layer one place later (`1`, towards the front) or earlier

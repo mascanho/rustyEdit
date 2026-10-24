@@ -116,7 +116,9 @@ struct Params {
     /// Perspective correction strengths (Crop::perspective_strength).
     persp_x: f32,
     persp_y: f32,
-    _pad: [f32; 2],
+    /// Vignette roundness, 0..=1.
+    vig_round: f32,
+    _pad: f32,
 }
 
 const _: () = assert!(std::mem::size_of::<Params>() == 304);
@@ -1737,9 +1739,12 @@ fn custom_sharpen_sigma(s: &DevelopSettings) -> f32 {
 /// Blur radii of the local adjustments (finishing/local.rs): they follow
 /// the photo's size, so a layer looks the same on a preview as on the
 /// full-size export.
-fn local_sigmas(full_w: u32, full_h: u32) -> (f32, f32) {
+fn local_sigmas(full_w: u32, full_h: u32, lens_blur: bool) -> (f32, f32) {
     let scale = full_w.max(full_h) as f32 / 2048.0;
-    ((10.0 * scale).max(4.0), (1.2 * scale).max(0.8))
+    (
+        ((if lens_blur { 16.0 } else { 10.0 }) * scale).max(4.0),
+        (1.2 * scale).max(0.8),
+    )
 }
 
 /// How far around a region the stages before the crop reach: the most a
@@ -1758,7 +1763,7 @@ fn margin(s: &DevelopSettings, raw: bool, full: (u32, u32)) -> u32 {
         m += blur_radius(custom_sharpen_sigma(s)) + 1;
     }
     if s.gradients.is_active() {
-        let (wide, narrow) = local_sigmas(full.0, full.1);
+        let (wide, narrow) = local_sigmas(full.0, full.1, s.gradients.any_blur());
         m += blur_radius(wide) + blur_radius(narrow);
     }
     m
@@ -1795,8 +1800,8 @@ fn plan_finishing(plan: &mut Planner, s: &DevelopSettings) {
         params.gradient_offset = plan.aux(&table);
         params.gradient_count = layers.len() as u32;
         params.flags |= F_LOCAL;
-        let (wide, narrow) = local_sigmas(plan.full_w, plan.full_h);
-        if layers.iter().any(|g| g.adjust.clarity != 0.0) {
+        let (wide, narrow) = local_sigmas(plan.full_w, plan.full_h, s.gradients.any_blur());
+        if layers.iter().any(|g| g.adjust.clarity != 0.0 || g.adjust.blur != 0.0) {
             plan.blur(wide, Buf::BlurA);
             params.flags |= F_WIDE;
         }
@@ -1969,6 +1974,7 @@ fn plan_crop(
         params.flags |= F_VIGNETTE;
         params.vignette = vignette.amount;
         (params.vig_cx, params.vig_cy) = vignette.centre;
+        params.vig_round = vignette.round;
         params.vig_inner = vignette.inner;
         params.vig_outer = vignette.outer;
     }
@@ -2081,7 +2087,7 @@ fn gradient_floats(g: &Gradient) -> [f32; GRADIENT_STRIDE] {
         g.hue,
         g.hue_width,
         g.hue_feather,
-        0.0,
+        a.blur,
     ]);
     for (i, dab) in g.dabs().enumerate() {
         out[40 + i * 4..44 + i * 4].copy_from_slice(&[

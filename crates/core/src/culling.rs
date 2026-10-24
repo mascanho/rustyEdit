@@ -33,6 +33,54 @@ const GRID: usize = 8;
 /// and plain walls say nothing about focus.
 const MIN_CELL_CONTRAST: f32 = 6.0;
 
+/// A photo counts as underexposed when its average brightness (0..=1) is
+/// below this, or more than `CRUSHED_SHARE` of it is near black...
+pub const DARK_MEAN: f32 = 0.14;
+/// ...and as overexposed above this average, or when more than
+/// `BLOWN_SHARE` of it is near white.
+pub const BRIGHT_MEAN: f32 = 0.85;
+pub const CRUSHED_SHARE: f32 = 0.55;
+pub const BLOWN_SHARE: f32 = 0.35;
+
+/// How a photo's tones sit, measured on its thumbnail.
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ExposureStats {
+    /// Average brightness, 0..=1.
+    pub mean: f32,
+    /// Share of pixels near black / near white, 0..=1.
+    pub crushed: f32,
+    pub blown: f32,
+}
+
+impl ExposureStats {
+    pub fn dark(&self) -> bool {
+        self.mean < DARK_MEAN || self.crushed > CRUSHED_SHARE
+    }
+
+    pub fn bright(&self) -> bool {
+        self.mean > BRIGHT_MEAN || self.blown > BLOWN_SHARE
+    }
+}
+
+/// The exposure statistics of a greyscale image (`luma`, one byte per pixel).
+pub fn exposure_stats(luma: &[u8]) -> Option<ExposureStats> {
+    if luma.is_empty() {
+        return None;
+    }
+    let n = luma.len() as f32;
+    let (mut sum, mut crushed, mut blown) = (0u64, 0u32, 0u32);
+    for &v in luma {
+        sum += v as u64;
+        crushed += (v <= 8) as u32;
+        blown += (v >= 247) as u32;
+    }
+    Some(ExposureStats {
+        mean: sum as f32 / n / 255.0,
+        crushed: crushed as f32 / n,
+        blown: blown as f32 / n,
+    })
+}
+
 /// How sharp a greyscale image is (`luma`, row by row): the edge strength
 /// (Laplacian) of its sharpest quarter of cells, relative to their
 /// contrast, so dim and bright photos compare fairly. `None` if the image
@@ -158,6 +206,9 @@ pub struct CullMark {
     pub soft: bool,
     /// Its place in its burst: (1-based position, burst size).
     pub burst: Option<(u16, u16)>,
+    /// Probably underexposed / overexposed.
+    pub dark: bool,
+    pub bright: bool,
 }
 
 /// Culling suggestions for a whole catalog.
@@ -174,9 +225,10 @@ impl CullInfo {
     pub fn analyze(assets: &[Asset], bursts_by_time: bool) -> Self {
         let mut marks = vec![CullMark::default(); assets.len()];
         for (mark, asset) in marks.iter_mut().zip(assets) {
-            mark.soft = !asset.missing
-                && !asset.is_virtual_copy()
-                && asset.sharpness.is_some_and(|s| s < SOFT_THRESHOLD);
+            let real = !asset.missing && !asset.is_virtual_copy();
+            mark.soft = real && asset.sharpness.is_some_and(|s| s < SOFT_THRESHOLD);
+            mark.dark = real && asset.exposure.is_some_and(|e| e.dark());
+            mark.bright = real && asset.exposure.is_some_and(|e| e.bright());
         }
         let groups = burst_groups(assets, bursts_by_time);
         for group in &groups {
@@ -216,6 +268,11 @@ impl CullInfo {
 
     pub fn soft(&self) -> Vec<usize> {
         self.indices(|m| m.soft)
+    }
+
+    /// Photos that are probably under- or overexposed.
+    pub fn badly_exposed(&self) -> Vec<usize> {
+        self.indices(|m| m.dark || m.bright)
     }
 
     fn indices(&self, pick: impl Fn(&CullMark) -> bool) -> Vec<usize> {
@@ -279,6 +336,23 @@ mod tests {
             }
         }
         cur.iter().map(|&v| v.round() as u8).collect()
+    }
+
+    #[test]
+    fn exposure_stats_tell_dark_and_bright_frames_apart() {
+        let dark = exposure_stats(&vec![10u8; 100]).unwrap();
+        let mut dark_and_crushed = vec![0u8; 80];
+        dark_and_crushed.extend(vec![200u8; 20]);
+        let crushed = exposure_stats(&dark_and_crushed).unwrap();
+        let normal = exposure_stats(&(0..=255u8).collect::<Vec<_>>()).unwrap();
+        let bright = exposure_stats(&vec![240u8; 100]).unwrap();
+        let blown = exposure_stats(&[255u8, 255, 255, 255, 120, 130, 140, 150, 160, 100]).unwrap();
+        assert!(dark.dark() && !dark.bright());
+        assert!(crushed.dark(), "{crushed:?}");
+        assert!(!normal.dark() && !normal.bright(), "{normal:?}");
+        assert!(bright.bright() && !bright.dark());
+        assert!(blown.bright(), "{blown:?}");
+        assert!(exposure_stats(&[]).is_none());
     }
 
     #[test]

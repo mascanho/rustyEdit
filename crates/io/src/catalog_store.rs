@@ -147,6 +147,7 @@ pub fn merge_saved_state(fresh: &mut Vec<Asset>, saved: &Catalog) {
             asset.content_hash = previous.content_hash;
             asset.phash = previous.phash;
             asset.sharpness = previous.sharpness;
+            asset.exposure = previous.exposure;
             asset.history = previous.history.clone();
             asset.snapshots = previous.snapshots.clone();
             asset.applied_preset = previous.applied_preset.clone();
