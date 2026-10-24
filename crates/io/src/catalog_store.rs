@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rustyedit_core::{Asset, Catalog};
+use rustyedit_core::{Asset, Catalog, FilterMode};
 
 /// Where a given source folder's catalog sidecar (flags, ratings, edits)
 /// is persisted, mirroring Lightroom's "catalog remembers your culling"
@@ -32,39 +32,73 @@ pub fn save(catalog: &Catalog) -> anyhow::Result<()> {
     // Deepest folder first, so a photo goes to its most specific owner.
     folders.sort_by_key(|f| std::cmp::Reverse(f.components().count()));
 
-    let mut owned: Vec<Vec<Asset>> = vec![Vec::new(); folders.len()];
+    // Which photos each folder owns, by reference: they're written straight
+    // out, never copied.
+    let mut owned: Vec<Vec<&Asset>> = vec![Vec::new(); folders.len()];
     for asset in &catalog.assets {
         if let Some(ix) = folders.iter().position(|f| asset.path.starts_with(f)) {
-            owned[ix].push(asset.clone());
+            owned[ix].push(asset);
         }
     }
 
     let mut first_error = None;
-    for (folder, assets) in folders.into_iter().zip(owned) {
-        let part = Catalog::new(folder, assets);
-        if let Err(err) = save_folder(&part) {
+    for (folder, assets) in folders.iter().zip(&owned) {
+        if let Err(err) = save_folder(folder, assets) {
             first_error.get_or_insert(err);
         }
     }
     first_error.map_or(Ok(()), Err)
 }
 
-fn save_folder(catalog: &Catalog) -> anyhow::Result<()> {
-    let folder = catalog
-        .folder
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("catalog has no folder to save alongside"))?;
+/// What a folder's sidecar holds: the same shape as a [`Catalog`] made of
+/// just this folder's photos, without building one.
+#[derive(serde::Serialize)]
+struct FolderCatalog<'a> {
+    folder: &'a Path,
+    folders: [&'a Path; 1],
+    assets: &'a [&'a Asset],
+    filter: FilterMode,
+}
+
+/// A hash of the bytes last written to each sidecar, so an unchanged
+/// folder isn't written again.
+fn last_written() -> &'static std::sync::Mutex<HashMap<PathBuf, u64>> {
+    static LAST: std::sync::OnceLock<std::sync::Mutex<HashMap<PathBuf, u64>>> =
+        std::sync::OnceLock::new();
+    LAST.get_or_init(Default::default)
+}
+
+fn save_folder(folder: &Path, assets: &[&Asset]) -> anyhow::Result<()> {
     let path = sidecar_path(folder);
+    // Compact JSON: pretty-printing roughly doubles the file for large
+    // catalogs.
+    let data = serde_json::to_vec(&FolderCatalog {
+        folder,
+        folders: [folder],
+        assets,
+        filter: FilterMode::All,
+    })?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    std::hash::Hash::hash(&data, &mut hasher);
+    let hash = std::hash::Hasher::finish(&hasher);
+    // Nothing changed since this was last written (and it's still there):
+    // leave the disk alone.
+    if last_written().lock().ok().and_then(|m| m.get(&path).copied()) == Some(hash)
+        && path.exists()
+    {
+        return Ok(());
+    }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    // Compact JSON: pretty-printing roughly doubles the file for large
-    // catalogs. Written to a temp file and renamed into place so a crash
-    // mid-write can never leave a truncated catalog behind.
-    let data = serde_json::to_vec(catalog)?;
+    // Written to a temp file and renamed into place so a crash mid-write
+    // can never leave a truncated catalog behind.
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, data)?;
     std::fs::rename(&tmp, &path)?;
+    if let Ok(mut last) = last_written().lock() {
+        last.insert(path, hash);
+    }
     Ok(())
 }
 
@@ -225,5 +259,64 @@ mod stack_tests {
             .join()
             .unwrap();
         assert_eq!(loaded.unwrap(), 400);
+    }
+}
+
+#[cfg(test)]
+mod save_tests {
+    use super::*;
+
+    fn catalog_in(dir: &Path) -> Catalog {
+        let assets = (0..3)
+            .map(|i| {
+                let mut asset = Asset::new(i, dir.join(format!("{i}.jpg")));
+                asset.develop.exposure = i as f32 * 10.0;
+                asset.keywords = vec![format!("k{i}")];
+                asset
+            })
+            .collect();
+        Catalog::new(dir.to_path_buf(), assets)
+    }
+
+    fn temp(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("rustyedit-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn the_sidecar_is_the_same_as_a_catalog_of_the_folders_photos() {
+        let dir = temp("save-shape");
+        let catalog = catalog_in(&dir);
+        save(&catalog).unwrap();
+        // Byte for byte what serializing a Catalog of those photos gives.
+        let written = std::fs::read(sidecar_path(&dir)).unwrap();
+        assert_eq!(written, serde_json::to_vec(&catalog).unwrap());
+        // And it loads back.
+        let loaded = load(&dir).unwrap();
+        assert_eq!(loaded.assets.len(), 3);
+        assert_eq!(loaded.assets[2].develop.exposure, 20.0);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_unchanged_catalog_is_not_written_again() {
+        let dir = temp("save-skip");
+        let mut catalog = catalog_in(&dir);
+        save(&catalog).unwrap();
+        let path = sidecar_path(&dir);
+        let first = std::fs::metadata(&path).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        save(&catalog).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), first);
+        // A change is written; and a deleted sidecar is put back.
+        catalog.assets[0].develop.exposure = 99.0;
+        save(&catalog).unwrap();
+        assert_eq!(load(&dir).unwrap().assets[0].develop.exposure, 99.0);
+        std::fs::remove_file(&path).unwrap();
+        save(&catalog).unwrap();
+        assert!(path.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
