@@ -428,6 +428,12 @@ fn film_frame(
                 ObjectFit::Cover
             })
             .grayscale(look.monochrome)
+            // Pinned to the picture's corners: `size_full` alone resolves
+            // against a flexed height, so the photo was sized by its width
+            // and cropped instead of fitted.
+            .absolute()
+            .top_0()
+            .left_0()
             .size_full()
             .into_any_element(),
         None => div()
@@ -627,4 +633,25 @@ pub(crate) fn thumb_is_portrait(path: &std::path::Path, asset: &Asset) -> bool {
         },
     };
     h > w
+}
+
+#[cfg(test)]
+mod portrait_tests {
+    use super::*;
+
+    #[test]
+    fn reads_orientation_from_the_image_file() {
+        let dir = std::env::temp_dir().join("rustyedit-portrait-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let tall = dir.join("tall.jpg");
+        image::RgbImage::new(20, 30).save(&tall).unwrap();
+        let wide = dir.join("wide.jpg");
+        image::RgbImage::new(30, 20).save(&wide).unwrap();
+        // The catalog's recorded size says the opposite; the file wins.
+        let mut asset = Asset::new(1, tall.clone());
+        asset.width = 30;
+        asset.height = 20;
+        assert!(thumb_is_portrait(&tall, &asset));
+        assert!(!thumb_is_portrait(&wide, &asset));
+    }
 }
