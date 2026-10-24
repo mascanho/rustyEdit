@@ -390,26 +390,28 @@ impl Workspace {
             |o, v| o.format = v,
         )];
         if options.format.is_lossy() {
-            let stepper_entity = entity.clone();
-            format_children.push(labelled(
-                &theme,
-                "Quality",
-                rustyedit_ui::stepper(
+            let slider_entity = entity.clone();
+            format_children.push(
+                rustyedit_ui::labeled_slider(
                     "export-quality",
-                    options.quality as i64,
-                    1,
-                    100,
-                    5,
-                    "",
+                    "Quality",
+                    options.quality as f32,
+                    rustyedit_ui::SliderSpec {
+                        min: 1.0,
+                        max: 100.0,
+                        default: 90.0,
+                        signed: false,
+                        track: rustyedit_ui::SliderTrack::Amount,
+                    },
                     &theme,
                     move |value, _w: &mut Window, cx: &mut App| {
-                        stepper_entity.update(cx, |this, cx| {
-                            this.update_export(cx, |o| o.quality = value.clamp(1, 100) as u8)
+                        slider_entity.update(cx, |this, cx| {
+                            this.update_export(cx, |o| o.quality = value.round().clamp(1.0, 100.0) as u8)
                         });
                     },
                 )
                 .into_any_element(),
-            ));
+            );
             format_children.push(option_row(
                 &theme,
                 &entity,
@@ -426,7 +428,7 @@ impl Workspace {
             ));
         }
         if options.format == ExportFormat::Png {
-            format_children.push(labelled(&theme, "Compression", div().into_any_element()));
+            format_children.push(caption(&theme, "Compression"));
             format_children.push(option_row(
                 &theme,
                 &entity,
@@ -439,7 +441,7 @@ impl Workspace {
         }
 
         if options.format != ExportFormat::Bmp {
-            format_children.push(labelled(&theme, "Colour space", div().into_any_element()));
+            format_children.push(caption(&theme, "Colour space"));
             format_children.push(option_row(
                 &theme,
                 &entity,
@@ -452,7 +454,7 @@ impl Workspace {
         }
         // 16 bits per channel, for the formats that have them.
         if matches!(options.format, ExportFormat::Png | ExportFormat::Tiff) {
-            format_children.push(labelled(&theme, "Bit depth", div().into_any_element()));
+            format_children.push(caption(&theme, "Bit depth"));
             format_children.push(option_row(
                 &theme,
                 &entity,
@@ -523,58 +525,81 @@ impl Workspace {
             .as_deref()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "No folder chosen".into());
-        let destination_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap_3()
-            .child(
-                div()
-                    .flex_1()
-                    .min_w(sp(0.0))
-                    .overflow_hidden()
-                    .px_3()
-                    .h(sp(28.0))
-                    .flex()
-                    .items_center()
-                    .rounded_md()
-                    .bg(theme.background)
-                    .border_1()
-                    .border_color(theme.border_subtle)
-                    .text_sm()
-                    .text_color(if options.destination.is_some() {
-                        theme.text
-                    } else {
-                        theme.text_faint
-                    })
-                    .child(destination_text.clone()),
-            )
-            .child(rustyedit_ui::chrome_button(
-                "export-choose",
-                "Choose…",
-                false,
-                &theme,
-                cx.listener(|this, _: &ClickEvent, _w, cx| this.choose_export_destination(cx)),
-            ))
-            .into_any_element();
+        let destination_card = self.destination_card(&options, cx);
+
+        // What each card shows in its header, so a folded panel still says
+        // what will happen.
+        let file_summary = {
+            let mut parts = vec![if options.format.is_lossy() {
+                format!("{} {}", options.format.label(), options.quality)
+            } else {
+                options.format.label().to_string()
+            }];
+            if options.format != ExportFormat::Bmp {
+                parts.push(options.color_space.label().to_string());
+            }
+            if matches!(options.format, ExportFormat::Png | ExportFormat::Tiff)
+                && options.bit_depth == ExportBitDepth::Sixteen
+            {
+                parts.push("16-bit".to_string());
+            }
+            parts.join(" \u{00B7} ")
+        };
+        let size_summary = if options.sharpen == ExportSharpen::Off {
+            options.size.label()
+        } else {
+            format!("{} \u{00B7} sharpen {}", options.size.label(), options.sharpen.label().to_lowercase())
+        };
+        let naming_summary = if options.subfolder == ExportSubfolder::None {
+            options.naming.label().to_string()
+        } else {
+            format!("{} \u{00B7} by {}", options.naming.label(), options.subfolder.label().to_lowercase())
+        };
 
         let presets = self.export_presets_section(cx);
         let watermark = self.export_watermark_section(cx);
         let sections: Vec<AnyElement> = presets
             .into_iter()
             .chain([
-            export_section(&theme, "Photos", vec![scope_row, skip_rejected]).into_any_element(),
-            export_section(&theme, "Format", format_children).into_any_element(),
-            export_section(&theme, "Size", vec![size_row]).into_any_element(),
-            export_section(&theme, "Output sharpening", vec![sharpen_row]).into_any_element(),
-            export_section(&theme, "File naming", vec![naming_row]).into_any_element(),
-            export_section(&theme, "Subfolders", vec![subfolder_row]).into_any_element(),
-            export_section(&theme, "If a file exists", vec![conflict_row]).into_any_element(),
-            export_section(&theme, "Destination", vec![destination_row, open_when_done])
-                .into_any_element(),
+                self.export_card(
+                    "export-card-destination",
+                    "Destination",
+                    String::new(),
+                    vec![destination_card, open_when_done],
+                    cx,
+                ),
+                self.export_card(
+                    "export-card-photos",
+                    "Photos",
+                    format!("{count} \u{00B7} {}", options.scope.label()),
+                    vec![scope_row, skip_rejected],
+                    cx,
+                ),
+                self.export_card("export-card-file", "File", file_summary, format_children, cx),
+                self.export_card(
+                    "export-card-size",
+                    "Size & sharpening",
+                    size_summary,
+                    vec![size_row, caption(&theme, "Output sharpening"), sharpen_row],
+                    cx,
+                ),
+                self.export_card(
+                    "export-card-naming",
+                    "Naming & folders",
+                    naming_summary,
+                    vec![
+                        naming_row,
+                        caption(&theme, "Subfolders"),
+                        subfolder_row,
+                        caption(&theme, "If a file already exists"),
+                        conflict_row,
+                    ],
+                    cx,
+                ),
             ])
             .chain(watermark)
             .collect();
+        let estimate = self.estimated_export_bytes(&selected_indices, &options);
 
         // The action sits in the panel's footer, like the other modules'.
         let footer_button = div()
@@ -583,9 +608,9 @@ impl Workspace {
             .flex_1()
             .items_center()
             .justify_center()
-            .h(sp(26.0))
+            .h(sp(32.0))
             .rounded_md()
-            .text_size(sp(11.5))
+            .text_size(sp(12.0))
             .font_weight(gpui::FontWeight::SEMIBOLD);
         let footer_button = if running {
             footer_button
@@ -605,20 +630,23 @@ impl Workspace {
                 .bg(theme.accent)
                 .text_color(gpui::white())
                 .cursor_pointer()
-                .hover(|el| el.opacity(0.9))
+                .shadow_md()
+                .hover(|el| el.opacity(0.92))
                 .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.start_export(cx)))
                 .child(format!(
-                    "Export {count} photo{}",
-                    if count == 1 { "" } else { "s" }
+                    "Export {count} photo{}{}",
+                    if count == 1 { "" } else { "s" },
+                    estimate.map(|b| format!("  \u{00B7}  \u{2248} {}", fmt_bytes(b))).unwrap_or_default()
                 ))
         } else {
             footer_button
                 .bg(theme.surface_elevated)
                 .text_color(theme.text_faint)
-                .child(format!(
-                    "Export {count} photo{}",
-                    if count == 1 { "" } else { "s" }
-                ))
+                .child(if count == 0 {
+                    "Nothing to export".to_string()
+                } else {
+                    "Choose a destination to export".to_string()
+                })
         };
         let footer =
             rustyedit_ui::panel_footer(&theme, vec![vec![footer_button.into_any_element()]]);
@@ -702,7 +730,7 @@ impl Workspace {
                     preview_tile(asset, self.export_thumbnail(asset), n, &options)
                 })
                 .collect();
-            top.push(self.preview_card(&options, count, &destination_text, cx));
+            top.push(self.preview_card(&options, count, &destination_text, estimate, cx));
             bottom.push(self.queue_bar(count, cx));
             if let Some(message) = &self.export_message {
                 top.push(
@@ -798,101 +826,125 @@ impl Workspace {
         self.with_filmstrip(main.into_any_element(), cx)
     }
 
-    /// The summary above the preview grid: what will be written and where.
+    /// The header above the preview grid: how many photos, what they'll be
+    /// written as (and roughly how big), and where, with the folder one
+    /// click away.
     fn preview_card(
         &self,
         options: &ExportOptions,
         count: usize,
         destination: &str,
+        estimate: Option<u64>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let theme = self.theme;
-        let mut pills = vec![pill(
-            &theme,
-            if options.format.is_lossy() {
-                format!("{} {}", options.format.label(), options.quality)
-            } else {
-                options.format.label().to_string()
-            },
-        )];
-        pills.push(pill(&theme, options.size.label()));
-        if output_space(options) != rustyedit_processing::OutputSpace::Srgb {
-            pills.push(pill(&theme, options.color_space.label().to_string()));
+        let mut summary = vec![if options.format.is_lossy() {
+            format!("{} \u{00B7} quality {}", options.format.label(), options.quality)
+        } else {
+            options.format.label().to_string()
+        }];
+        summary.push(match options.size.0 {
+            Some(px) => format!("long edge {px} px"),
+            None => "full size".to_string(),
+        });
+        if options.format != ExportFormat::Bmp {
+            summary.push(options.color_space.label().to_string());
         }
         if options.sharpen != ExportSharpen::Off {
-            pills.push(pill(&theme, format!("Sharpen {}", options.sharpen.label())));
+            summary.push(format!("sharpen {}", options.sharpen.label().to_lowercase()));
         }
-        pills.push(pill(&theme, options.naming.label().to_string()));
-        if options.subfolder != ExportSubfolder::None {
-            pills.push(pill(
-                &theme,
-                format!("By {}", options.subfolder.label().to_lowercase()),
-            ));
+        if options.watermark && self.settings.export.watermark_enabled {
+            summary.push("watermark".to_string());
         }
-        if options.conflict != ExportConflict::Rename {
-            pills.push(pill(
-                &theme,
-                format!("{} existing", options.conflict.label()),
-            ));
-        }
+        let has_folder = options.destination.is_some();
+        let folder_name = options
+            .destination
+            .as_deref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Choose a folder".into());
+
         div()
             .flex()
             .flex_row()
-            .flex_wrap()
             .items_center()
-            .gap_x_3()
-            .gap_y_2()
+            .gap_4()
+            .py_1()
             .child(
                 div()
                     .flex()
-                    .flex_row()
-                    .items_baseline()
-                    .gap_1()
+                    .flex_col()
+                    .gap_0p5()
+                    .min_w(sp(0.0))
+                    .flex_1()
                     .child(
                         div()
-                            .text_size(sp(18.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.text)
-                            .child(count.to_string()),
+                            .flex()
+                            .flex_row()
+                            .items_baseline()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_size(sp(24.0))
+                                    .font_weight(gpui::FontWeight::BOLD)
+                                    .text_color(theme.text)
+                                    .child(count.to_string()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(sp(13.0))
+                                    .text_color(theme.text_muted)
+                                    .child(format!(
+                                        "photo{} to export",
+                                        if count == 1 { "" } else { "s" }
+                                    )),
+                            )
+                            .when_some(estimate, |el, bytes| {
+                                el.child(
+                                    div()
+                                        .ml_1()
+                                        .px_2()
+                                        .h(sp(20.0))
+                                        .flex()
+                                        .items_center()
+                                        .rounded_full()
+                                        .bg(theme.accent.opacity(0.12))
+                                        .text_size(sp(11.0))
+                                        .text_color(theme.accent)
+                                        .child(format!("\u{2248} {}", fmt_bytes(bytes))),
+                                )
+                            }),
                     )
                     .child(
                         div()
-                            .text_xs()
+                            .truncate()
+                            .text_size(sp(11.5))
                             .text_color(theme.text_faint)
-                            .child(format!("of {} photos", self.catalog.assets.len())),
+                            .child(summary.join("  \u{00B7}  ")),
                     ),
             )
-            .child(div().w(sp(1.0)).h(sp(14.0)).bg(theme.border))
-            .children(pills)
             .child(
                 div()
-                    .flex_1()
-                    .min_w(sp(80.0))
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_xs()
-                    .text_color(theme.text_faint)
-                    .text_right()
-                    .child(destination.to_string()),
-            )
-            .child(
-                div()
-                    .id("export-folder-icon")
+                    .id("export-folder-chip")
                     .flex()
+                    .flex_row()
                     .flex_shrink_0()
                     .items_center()
-                    .justify_center()
-                    .size(sp(28.0))
-                    .rounded_md()
+                    .gap_2()
+                    .max_w(sp(320.0))
+                    .h(sp(36.0))
+                    .pl_2()
+                    .pr_3()
+                    .rounded_lg()
                     .cursor_pointer()
                     .border_1()
-                    .when(options.destination.is_some(), |el| {
+                    .when(has_folder, |el| {
                         el.border_color(theme.border).bg(theme.background)
                     })
-                    .when(options.destination.is_none(), |el| {
+                    .when(!has_folder, |el| {
                         el.border_color(theme.accent).bg(theme.accent_muted)
                     })
-                    .hover(|el| el.bg(theme.surface_elevated))
+                    .hover(|el| el.border_color(theme.accent))
                     .tooltip(rustyedit_ui::tip(
                         format!("Export folder: {destination}"),
                         &theme,
@@ -900,17 +952,203 @@ impl Workspace {
                     .child(rustyedit_ui::icon(
                         rustyedit_ui::Icon::Folder,
                         16.0,
-                        if options.destination.is_some() {
-                            theme.text_muted
-                        } else {
-                            theme.text
-                        },
+                        if has_folder { theme.accent } else { theme.text },
                     ))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .min_w(sp(0.0))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_size(sp(12.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.text)
+                                    .child(folder_name),
+                            )
+                            .when(has_folder, |el| {
+                                el.child(
+                                    div()
+                                        .truncate()
+                                        .text_size(sp(10.0))
+                                        .text_color(theme.text_faint)
+                                        .child("Click to change"),
+                                )
+                            }),
+                    )
                     .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
                         this.choose_export_destination(cx)
                     })),
             )
             .into_any_element()
+    }
+
+    /// A collapsible card in the options panel; folded, its header still
+    /// shows `summary` (the current choice).
+    pub(crate) fn export_card(
+        &self,
+        key: &'static str,
+        title: &'static str,
+        summary: String,
+        children: Vec<AnyElement>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = self.theme;
+        let expanded = !self.collapsed_sections.contains(key);
+        let trailing = (!summary.is_empty())
+            .then(|| {
+                // Pinned to the right edge, apart from the title on the
+                // left: the title says what, the summary says what's chosen.
+                div()
+                    .ml_3()
+                    .min_w(sp(0.0))
+                    .max_w(sp(170.0))
+                    .truncate()
+                    .text_right()
+                    .text_size(sp(10.5))
+                    .font_weight(gpui::FontWeight::NORMAL)
+                    .text_color(theme.text_faint)
+                    .child(summary)
+                    .into_any_element()
+            })
+            .into_iter()
+            .collect();
+        rustyedit_ui::disclosure_section_with(
+            key,
+            &theme,
+            title,
+            expanded,
+            cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                if !this.collapsed_sections.remove(key) {
+                    this.collapsed_sections.insert(key);
+                }
+                cx.notify();
+            }),
+            rustyedit_ui::SectionExtras {
+                trailing,
+                dimmed: false,
+            },
+            children,
+        )
+        .into_any_element()
+    }
+
+    /// Where the photos go: the folder's name large, its parent below, and
+    /// a prompt when none is chosen yet.
+    fn destination_card(&self, options: &ExportOptions, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let (name, parent) = match options.destination.as_deref() {
+            Some(path) => (
+                path.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.display().to_string()),
+                path.parent().map(|p| p.display().to_string()).unwrap_or_default(),
+            ),
+            None => (
+                "Choose a folder".to_string(),
+                "Where the exported photos are saved".to_string(),
+            ),
+        };
+        let chosen = options.destination.is_some();
+        div()
+            .id("export-destination")
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_3()
+            .p_2()
+            .rounded_lg()
+            .cursor_pointer()
+            .border_1()
+            .when(chosen, |el| el.border_color(theme.border_subtle).bg(theme.background))
+            .when(!chosen, |el| el.border_color(theme.accent).bg(theme.accent_muted))
+            .hover(|el| el.border_color(theme.accent))
+            .child(
+                div()
+                    .flex()
+                    .flex_shrink_0()
+                    .items_center()
+                    .justify_center()
+                    .size(sp(32.0))
+                    .rounded_md()
+                    .bg(theme.accent.opacity(0.14))
+                    .child(rustyedit_ui::icon(rustyedit_ui::Icon::Folder, 18.0, theme.accent)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w(sp(0.0))
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(sp(12.5))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.text)
+                            .child(name),
+                    )
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(sp(10.5))
+                            .text_color(theme.text_faint)
+                            .child(parent),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .text_size(sp(11.0))
+                    .text_color(theme.accent)
+                    .child(if chosen { "Change" } else { "Choose\u{2026}" }),
+            )
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.choose_export_destination(cx)))
+            .into_any_element()
+    }
+
+    /// A rough total size of the export, from each photo's output pixels
+    /// and typical bytes per pixel for the format. `None` while no photo's
+    /// size is known yet.
+    fn estimated_export_bytes(&self, indices: &[usize], options: &ExportOptions) -> Option<u64> {
+        let deep = matches!(options.format, ExportFormat::Png | ExportFormat::Tiff)
+            && options.bit_depth == ExportBitDepth::Sixteen;
+        let per_pixel = match options.format {
+            ExportFormat::Jpeg => {
+                let q = options.quality as f64 / 100.0;
+                0.15 + 1.6 * q * q * q
+            }
+            ExportFormat::Png => {
+                if deep {
+                    4.5
+                } else {
+                    2.2
+                }
+            }
+            ExportFormat::Tiff => {
+                if deep {
+                    6.0
+                } else {
+                    3.0
+                }
+            }
+            ExportFormat::Bmp => 3.0,
+        };
+        let mut total = 0.0f64;
+        let mut known = false;
+        for &ix in indices {
+            let Some(asset) = self.catalog.assets.get(ix) else {
+                continue;
+            };
+            if asset.width == 0 || asset.height == 0 {
+                continue;
+            }
+            known = true;
+            let (w, h) = options.size.fit(asset.width, asset.height);
+            total += w as f64 * h as f64 * per_pixel;
+        }
+        known.then_some(total as u64)
     }
 
     /// Bottom bar while previewing: how many photos are queued, and a way to
@@ -1187,27 +1425,24 @@ fn dot_count(theme: &Theme, value: usize, label: &'static str, colour: gpui::Hsl
         .into_any_element()
 }
 
-/// A small rounded tag for one setting.
-fn pill(theme: &Theme, text: String) -> AnyElement {
+/// A small heading above a group of options inside a card.
+fn caption(theme: &Theme, text: &'static str) -> AnyElement {
     div()
-        .flex_shrink_0()
-        .px_2()
-        .h(sp(20.0))
-        .flex()
-        .items_center()
-        .rounded_full()
-        .bg(theme.background)
-        .border_1()
-        .border_color(theme.border)
-        .text_xs()
-        .text_color(theme.text_muted)
-        .child(text)
+        .pt_1()
+        .text_size(sp(10.0))
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .text_color(theme.text_faint)
+        .child(text.to_uppercase())
         .into_any_element()
 }
 
+
 // --- UI helpers ---------------------------------------------------------------
 
-/// A wrapping row of chips, one per value; the current one is highlighted.
+/// Chips, one per value, in balanced rows that each spread across the full
+/// width, so nothing moves when the choice changes. The current one is
+/// highlighted by colour alone (a bolder label would be wider and nudge its
+/// neighbours).
 fn option_row<T: Copy + PartialEq + 'static>(
     theme: &Theme,
     entity: &Entity<Workspace>,
@@ -1218,26 +1453,36 @@ fn option_row<T: Copy + PartialEq + 'static>(
     apply: fn(&mut ExportOptions, T),
 ) -> AnyElement {
     let theme = *theme;
-    div()
-        .flex()
-        .flex_row()
-        .flex_wrap()
-        .gap_1()
-        .p_1()
-        .rounded_lg()
-        .bg(theme.background)
-        .border_1()
-        .border_color(theme.border_subtle)
-        .children(values.iter().enumerate().map(|(i, &value)| {
+    let labels: Vec<String> = values.iter().map(|&v| label(v)).collect();
+    let longest = labels.iter().map(|l| l.chars().count()).max().unwrap_or(0);
+    // As many per row as the labels allow, then rows as even as possible
+    // (7 options make rows of 4 and 3, not 3, 3 and 1).
+    let most = if longest <= 9 {
+        4
+    } else if longest <= 13 {
+        3
+    } else {
+        2
+    };
+    let rows = values.len().div_ceil(most).max(1);
+    let per_row = values.len().div_ceil(rows).max(1);
+
+    let chips: Vec<AnyElement> = values
+        .iter()
+        .zip(labels)
+        .enumerate()
+        .map(|(i, (&value, text))| {
             let entity = entity.clone();
             let selected = value == current;
             div()
                 .id(SharedString::from(format!("{id}-{i}")))
                 .flex()
+                .flex_1()
                 .items_center()
                 .justify_center()
+                .min_w(sp(0.0))
                 .h(sp(24.0))
-                .px_2p5()
+                .px_1()
                 .rounded_md()
                 .text_xs()
                 .cursor_pointer()
@@ -1246,31 +1491,42 @@ fn option_row<T: Copy + PartialEq + 'static>(
                     el.bg(theme.accent_muted)
                         .border_color(theme.accent)
                         .text_color(theme.text)
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
                 })
                 .when(!selected, |el| {
                     el.border_color(theme.background)
                         .text_color(theme.text_muted)
                         .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                 })
-                .child(label(value))
+                .child(div().min_w(sp(0.0)).truncate().child(text))
                 .on_click(move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
                     entity.update(cx, |this, cx| this.update_export(cx, |o| apply(o, value)));
                 })
                 .into_any_element()
-        }))
+        })
+        .collect();
+
+    let mut chips = chips.into_iter();
+    let mut lines = Vec::new();
+    loop {
+        let line: Vec<AnyElement> = chips.by_ref().take(per_row).collect();
+        if line.is_empty() {
+            break;
+        }
+        lines.push(div().flex().flex_row().gap_1().children(line).into_any_element());
+    }
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .p_1()
+        .rounded_lg()
+        .bg(theme.background)
+        .border_1()
+        .border_color(theme.border_subtle)
+        .children(lines)
         .into_any_element()
 }
 
-/// A titled group in the left panel, built from the same section header the
-/// other modules use so the panels match.
-fn export_section(
-    theme: &Theme,
-    title: &'static str,
-    children: Vec<AnyElement>,
-) -> impl IntoElement {
-    rustyedit_ui::section(theme, title, children)
-}
 
 fn toggle_row(
     theme: &Theme,

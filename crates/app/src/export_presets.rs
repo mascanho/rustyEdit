@@ -169,20 +169,25 @@ impl Workspace {
         };
         chips.push(save);
 
-        Some(
-            rustyedit_ui::section(
-                &theme,
-                "Preset",
-                vec![div()
-                    .flex()
-                    .flex_row()
-                    .flex_wrap()
-                    .gap_1()
-                    .children(chips)
-                    .into_any_element()],
-            )
-            .into_any_element(),
-        )
+        let current = self
+            .all_export_presets()
+            .into_iter()
+            .find(|(p, _)| p.matches(&self.export_options))
+            .map(|(p, _)| p.name)
+            .unwrap_or_else(|| "Custom".to_string());
+        Some(self.export_card(
+            "export-card-presets",
+            "Presets",
+            current,
+            vec![div()
+                .flex()
+                .flex_row()
+                .flex_wrap()
+                .gap_1()
+                .children(chips)
+                .into_any_element()],
+            cx,
+        ))
     }
 
     /// The Watermark section, when watermarks are switched on.
@@ -238,6 +243,12 @@ impl Workspace {
                 cx.listener(|this, _: &ClickEvent, window, cx| this.open_export_settings(window, cx)),
             ))
             .into_any_element();
-        Some(rustyedit_ui::section(&theme, "Watermark", vec![switch, detail]).into_any_element())
+        Some(self.export_card(
+            "export-card-watermark",
+            "Watermark",
+            if on { "On" } else { "Off" }.to_string(),
+            vec![switch, detail],
+            cx,
+        ))
     }
 }

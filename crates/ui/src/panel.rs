@@ -60,7 +60,8 @@ fn section_header(theme: &Theme, title: SharedString, chevron: Option<bool>) -> 
                 },
             ))
         })
-        .child(title)
+        // One line, never squeezed: the trailing controls give way first.
+        .child(div().flex_shrink_0().whitespace_nowrap().child(title))
 }
 
 /// A titled group of controls in a side panel (e.g. Library's "Info"),
@@ -152,7 +153,12 @@ pub fn disclosure_section_with(
                             .flex()
                             .flex_row()
                             .items_center()
+                            .justify_end()
                             .gap_1p5()
+                            // May shrink (a summary truncates) rather than
+                            // push the header wider than its panel.
+                            .min_w(sp(0.0))
+                            .overflow_hidden()
                             // Keep these clicks from folding the section.
                             .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
                                 cx.stop_propagation()
@@ -204,6 +210,8 @@ pub fn side_panel(
         .w(px(width))
         .h_full()
         .flex_shrink_0()
+        // Nothing inside may draw past the panel's edge.
+        .overflow_hidden()
         .bg(theme.surface)
         .border_color(theme.border)
         .when(side == PanelSide::Left, |el| el.border_r_1())
