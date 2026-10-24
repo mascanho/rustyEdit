@@ -30,6 +30,7 @@ pub(crate) enum PhotoTool {
     Clone,
     Linear,
     Radial,
+    Brush,
     WhiteBalance,
 }
 
@@ -40,6 +41,7 @@ impl PhotoTool {
             PhotoTool::Clone => Icon::Clone,
             PhotoTool::Linear => Icon::LinearGradient,
             PhotoTool::Radial => Icon::RadialGradient,
+            PhotoTool::Brush => Icon::Brush,
             PhotoTool::WhiteBalance => Icon::Eyedropper,
         }
     }
@@ -50,6 +52,7 @@ impl PhotoTool {
             PhotoTool::Clone => "Clone spots",
             PhotoTool::Linear => "Linear gradient (M)",
             PhotoTool::Radial => "Radial gradient (Shift+M)",
+            PhotoTool::Brush => "Brush mask: paint where to adjust (Alt erases)",
             PhotoTool::WhiteBalance => "White balance: click something neutral (W)",
         }
     }
@@ -58,7 +61,7 @@ impl PhotoTool {
     fn section_key(&self) -> &'static str {
         match self {
             PhotoTool::Heal | PhotoTool::Clone => "develop-retouch",
-            PhotoTool::Linear | PhotoTool::Radial => "develop-gradients",
+            PhotoTool::Linear | PhotoTool::Radial | PhotoTool::Brush => "develop-gradients",
             PhotoTool::WhiteBalance => "develop-color",
         }
     }
@@ -78,6 +81,9 @@ impl From<GradientKind> for PhotoTool {
         match kind {
             GradientKind::Linear => PhotoTool::Linear,
             GradientKind::Radial => PhotoTool::Radial,
+            GradientKind::Brush => PhotoTool::Brush,
+            // Range layers are added from the panel, not painted on.
+            GradientKind::Range => PhotoTool::Linear,
         }
     }
 }
@@ -106,6 +112,7 @@ impl Workspace {
                 PhotoTool::Clone => ui.retouch.tool = Some(SpotKind::Clone),
                 PhotoTool::Linear => ui.gradients.tool = Some(GradientKind::Linear),
                 PhotoTool::Radial => ui.gradients.tool = Some(GradientKind::Radial),
+                PhotoTool::Brush => ui.gradients.tool = Some(GradientKind::Brush),
                 PhotoTool::WhiteBalance => ui.wb_picker = true,
             }
             self.collapsed_sections.remove(tool.section_key());
@@ -182,6 +189,7 @@ impl Workspace {
             PhotoTool::Clone,
             PhotoTool::Linear,
             PhotoTool::Radial,
+            PhotoTool::Brush,
             PhotoTool::WhiteBalance,
         ]
         .map(|tool| {

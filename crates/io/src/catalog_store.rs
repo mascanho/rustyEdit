@@ -202,3 +202,28 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
+
+#[cfg(test)]
+mod stack_tests {
+    use super::*;
+
+    /// Catalogs load on worker threads (Grand Central Dispatch's have
+    /// 512 KB of stack), so deserializing a big one must fit.
+    #[test]
+    fn a_large_catalog_loads_on_a_small_stack() {
+        let mut catalog = Catalog::default();
+        for i in 0..400 {
+            let mut asset = Asset::new(i, PathBuf::from(format!("/photos/{i}.jpg")));
+            asset.develop.exposure = 10.0;
+            catalog.assets.push(asset);
+        }
+        let json = serde_json::to_string(&catalog).unwrap();
+        let loaded = std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(move || serde_json::from_str::<Catalog>(&json).map(|c| c.assets.len()))
+            .unwrap()
+            .join()
+            .unwrap();
+        assert_eq!(loaded.unwrap(), 400);
+    }
+}

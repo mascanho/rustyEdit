@@ -66,7 +66,8 @@ const SRC_RGB16: u32 = 1u;
 const SRC_HALF: u32 = 2u;
 
 // Floats per gradient layer in `aux` (see gpu.rs `gradient_floats`).
-const GRADIENT_STRIDE: u32 = 32u;
+const GRADIENT_STRIDE: u32 = 232u;
+const DAB_FLOATS: u32 = 40u;
 // Entries per channel of the tone curve tables.
 const CURVE_STEPS: u32 = 1024u;
 
@@ -764,7 +765,37 @@ fn mask_at(g: u32, x: f32, y: f32) -> f32 {
     let width = f32(p.full_w);
     let height = f32(p.full_h);
     var strength: f32;
-    if (aux[g] < 0.5) {
+    if (aux[g] > 2.5) {
+        // Range: everywhere (the ranges narrow it).
+        strength = 1.0;
+    } else if (aux[g] > 1.5) {
+        // Brush: the union of the dabs, erasers taking it away.
+        let long = max(width, height);
+        let inner = 1.0 - clamp(aux[g + 7u], 0.0, 1.0);
+        let count = u32(aux[g + 31u]);
+        strength = 0.0;
+        for (var n = 0u; n < count; n++) {
+            let at = g + DAB_FLOATS + n * 4u;
+            let r = max(aux[at + 2u] * long, 1.0);
+            let ex = x - aux[at] * width;
+            let ey = y - aux[at + 1u] * height;
+            let d = sqrt(ex * ex + ey * ey) / r;
+            var f: f32;
+            if (d <= inner) {
+                f = 1.0;
+            } else if (d >= 1.0) {
+                f = 0.0;
+            } else {
+                let t = (d - inner) / max(1.0 - inner, 1e-3);
+                f = 1.0 - t * t * (3.0 - 2.0 * t);
+            }
+            if (aux[at + 3u] > 0.5) {
+                strength = strength * (1.0 - f);
+            } else {
+                strength = strength + f - strength * f;
+            }
+        }
+    } else if (aux[g] < 0.5) {
         let ax = aux[g + 1u] * width;
         let ay = aux[g + 2u] * height;
         let dx = aux[g + 3u] * width - ax;
@@ -795,6 +826,66 @@ fn mask_at(g: u32, x: f32, y: f32) -> f32 {
         strength = 1.0 - strength;
     }
     return strength * clamp(aux[g + 9u] / 100.0, 0.0, 1.0);
+}
+
+/// Gradient::range_at: how much the layer's brightness and colour ranges
+/// let through for colour `c`.
+fn range_at(g: u32, c: vec3<f32>) -> f32 {
+    var weight = 1.0;
+    let lo = aux[g + 32u];
+    let hi = aux[g + 33u];
+    if (lo > 0.0 || hi < 1.0) {
+        let l = luma(c);
+        let f = max(aux[g + 34u] * 0.5, 0.002);
+        var rise = 1.0;
+        var fall = 1.0;
+        if (lo > 0.0) {
+            let t = clamp((l - (lo - f)) / (f * 2.0), 0.0, 1.0);
+            rise = t * t * (3.0 - 2.0 * t);
+        }
+        if (hi < 1.0) {
+            let t = clamp((l - (hi - f)) / (f * 2.0), 0.0, 1.0);
+            fall = 1.0 - t * t * (3.0 - 2.0 * t);
+        }
+        weight = weight * rise * fall;
+    }
+    if (aux[g + 35u] > 0.5) {
+        let mx = max(c.x, max(c.y, c.z));
+        let mn = min(c.x, min(c.y, c.z));
+        let d = mx - mn;
+        if (d < 1e-5 || mx <= 0.0) {
+            return 0.0;
+        }
+        var h: f32;
+        if (mx == c.x) {
+            h = (c.y - c.z) / d;
+            h = h - 6.0 * floor(h / 6.0);
+        } else if (mx == c.y) {
+            h = (c.z - c.x) / d + 2.0;
+        } else {
+            h = (c.x - c.y) / d + 4.0;
+        }
+        h = h * 60.0;
+        var delta = h - aux[g + 36u];
+        delta = delta - 360.0 * floor(delta / 360.0);
+        if (delta > 180.0) {
+            delta = 360.0 - delta;
+        }
+        let width = max(aux[g + 37u], 1.0);
+        let inner = width * (1.0 - clamp(aux[g + 38u], 0.0, 1.0));
+        var w_hue: f32;
+        if (delta <= inner) {
+            w_hue = 1.0;
+        } else if (delta >= width) {
+            w_hue = 0.0;
+        } else {
+            let t = (delta - inner) / max(width - inner, 1e-3);
+            w_hue = 1.0 - t * t * (3.0 - 2.0 * t);
+        }
+        let w_sat = clamp((d / mx) / 0.12, 0.0, 1.0);
+        weight = weight * w_hue * w_sat;
+    }
+    return weight;
 }
 
 /// finishing/local.rs `adjust` for the layer at `g`, at mask `strength`.
@@ -873,7 +964,10 @@ fn finish(@builtin(global_invocation_id) id: vec3<u32>) {
         let y = f32(p.off_y + id.y) + 0.5;
         for (var n = 0u; n < p.gradient_count; n++) {
             let g = p.gradient_offset + n * GRADIENT_STRIDE;
-            let m = mask_at(g, x, y);
+            var m = mask_at(g, x, y);
+            if (m > 0.001) {
+                m = m * range_at(g, c);
+            }
             if (m > 0.001) {
                 c = local_adjust(c, g, m, i);
             }

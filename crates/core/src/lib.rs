@@ -53,7 +53,7 @@ pub use export::{
 };
 pub use filters::{FilterSet, FocalBand, IsoBand};
 pub use flag::Flag;
-pub use gradients::{Gradient, GradientKind, Gradients, LocalAdjust, LocalProp, MAX_GRADIENTS};
+pub use gradients::{Dab, PackedDab, Gradient, GradientKind, DAB_SPACING, MAX_DABS, Gradients, LocalAdjust, LocalProp, MAX_GRADIENTS};
 pub use grading::{ColorGrading, Grade, GradeProp, ToneZone};
 pub use histogram::{
     luma8, Clipping, Histogram, HistogramChannel, ScopeMode, Scopes, TonalZone, VECTOR_SIZE,

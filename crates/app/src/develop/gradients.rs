@@ -13,8 +13,8 @@ use gpui::{
     MouseDownEvent, PathBuilder, Pixels, Point, SharedString, Window,
 };
 use rustyedit_core::{
-    to_display, to_source, DevelopSettings, Gradient, GradientKind, LocalAdjust, LocalProp,
-    MAX_GRADIENTS,
+    to_display, to_source, Dab, DevelopSettings, Gradient, GradientKind, LocalAdjust, LocalProp,
+    DAB_SPACING, MAX_DABS, MAX_GRADIENTS,
 };
 use rustyedit_ui::{SliderSpec, SliderTrack, Theme};
 
@@ -25,9 +25,13 @@ use crate::workspace::Workspace;
 const HANDLE_REACH: f32 = 9.0;
 const HANDLE_SIZE: f32 = 5.0;
 
+/// Brush size when none has been chosen: a fraction of the long edge.
+const DEFAULT_BRUSH_SIZE: f32 = 0.05;
+
 /// Tool state for gradient masks.
-#[derive(Default)]
 pub(crate) struct GradientUi {
+    /// Radius of new brush dabs, as a fraction of the photo's long edge.
+    pub(crate) brush_size: f32,
     /// The kind clicks on the photo add; `None` leaves the photo alone.
     pub(crate) tool: Option<GradientKind>,
     pub(crate) selected: Option<usize>,
@@ -35,6 +39,18 @@ pub(crate) struct GradientUi {
     /// Where a press on empty photo started. A gradient is only added once
     /// the pointer is dragged from here, so a plain click changes nothing.
     pending: Option<Point<Pixels>>,
+}
+
+impl Default for GradientUi {
+    fn default() -> Self {
+        Self {
+            brush_size: DEFAULT_BRUSH_SIZE,
+            tool: None,
+            selected: None,
+            drag: None,
+            pending: None,
+        }
+    }
 }
 
 impl GradientUi {
@@ -61,6 +77,9 @@ enum Handle {
     RadiusY,
     /// Radial, while drawing it: both radii, as a circle.
     Radius,
+    /// Brush: painting; holds the last dab's place on the photo and
+    /// whether the stroke erases.
+    Paint((f32, f32), bool),
 }
 
 #[derive(Clone, Copy)]
@@ -84,13 +103,17 @@ impl Workspace {
             .flex_row()
             .gap_1()
             .child(self.gradient_tool_button(GradientKind::Linear, cx))
-            .child(self.gradient_tool_button(GradientKind::Radial, cx));
+            .child(self.gradient_tool_button(GradientKind::Radial, cx))
+            .child(self.gradient_tool_button(GradientKind::Brush, cx))
+            .child(self.gradient_tool_button(GradientKind::Range, cx));
         let hint = match ui.tool {
             Some(GradientKind::Linear) => {
                 "Drag on the photo from where the effect is full to where it fades out"
             }
             Some(GradientKind::Radial) => "Drag out from the centre of the area to adjust",
-            None => "Pick Linear or Radial, then drag on the photo",
+            Some(GradientKind::Brush) => "Paint over the area to adjust \u{00B7} hold Alt to erase",
+            Some(GradientKind::Range) => "",
+            None => "Pick a mask, then drag on the photo (Range needs no dragging)",
         };
 
         let mut rows = vec![
@@ -142,6 +165,8 @@ impl Workspace {
                 match kind {
                     GradientKind::Linear => rustyedit_ui::Icon::LinearGradient,
                     GradientKind::Radial => rustyedit_ui::Icon::RadialGradient,
+                    GradientKind::Brush => rustyedit_ui::Icon::Brush,
+                    GradientKind::Range => rustyedit_ui::Icon::RangeMask,
                 },
                 16.0,
                 if active { theme.text } else { theme.text_muted },
@@ -150,11 +175,17 @@ impl Workspace {
                 match kind {
                     GradientKind::Linear => "Linear gradient (M)",
                     GradientKind::Radial => "Radial gradient (Shift+M)",
+                    GradientKind::Brush => "Brush: paint a mask (Alt erases)",
+                    GradientKind::Range => "Range: select by brightness and colour",
                 },
                 &theme,
             ))
             .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                this.toggle_photo_tool(kind.into(), cx);
+                if kind == GradientKind::Range {
+                    this.add_range_layer(cx);
+                } else {
+                    this.toggle_photo_tool(kind.into(), cx);
+                }
             }))
             .into_any_element()
     }
@@ -267,6 +298,9 @@ impl Workspace {
                 if gradient.invert {
                     note.push("inverted".to_string());
                 }
+                if gradient.kind != GradientKind::Range && gradient.has_range() {
+                    note.push("range".to_string());
+                }
 
                 div()
                     .id(("gradient", ix))
@@ -292,6 +326,8 @@ impl Workspace {
                         match gradient.kind {
                             GradientKind::Linear => rustyedit_ui::Icon::LinearGradient,
                             GradientKind::Radial => rustyedit_ui::Icon::RadialGradient,
+                            GradientKind::Brush => rustyedit_ui::Icon::Brush,
+                            GradientKind::Range => rustyedit_ui::Icon::RangeMask,
                         },
                         14.0,
                         if selected {
@@ -437,7 +473,10 @@ impl Workspace {
             );
         }
 
-        if gradient.kind == GradientKind::Radial {
+        if gradient.kind == GradientKind::Brush {
+            rows.extend(self.brush_controls(index, gradient, cx));
+        }
+        if matches!(gradient.kind, GradientKind::Radial | GradientKind::Brush) {
             let entity = cx.entity();
             rows.push(
                 rustyedit_ui::labeled_slider(
@@ -463,6 +502,8 @@ impl Workspace {
                 .into_any_element(),
             );
         }
+
+        rows.extend(self.range_controls(index, gradient, cx));
 
         for prop in LocalProp::ALL {
             let entity = cx.entity();
@@ -589,6 +630,358 @@ impl Workspace {
             );
         }
         rows
+    }
+
+    /// A slider on one field of layer `index`.
+    fn gradient_slider(
+        &self,
+        index: usize,
+        id: &'static str,
+        label: &'static str,
+        value: f32,
+        spec: SliderSpec,
+        set: fn(&mut Gradient, f32),
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let entity = cx.entity();
+        rustyedit_ui::labeled_slider(
+            SharedString::from(format!("gradient-{index}-{id}")),
+            label,
+            value,
+            spec,
+            &self.theme,
+            move |value, _w, cx| {
+                entity.update(cx, |this, cx| {
+                    this.edit_gradient(index, &format!("Gradient {id}"), cx, |g| set(g, value));
+                });
+            },
+        )
+        .into_any_element()
+    }
+
+    /// The brush's size (for new strokes) and a way to start over.
+    fn brush_controls(
+        &self,
+        index: usize,
+        gradient: &Gradient,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let theme = self.theme;
+        let entity = cx.entity();
+        let size = rustyedit_ui::labeled_slider(
+            "gradient-brush-size",
+            "Brush size",
+            self.develop_ui.gradients.brush_size * 100.0,
+            SliderSpec {
+                min: 0.5,
+                max: 30.0,
+                default: DEFAULT_BRUSH_SIZE * 100.0,
+                signed: false,
+                track: SliderTrack::Accent,
+            },
+            &theme,
+            move |value, _w, cx| {
+                entity.update(cx, |this, cx| {
+                    this.develop_ui.gradients.brush_size = (value / 100.0).clamp(0.005, 0.3);
+                    cx.notify();
+                });
+            },
+        )
+        .into_any_element();
+        let used = gradient.dab_count();
+        let footer = div()
+            .flex()
+            .flex_row()
+            .justify_between()
+            .text_size(sp(10.0))
+            .text_color(theme.text_faint)
+            .child(format!("{used} of {MAX_DABS} dabs"))
+            .child(
+                div()
+                    .id(("gradient-brush-clear", index))
+                    .cursor_pointer()
+                    .hover(|el| el.text_color(theme.danger))
+                    .child("Clear strokes")
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                        this.edit_gradient(index, "Clear brush", cx, |g| {
+                            while g.dab_count() > 0 {
+                                g.pop_dab();
+                            }
+                        });
+                    })),
+            )
+            .into_any_element();
+        vec![size, footer]
+    }
+
+    /// Brightness and colour ranges, which narrow any layer to the tones
+    /// and colours chosen.
+    fn range_controls(
+        &self,
+        index: usize,
+        gradient: &Gradient,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let theme = self.theme;
+        let amount = |max: f32, default: f32| SliderSpec {
+            min: 0.0,
+            max,
+            default,
+            signed: false,
+            track: SliderTrack::Accent,
+        };
+        let mut rows = vec![div()
+            .pt_2()
+            .text_size(sp(10.0))
+            .font_weight(gpui::FontWeight::BOLD)
+            .text_color(theme.text_faint)
+            .child("RANGE")
+            .into_any_element()];
+        rows.push(self.gradient_slider(
+            index,
+            "luma-min",
+            "Brightness from",
+            gradient.luma_range.0 * 100.0,
+            amount(100.0, 0.0),
+            |g, v| g.luma_range.0 = (v / 100.0).clamp(0.0, g.luma_range.1.max(0.0)),
+            cx,
+        ));
+        rows.push(self.gradient_slider(
+            index,
+            "luma-max",
+            "Brightness to",
+            gradient.luma_range.1 * 100.0,
+            amount(100.0, 100.0),
+            |g, v| g.luma_range.1 = (v / 100.0).clamp(g.luma_range.0, 1.0),
+            cx,
+        ));
+        rows.push(self.gradient_slider(
+            index,
+            "luma-feather",
+            "Brightness feather",
+            gradient.luma_feather * 100.0,
+            amount(100.0, 15.0),
+            |g, v| g.luma_feather = (v / 100.0).clamp(0.0, 1.0),
+            cx,
+        ));
+
+        let on = gradient.hue_on;
+        rows.push(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .pt_1()
+                .text_size(sp(11.0))
+                .text_color(theme.text_muted)
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap_2()
+                        .child("Colour range")
+                        .child(div().size(sp(12.0)).rounded_sm().bg(wheel(gradient.hue, 0.8, 0.5))),
+                )
+                .child(rustyedit_ui::mini_toggle_switch(
+                    ("gradient-hue-on", index),
+                    on,
+                    &theme,
+                    cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                        this.edit_gradient(index, "Gradient colour range", cx, |g| {
+                            g.hue_on = !g.hue_on
+                        });
+                    }),
+                ))
+                .into_any_element(),
+        );
+        if on {
+            let hue = {
+                let entity = cx.entity();
+                rustyedit_ui::labeled_slider(
+                    SharedString::from(format!("gradient-{index}-hue")),
+                    "Hue",
+                    gradient.hue,
+                    SliderSpec {
+                        min: 0.0,
+                        max: 360.0,
+                        default: 0.0,
+                        signed: false,
+                        track: SliderTrack::Hue,
+                    },
+                    &theme,
+                    move |value, _w, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.edit_gradient(index, "Gradient range hue", cx, |g| {
+                                g.hue = value.clamp(0.0, 360.0)
+                            });
+                        });
+                    },
+                )
+                .into_any_element()
+            };
+            rows.push(hue);
+            rows.push(self.gradient_slider(
+                index,
+                "hue-width",
+                "Colour width",
+                gradient.hue_width,
+                SliderSpec {
+                    min: 5.0,
+                    max: 180.0,
+                    default: 30.0,
+                    signed: false,
+                    track: SliderTrack::Accent,
+                },
+                |g, v| g.hue_width = v.clamp(5.0, 180.0),
+                cx,
+            ));
+            rows.push(self.gradient_slider(
+                index,
+                "hue-feather",
+                "Colour feather",
+                gradient.hue_feather * 100.0,
+                amount(100.0, 50.0),
+                |g, v| g.hue_feather = (v / 100.0).clamp(0.0, 1.0),
+                cx,
+            ));
+        }
+        rows
+    }
+
+    /// Adds a Range layer: a mask that needs no dragging, starting on the
+    /// shadows.
+    fn add_range_layer(&mut self, cx: &mut Context<Self>) {
+        let layer = Gradient {
+            kind: GradientKind::Range,
+            luma_range: (0.0, 0.4),
+            adjust: LocalAdjust {
+                exposure: 25.0,
+                ..Default::default()
+            },
+            ..Gradient::default()
+        };
+        let mut added = None;
+        self.edit_gradients("Add range mask", cx, |d| added = d.gradients.push(layer));
+        match added {
+            Some(ix) => {
+                self.develop_ui.gradients.selected = Some(ix);
+                self.develop_ui.gradients.tool = None;
+            }
+            None => {
+                self.status_message =
+                    Some(format!("A photo can have up to {MAX_GRADIENTS} gradients").into())
+            }
+        }
+        cx.notify();
+    }
+
+    /// Starts a brush stroke at `position`: on the selected brush layer, or
+    /// on a new one.
+    fn begin_brush_stroke(
+        &mut self,
+        position: Point<Pixels>,
+        rect: Bounds<Pixels>,
+        develop: &DevelopSettings,
+        erase: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let selected_brush = self
+            .develop_ui
+            .gradients
+            .selected
+            .filter(|&ix| {
+                develop
+                    .gradients
+                    .as_slice()
+                    .get(ix)
+                    .is_some_and(|g| g.kind == GradientKind::Brush)
+            });
+        let index = match selected_brush {
+            Some(ix) => ix,
+            None => {
+                let adjust = self
+                    .develop_ui
+                    .gradients
+                    .selected
+                    .and_then(|ix| develop.gradients.as_slice().get(ix))
+                    .map(|g| g.adjust)
+                    .unwrap_or(LocalAdjust {
+                        exposure: 25.0,
+                        ..Default::default()
+                    });
+                let layer = Gradient {
+                    kind: GradientKind::Brush,
+                    feather: 0.5,
+                    adjust,
+                    ..Gradient::default()
+                };
+                let mut added = None;
+                self.edit_gradients("Add brush mask", cx, |d| added = d.gradients.push(layer));
+                let Some(ix) = added else {
+                    self.status_message =
+                        Some(format!("A photo can have up to {MAX_GRADIENTS} gradients").into());
+                    return;
+                };
+                ix
+            }
+        };
+        let at = display_point(position, rect);
+        let ui = &mut self.develop_ui.gradients;
+        ui.selected = Some(index);
+        ui.drag = Some(GradientDrag {
+            index,
+            handle: Handle::Paint(at, erase),
+        });
+        self.paint_dabs(index, at, at, erase, rect, develop, true, cx);
+    }
+
+    /// Lays dabs along the stretch from `from` to `to` (fractions of the
+    /// displayed photo) on brush layer `index`.
+    fn paint_dabs(
+        &mut self,
+        index: usize,
+        from: (f32, f32),
+        to: (f32, f32),
+        erase: bool,
+        rect: Bounds<Pixels>,
+        develop: &DevelopSettings,
+        include_start: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let (w, h) = (f32::from(rect.size.width), f32::from(rect.size.height));
+        let long = w.max(h).max(1.0);
+        let radius = self.develop_ui.gradients.brush_size;
+        let spacing = (radius * long * DAB_SPACING).max(1.0);
+        let length = ((to.0 - from.0) * w).hypot((to.1 - from.1) * h);
+        let steps = (length / spacing).floor() as usize;
+        let mut points = Vec::new();
+        if include_start {
+            points.push(from);
+        }
+        for i in 1..=steps {
+            let t = i as f32 * spacing / length.max(1e-3);
+            points.push((from.0 + (to.0 - from.0) * t, from.1 + (to.1 - from.1) * t));
+        }
+        if points.is_empty() {
+            return;
+        }
+        let mut full = false;
+        self.edit_gradient(index, "Brush stroke", cx, |g| {
+            for p in points {
+                let (x, y) = to_source(p, develop);
+                if !g.add_dab(Dab { x, y, radius, erase }) {
+                    full = true;
+                    break;
+                }
+            }
+        });
+        if full {
+            self.status_message = Some(
+                format!("The brush layer is full ({MAX_DABS} dabs); start another layer").into(),
+            );
+        }
     }
 
     fn edit_gradients(
@@ -729,7 +1122,7 @@ impl Workspace {
                     MouseButton::Left,
                     cx.listener(|this, event: &MouseDownEvent, _w, cx| {
                         cx.stop_propagation();
-                        this.gradient_pointer_down(event.position, cx);
+                        this.gradient_pointer_down(event.position, event.modifiers.alt, cx);
                     }),
                 )
                 .into_any_element(),
@@ -738,11 +1131,20 @@ impl Workspace {
 
     /// Grabs a handle of the selected gradient under the pointer, selects a
     /// gradient clicked inside, or adds a new one.
-    fn gradient_pointer_down(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+    fn gradient_pointer_down(
+        &mut self,
+        position: Point<Pixels>,
+        erase: bool,
+        cx: &mut Context<Self>,
+    ) {
         let Some((rect, develop)) = self.gradient_space() else {
             return;
         };
         if !rect.contains(&position) {
+            return;
+        }
+        if self.develop_ui.gradients.tool == Some(GradientKind::Brush) {
+            self.begin_brush_stroke(position, rect, &develop, erase, cx);
             return;
         }
         let on_photo = display_point(position, rect);
@@ -785,6 +1187,9 @@ impl Workspace {
         let Some(kind) = self.develop_ui.gradients.tool else {
             return;
         };
+        if matches!(kind, GradientKind::Brush | GradientKind::Range) {
+            return;
+        }
         let at = display_point(position, rect);
         // Start from the selected gradient's adjustments, or a gentle
         // default that shows straight away what the mask covers.
@@ -823,8 +1228,8 @@ impl Workspace {
                 ui.drag = Some(GradientDrag {
                     index: ix,
                     handle: match kind {
-                        GradientKind::Linear => Handle::End,
                         GradientKind::Radial => Handle::Radius,
+                        _ => Handle::End,
                     },
                 });
             }
@@ -876,6 +1281,24 @@ impl Workspace {
         let long_edge = f32::from(rect.size.width.max(rect.size.height)).max(1.0);
         let quarter_turned = ((develop.rotation_degrees / 90.0).round() as i32).rem_euclid(2) == 1;
 
+        if let Handle::Paint(last, erase) = drag.handle {
+            let dist_px = ((at.0 - last.0) * f32::from(rect.size.width))
+                .hypot((at.1 - last.1) * f32::from(rect.size.height));
+            let spacing = (self.develop_ui.gradients.brush_size * long_edge * DAB_SPACING).max(1.0);
+            if dist_px >= spacing {
+                // Lay dabs up to the pointer, and remember where the last one went.
+                let steps = (dist_px / spacing).floor();
+                let t = steps * spacing / dist_px;
+                let reached = (last.0 + (at.0 - last.0) * t, last.1 + (at.1 - last.1) * t);
+                self.paint_dabs(drag.index, last, at, erase, rect, &develop, false, cx);
+                self.develop_ui.gradients.drag = Some(GradientDrag {
+                    handle: Handle::Paint(reached, erase),
+                    ..drag
+                });
+            }
+            return true;
+        }
+
         if let Handle::Move(last) = drag.handle {
             self.develop_ui.gradients.drag = Some(GradientDrag {
                 handle: Handle::Move(at),
@@ -920,7 +1343,7 @@ impl Workspace {
                     g.radius.1 = radius;
                 }
             }
-            Handle::Move(_) => {}
+            Handle::Move(_) | Handle::Paint(..) => {}
         });
         true
     }
@@ -946,6 +1369,8 @@ struct Shape {
     radius: (f32, f32),
     feather: f32,
     selected: bool,
+    /// Brush dabs on screen: centre, radius and whether it erases.
+    dabs: Vec<(Point<Pixels>, f32, bool)>,
 }
 
 impl Shape {
@@ -961,11 +1386,16 @@ impl Shape {
             radius: (g.radius.0 * long, g.radius.1 * long),
             feather: g.feather,
             selected,
+            dabs: g
+                .dabs()
+                .map(|d| (at((d.x, d.y)), d.radius * long, d.erase))
+                .collect(),
         }
     }
 
     fn handles(&self) -> Vec<(Point<Pixels>, Handle)> {
         match self.kind {
+            GradientKind::Brush | GradientKind::Range => Vec::new(),
             GradientKind::Linear => vec![
                 (self.start, Handle::Start),
                 (self.end, Handle::End),
@@ -1039,6 +1469,24 @@ impl Shape {
                 both(line(midpoint(self.start, self.end)), false, 1.0, true);
                 both(line(self.end), false, 1.25, false);
                 both(vec![self.start, self.end], false, 1.0, false);
+            }
+            GradientKind::Range => {}
+            GradientKind::Brush => {
+                // What's been painted, as a soft wash.
+                if self.selected {
+                    for &(centre, radius, erase) in &self.dabs {
+                        let mut path = PathBuilder::fill();
+                        path.add_polygon(&ellipse(centre, (radius, radius)), true);
+                        if let Ok(path) = path.build() {
+                            let wash = if erase {
+                                gpui::black().opacity(0.0)
+                            } else {
+                                theme.accent.opacity(0.10)
+                            };
+                            window.paint_path(path, wash);
+                        }
+                    }
+                }
             }
             GradientKind::Radial => {
                 both(ellipse(self.start, self.radius), true, 1.25, false);

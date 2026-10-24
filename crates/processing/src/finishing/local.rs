@@ -61,7 +61,12 @@ impl LocalAdjustments {
     pub(crate) fn apply(&self, mut rgb: [f32; 3], x: u32, y: u32) -> [f32; 3] {
         let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
         for (gradient, grading) in self.gradients.iter().zip(&self.gradings) {
-            let mask = gradient.mask_at(px, py, self.width, self.height);
+            let mut mask = gradient.mask_at(px, py, self.width, self.height);
+            // Brightness and colour ranges narrow the layer, judged on the
+            // pixel as the layers before it left it.
+            if mask > 0.001 && gradient.has_range() {
+                mask *= gradient.range_at(rgb);
+            }
             if mask > 0.001 {
                 let blur = |image: &Option<RgbImage>| {
                     image.as_ref().map(|image| {
@@ -175,6 +180,42 @@ mod tests {
         let grey = [0.5; 3];
         assert!(local.apply(grey, 50, 0)[0] < 0.2, "top is darkened");
         assert_eq!(local.apply(grey, 50, 90), grey, "bottom untouched");
+    }
+
+    #[test]
+    fn a_range_layer_only_touches_the_chosen_tones() {
+        let mut settings = DevelopSettings::default();
+        settings.gradients.push(Gradient {
+            kind: GradientKind::Range,
+            luma_range: (0.0, 0.4),
+            luma_feather: 0.05,
+            adjust: LocalAdjust {
+                exposure: 100.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let local = LocalAdjustments::new(&settings, &RgbImage::new(10, 10)).unwrap();
+        assert!(local.apply([0.2; 3], 5, 5)[0] > 0.4, "shadows are lifted");
+        assert_eq!(local.apply([0.8; 3], 5, 5), [0.8; 3], "highlights are left");
+    }
+
+    #[test]
+    fn a_brush_layer_only_touches_where_it_was_painted() {
+        let mut brush = Gradient {
+            kind: GradientKind::Brush,
+            adjust: LocalAdjust {
+                exposure: -100.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        brush.add_dab(rustyedit_core::Dab { x: 0.25, y: 0.5, radius: 0.1, erase: false });
+        let mut settings = DevelopSettings::default();
+        settings.gradients.push(brush);
+        let local = LocalAdjustments::new(&settings, &RgbImage::new(100, 100)).unwrap();
+        assert!(local.apply([0.5; 3], 25, 50)[0] < 0.2);
+        assert_eq!(local.apply([0.5; 3], 80, 50), [0.5; 3]);
     }
 
     #[test]

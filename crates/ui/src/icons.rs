@@ -60,6 +60,10 @@ pub enum Icon {
     Clone,
     LinearGradient,
     RadialGradient,
+    /// A paintbrush: the brush mask.
+    Brush,
+    /// A band between two ticks: a brightness / colour range mask.
+    RangeMask,
     Clipping,
     ZoomIn,
     Minus,
@@ -362,6 +366,18 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
             pen.shape(&[(2.0, 2.0), (14.0, 2.0), (14.0, 14.0), (2.0, 14.0)]);
             pen.circle(8.0, 8.0, 4.0);
             pen.dot(8.0, 8.0, 1.1);
+        }
+        Icon::Brush => {
+            // The handle, the ferrule and the bristle tip.
+            pen.line(&[(13.5, 2.5), (7.5, 8.5)]);
+            pen.shape(&[(6.0, 7.5), (8.5, 10.0), (7.0, 11.5), (4.5, 9.0)]);
+            pen.solid(&[(4.5, 9.2), (6.8, 11.5), (4.0, 13.8), (2.0, 13.8), (2.2, 11.6)]);
+        }
+        Icon::RangeMask => {
+            pen.line(&[(2.0, 8.0), (14.0, 8.0)]);
+            pen.line(&[(5.0, 4.0), (5.0, 12.0)]);
+            pen.line(&[(11.0, 4.0), (11.0, 12.0)]);
+            pen.solid(&[(5.0, 6.2), (11.0, 6.2), (11.0, 9.8), (5.0, 9.8)]);
         }
         Icon::Clipping => {
             pen.shape(&[(2.0, 2.0), (14.0, 2.0), (14.0, 14.0), (2.0, 14.0)]);

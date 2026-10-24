@@ -558,6 +558,44 @@ mod tests {
                     s.grading.balance = 20.0;
                 }),
             ),
+            (
+                "brush and range masks",
+                with(|s| {
+                    let mut brush = Gradient {
+                        kind: GradientKind::Brush,
+                        feather: 0.6,
+                        adjust: LocalAdjust {
+                            exposure: 50.0,
+                            saturation: 40.0,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    };
+                    for i in 0..12 {
+                        brush.add_dab(rustyedit_core::Dab {
+                            x: 0.2 + i as f32 * 0.05,
+                            y: 0.4 + (i as f32 * 0.7).sin() * 0.1,
+                            radius: 0.08,
+                            erase: i == 7,
+                        });
+                    }
+                    s.gradients.push(brush);
+                    s.gradients.push(Gradient {
+                        kind: GradientKind::Range,
+                        luma_range: (0.0, 0.5),
+                        luma_feather: 0.2,
+                        hue_on: true,
+                        hue: 30.0,
+                        hue_width: 60.0,
+                        adjust: LocalAdjust {
+                            exposure: -40.0,
+                            contrast: 25.0,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    });
+                }),
+            ),
             ("dehaze", with(|s| s.dehaze = 70.0)),
             ("haze", with(|s| s.dehaze = -50.0)),
             (

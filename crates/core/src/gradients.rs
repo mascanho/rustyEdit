@@ -2,6 +2,11 @@
 //! along a line (a graduated filter, e.g. to darken a sky) or out from an
 //! ellipse (a radial filter, e.g. to lift a face).
 //!
+//! Two more kinds work on the picture itself: a **brush**, painted on in
+//! dabs, and a **range** mask that selects by brightness and colour. Any
+//! layer can also be refined by brightness and colour ranges, so e.g. a
+//! radial can lift only the shadows inside it.
+//!
 //! Like retouch spots, positions are fractions of the *original* photo
 //! and sizes fractions of its long edge, so masks stay put when the photo
 //! is rotated; [`Gradient::on_display`] gives them as drawn. They live in a
@@ -13,6 +18,75 @@ use crate::{grading::ColorGrading, retouch::to_display, DevelopSettings};
 
 /// Most gradients a photo can have.
 pub const MAX_GRADIENTS: usize = 8;
+/// Most dabs a brush layer holds; a stroke is a run of overlapping dabs.
+pub const MAX_DABS: usize = 48;
+/// Dabs along a stroke are this far apart, as a fraction of their radius.
+pub const DAB_SPACING: f32 = 0.5;
+
+/// One dab of a brush layer.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub struct Dab {
+    /// Centre, as a fraction of the original photo.
+    pub x: f32,
+    pub y: f32,
+    /// Radius, as a fraction of the photo's long edge.
+    pub radius: f32,
+    /// Takes the mask away instead of adding to it.
+    pub erase: bool,
+}
+
+/// A dab in six bytes (a position and radius as 16-bit fractions, the top
+/// bit of the radius marking an eraser): `DevelopSettings` is `Copy` and
+/// copied everywhere, and a layer's worth of full-size dabs made it eight
+/// times as big, enough to overflow a worker thread's stack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PackedDab([u16; 3]);
+
+/// Largest dab radius that can be stored (a fraction of the long edge).
+const MAX_DAB_RADIUS: f32 = 0.5;
+
+impl PackedDab {
+    fn pack(d: Dab) -> Self {
+        let unit = |v: f32| (v.clamp(0.0, 1.0) * 65535.0).round() as u16;
+        let radius = ((d.radius / MAX_DAB_RADIUS).clamp(0.0, 1.0) * 32767.0).round() as u16;
+        PackedDab([unit(d.x), unit(d.y), radius | if d.erase { 0x8000 } else { 0 }])
+    }
+
+    fn unpack(self) -> Dab {
+        Dab {
+            x: self.0[0] as f32 / 65535.0,
+            y: self.0[1] as f32 / 65535.0,
+            radius: (self.0[2] & 0x7fff) as f32 / 32767.0 * MAX_DAB_RADIUS,
+            erase: self.0[2] & 0x8000 != 0,
+        }
+    }
+}
+
+/// `Serialize` / `Deserialize` for the dabs (as plain lists of [`Dab`]).
+mod dab_array {
+    use super::{Dab, PackedDab, MAX_DABS};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(dabs: &[PackedDab; MAX_DABS], s: S) -> Result<S::Ok, S::Error> {
+        // Only the dabs in use are written; the count is saved separately
+        // and trims the rest on load.
+        let used = dabs
+            .iter()
+            .rposition(|d| *d != PackedDab::default())
+            .map_or(0, |i| i + 1);
+        let list: Vec<Dab> = dabs[..used].iter().map(|d| d.unpack()).collect();
+        list.serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<[PackedDab; MAX_DABS], D::Error> {
+        let list = Vec::<Dab>::deserialize(d)?;
+        let mut out = [PackedDab::default(); MAX_DABS];
+        for (slot, dab) in out.iter_mut().zip(list) {
+            *slot = PackedDab::pack(dab);
+        }
+        Ok(out)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum GradientKind {
@@ -22,6 +96,11 @@ pub enum GradientKind {
     /// Full strength inside the ellipse around `start`, fading out at its
     /// edge (or the reverse, inverted).
     Radial,
+    /// Painted on with the brush: the union of its dabs.
+    Brush,
+    /// Everywhere, narrowed down by the layer's brightness and colour
+    /// ranges.
+    Range,
 }
 
 impl GradientKind {
@@ -29,6 +108,8 @@ impl GradientKind {
         match self {
             GradientKind::Linear => "Linear",
             GradientKind::Radial => "Radial",
+            GradientKind::Brush => "Brush",
+            GradientKind::Range => "Range",
         }
     }
 }
@@ -167,6 +248,19 @@ pub struct Gradient {
     pub hidden: bool,
     /// The layer's opacity, 0..=100: how much of its effect is applied.
     pub opacity: f32,
+    /// Brush: the dabs painted so far, and how many of them there are.
+    #[serde(with = "dab_array")]
+    pub dabs: [PackedDab; MAX_DABS],
+    pub dab_count: u8,
+    /// Brightness range the layer applies to (0..=1 each), and how softly
+    /// its edges fade. `(0, 1)` is everything.
+    pub luma_range: (f32, f32),
+    pub luma_feather: f32,
+    /// Colour range: pixels within `hue_width` degrees of `hue`.
+    pub hue_on: bool,
+    pub hue: f32,
+    pub hue_width: f32,
+    pub hue_feather: f32,
 }
 
 impl Default for Gradient {
@@ -181,6 +275,14 @@ impl Default for Gradient {
             adjust: LocalAdjust::default(),
             hidden: false,
             opacity: 100.0,
+            dabs: [PackedDab::default(); MAX_DABS],
+            dab_count: 0,
+            luma_range: (0.0, 1.0),
+            luma_feather: 0.15,
+            hue_on: false,
+            hue: 0.0,
+            hue_width: 30.0,
+            hue_feather: 0.5,
         }
     }
 }
@@ -199,8 +301,99 @@ impl Gradient {
             } else {
                 self.radius
             },
+            dabs: {
+                let mut dabs = self.dabs;
+                for packed in &mut dabs[..self.dab_count()] {
+                    let mut dab = packed.unpack();
+                    (dab.x, dab.y) = to_display((dab.x, dab.y), settings);
+                    *packed = PackedDab::pack(dab);
+                }
+                dabs
+            },
             ..*self
         }
+    }
+
+    /// The dabs in use.
+    pub fn dab_count(&self) -> usize {
+        (self.dab_count as usize).min(MAX_DABS)
+    }
+
+    pub fn dabs(&self) -> impl Iterator<Item = Dab> + '_ {
+        self.dabs[..self.dab_count()].iter().map(|d| d.unpack())
+    }
+
+    /// Adds a dab; `false` when the brush layer is full.
+    pub fn add_dab(&mut self, dab: Dab) -> bool {
+        let n = self.dab_count();
+        if n >= MAX_DABS {
+            return false;
+        }
+        self.dabs[n] = PackedDab::pack(dab);
+        self.dab_count += 1;
+        true
+    }
+
+    /// Takes the last stroke's worth back: removes dabs from the end.
+    pub fn pop_dab(&mut self) {
+        let n = self.dab_count();
+        if n > 0 {
+            self.dabs[n - 1] = PackedDab::default();
+            self.dab_count -= 1;
+        }
+    }
+
+    /// Whether the brightness or colour range narrows the layer.
+    pub fn has_range(&self) -> bool {
+        self.hue_on || self.luma_range.0 > 0.0 || self.luma_range.1 < 1.0
+    }
+
+    /// How much the range lets through (0..=1) for a pixel of colour
+    /// `rgb`: 1 when the layer has no range.
+    pub fn range_at(&self, rgb: [f32; 3]) -> f32 {
+        let mut weight = 1.0;
+        let (lo, hi) = self.luma_range;
+        if lo > 0.0 || hi < 1.0 {
+            let l = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+            let f = (self.luma_feather * 0.5).max(0.002);
+            let rise = if lo > 0.0 { smoothstep(((l - (lo - f)) / (f * 2.0)).clamp(0.0, 1.0)) } else { 1.0 };
+            let fall = if hi < 1.0 { 1.0 - smoothstep(((l - (hi - f)) / (f * 2.0)).clamp(0.0, 1.0)) } else { 1.0 };
+            weight *= rise * fall;
+        }
+        if self.hue_on {
+            let (max, min) = (
+                rgb[0].max(rgb[1]).max(rgb[2]),
+                rgb[0].min(rgb[1]).min(rgb[2]),
+            );
+            let d = max - min;
+            if d < 1e-5 || max <= 0.0 {
+                return 0.0;
+            }
+            let h = if max == rgb[0] {
+                ((rgb[1] - rgb[2]) / d).rem_euclid(6.0)
+            } else if max == rgb[1] {
+                (rgb[2] - rgb[0]) / d + 2.0
+            } else {
+                (rgb[0] - rgb[1]) / d + 4.0
+            } * 60.0;
+            let mut delta = (h - self.hue).rem_euclid(360.0);
+            if delta > 180.0 {
+                delta = 360.0 - delta;
+            }
+            let width = self.hue_width.max(1.0);
+            let inner = width * (1.0 - self.hue_feather.clamp(0.0, 1.0));
+            let w_hue = if delta <= inner {
+                1.0
+            } else if delta >= width {
+                0.0
+            } else {
+                1.0 - smoothstep((delta - inner) / (width - inner).max(1e-3))
+            };
+            // Greys have no real hue.
+            let w_sat = ((d / max) / 0.12).clamp(0.0, 1.0);
+            weight *= w_hue * w_sat;
+        }
+        weight
     }
 
     /// Mask strength (0..=1) at pixel (`x`, `y`) of a `width` × `height`
@@ -230,6 +423,29 @@ impl Gradient {
                     1.0 - smoothstep((d - inner) / (1.0 - inner).max(1e-3))
                 }
             }
+            GradientKind::Brush => {
+                let long = width.max(height);
+                let mut strength = 0.0f32;
+                for dab in self.dabs() {
+                    let r = (dab.radius * long).max(1.0);
+                    let d = ((x - dab.x * width).powi(2) + (y - dab.y * height).powi(2)).sqrt() / r;
+                    let inner = 1.0 - self.feather.clamp(0.0, 1.0);
+                    let f = if d <= inner {
+                        1.0
+                    } else if d >= 1.0 {
+                        0.0
+                    } else {
+                        1.0 - smoothstep((d - inner) / (1.0 - inner).max(1e-3))
+                    };
+                    strength = if dab.erase {
+                        strength * (1.0 - f)
+                    } else {
+                        strength + f - strength * f
+                    };
+                }
+                strength
+            }
+            GradientKind::Range => 1.0,
         };
         let strength = if self.invert {
             1.0 - strength
@@ -437,5 +653,83 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(g.on_display(&settings).radius, (0.1, 0.3));
+    }
+}
+
+#[cfg(test)]
+mod brush_and_range_tests {
+    use super::*;
+
+    #[test]
+    fn a_brush_covers_its_dabs_and_erasing_takes_it_away() {
+        let mut g = Gradient {
+            kind: GradientKind::Brush,
+            feather: 0.0,
+            ..Default::default()
+        };
+        assert_eq!(g.mask_at(50.0, 50.0, 100.0, 100.0), 0.0);
+        assert!(g.add_dab(Dab { x: 0.5, y: 0.5, radius: 0.1, erase: false }));
+        assert_eq!(g.mask_at(50.0, 50.0, 100.0, 100.0), 1.0);
+        assert_eq!(g.mask_at(80.0, 50.0, 100.0, 100.0), 0.0);
+        g.add_dab(Dab { x: 0.5, y: 0.5, radius: 0.05, erase: true });
+        assert_eq!(g.mask_at(50.0, 50.0, 100.0, 100.0), 0.0);
+        assert_eq!(g.mask_at(57.0, 50.0, 100.0, 100.0), 1.0);
+        g.pop_dab();
+        assert_eq!(g.mask_at(50.0, 50.0, 100.0, 100.0), 1.0);
+        while g.add_dab(Dab::default()) {}
+        assert_eq!(g.dab_count(), MAX_DABS);
+    }
+
+    #[test]
+    fn dabs_survive_a_save_and_load() {
+        let mut g = Gradient { kind: GradientKind::Brush, ..Default::default() };
+        g.add_dab(Dab { x: 0.25, y: 0.75, radius: 0.05, erase: false });
+        g.add_dab(Dab { x: 0.5, y: 0.5, radius: 0.1, erase: true });
+        let json = serde_json::to_string(&g).unwrap();
+        let back: Gradient = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.dab_count(), 2);
+        let dab = back.dabs().next().unwrap();
+        assert!((dab.x - 0.25).abs() < 1e-3 && (dab.y - 0.75).abs() < 1e-3 && !dab.erase);
+        assert!(back.dabs().nth(1).unwrap().erase);
+        // Old saves without any of the new fields still load.
+        let old: Gradient = serde_json::from_str(r#"{"kind":"Linear"}"#).unwrap();
+        assert_eq!(old.dab_count(), 0);
+        assert!(!old.has_range());
+    }
+
+    #[test]
+    fn luminance_range_keeps_only_the_chosen_tones() {
+        let g = Gradient {
+            kind: GradientKind::Range,
+            luma_range: (0.0, 0.4),
+            luma_feather: 0.1,
+            ..Default::default()
+        };
+        assert!(g.range_at([0.1; 3]) > 0.99);
+        assert!(g.range_at([0.9; 3]) < 0.01);
+        let edge = g.range_at([0.4; 3]);
+        assert!(edge > 0.2 && edge < 0.8);
+    }
+
+    #[test]
+    fn colour_range_picks_a_hue_and_ignores_greys() {
+        let g = Gradient {
+            hue_on: true,
+            hue: 120.0,
+            hue_width: 30.0,
+            ..Default::default()
+        };
+        assert!(g.range_at([0.1, 0.8, 0.1]) > 0.99, "green is in");
+        assert!(g.range_at([0.8, 0.1, 0.1]) < 0.01, "red is out");
+        assert_eq!(g.range_at([0.5; 3]), 0.0, "grey has no hue");
+    }
+}
+
+#[cfg(test)]
+mod size_tests {
+    #[test]
+    fn settings_stay_small_enough_to_copy_freely() {
+        // Copied around on worker threads with small stacks.
+        assert!(std::mem::size_of::<crate::DevelopSettings>() < 6000);
     }
 }

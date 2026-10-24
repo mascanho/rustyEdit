@@ -26,7 +26,7 @@ use std::sync::{Mutex, OnceLock};
 use bytemuck::{Pod, Zeroable};
 use image::{DynamicImage, RgbImage, RgbaImage};
 use rustyedit_core::{
-    BandAdjust, ColorBand, DevelopSettings, Gradient, GradientKind, Histogram, Scopes, SpotKind,
+    BandAdjust, ColorBand, DevelopSettings, Gradient, GradientKind, MAX_DABS, Histogram, Scopes, SpotKind,
     Spots, VECTOR_SIZE, WAVE_COLS, WAVE_ROWS,
 };
 use wgpu::util::DeviceExt;
@@ -142,7 +142,7 @@ const F_WIDE: u32 = 128;
 const F_NARROW: u32 = 256;
 
 /// Floats per gradient layer in the aux buffer.
-const GRADIENT_STRIDE: usize = 32;
+const GRADIENT_STRIDE: usize = 40 + 4 * MAX_DABS;
 /// Entries per channel of the tone curve tables (the shader's
 /// `CURVE_STEPS`).
 const CURVE_STEPS: usize = 1024;
@@ -2042,6 +2042,8 @@ fn gradient_floats(g: &Gradient) -> [f32; GRADIENT_STRIDE] {
     out[0] = match g.kind {
         GradientKind::Linear => 0.0,
         GradientKind::Radial => 1.0,
+        GradientKind::Brush => 2.0,
+        GradientKind::Range => 3.0,
     };
     out[1..10].copy_from_slice(&[
         g.start.0,
@@ -2069,6 +2071,26 @@ fn gradient_floats(g: &Gradient) -> [f32; GRADIENT_STRIDE] {
     if let Some(grading) = Grading::new(&a.grading) {
         out[20] = 1.0;
         out[21..31].copy_from_slice(&grading.packed());
+    }
+    // Brightness and colour ranges, then the brush's dabs.
+    out[31] = g.dab_count() as f32;
+    out[32..40].copy_from_slice(&[
+        g.luma_range.0,
+        g.luma_range.1,
+        g.luma_feather,
+        g.hue_on as u8 as f32,
+        g.hue,
+        g.hue_width,
+        g.hue_feather,
+        0.0,
+    ]);
+    for (i, dab) in g.dabs().enumerate() {
+        out[40 + i * 4..44 + i * 4].copy_from_slice(&[
+            dab.x,
+            dab.y,
+            dab.radius,
+            dab.erase as u8 as f32,
+        ]);
     }
     out
 }
