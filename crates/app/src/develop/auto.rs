@@ -168,7 +168,7 @@ impl Workspace {
                     Ok(balance) => {
                         let detail = format!(
                             "Temp {:+.0}, Tint {:+.0}",
-                            balance.temperature, balance.tint
+                            balance.temperature, -balance.tint
                         );
                         this.edit_develop(
                             "White balance",

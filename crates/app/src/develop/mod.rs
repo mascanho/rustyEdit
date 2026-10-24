@@ -44,6 +44,7 @@ mod sections;
 mod snapshots;
 mod source;
 mod tool_strip;
+mod upright;
 mod tools;
 mod viewer;
 mod zoom;

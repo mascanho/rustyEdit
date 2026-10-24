@@ -31,6 +31,8 @@ pub(crate) struct LivePreview {
     before_key: Option<(u64, DevelopSettings)>,
     /// The frame the current image has drawn around it (none if unframed).
     shown_frame: FrameSettings,
+    /// The mask layer painted over it in red, if any.
+    shown_mask: Option<usize>,
     /// A render is running on the background executor.
     busy: bool,
     /// Adjustments changed while busy; render again when it finishes.
@@ -66,11 +68,12 @@ impl LivePreview {
     }
 
     /// Swaps in a freshly rendered frame, retiring the one it replaces.
-    fn show(&mut self, image: Arc<RenderImage>, frame: FrameSettings) {
+    fn show(&mut self, image: Arc<RenderImage>, frame: FrameSettings, mask: Option<usize>) {
         if let Some(old) = self.image.replace(image) {
             self.retire(old);
         }
         self.shown_frame = frame;
+        self.shown_mask = mask;
     }
 
     /// Forgets the current frame (another photo was selected, caches were
@@ -85,6 +88,7 @@ impl LivePreview {
         }
         self.before_key = None;
         self.shown_frame = FrameSettings::default();
+        self.shown_mask = None;
     }
 
     /// Frees the GPU memory of retired frames. Call once per render.
@@ -135,6 +139,20 @@ impl Workspace {
         }
     }
 
+    /// The mask layer to paint over the preview: the selected one, while
+    /// "Show mask" is on.
+    pub(crate) fn mask_in_view(&self) -> Option<usize> {
+        use crate::workspace::Mode;
+        let asset = self.catalog.selected_asset()?;
+        let ui = &self.develop_ui.gradients;
+        let layer = ui.selected.filter(|_| ui.show_mask)?;
+        (self.mode == Mode::Develop
+            && layer < asset.develop.gradients.len()
+            && self.develop_ui.zoom.scale.is_none()
+            && self.preview_override.is_none())
+        .then_some(layer)
+    }
+
     /// Re-renders the preview when the frame that ought to be around it
     /// isn't (a tool was picked, or the view zoomed). Called as the window
     /// is drawn.
@@ -142,7 +160,9 @@ impl Workspace {
         if self.live_preview.image().is_none() || !self.wants_live_preview() {
             return;
         }
-        if self.frame_in_view() != self.live_preview.shown_frame {
+        if self.frame_in_view() != self.live_preview.shown_frame
+            || self.mask_in_view() != self.live_preview.shown_mask
+        {
             self.request_preview_update(cx);
         }
     }
@@ -210,6 +230,8 @@ impl Workspace {
         // The before image only depends on the photo and its geometry, so it
         // is rendered once, not on every slider step.
         let frame = self.frame_in_view();
+        let mask = self.mask_in_view();
+        let oriented = (asset.width.max(1) as f32, asset.height.max(1) as f32);
         let geometry = DevelopSettings {
             frame,
             crop: settings.crop,
@@ -234,6 +256,9 @@ impl Workspace {
             // Soft proof (and the gamut warning) on top of the frame.
             if let Some(proof) = &proof {
                 rustyedit_processing::apply_proof(&mut frame.bgra, proof);
+            }
+            if let Some(layer) = mask {
+                rustyedit_processing::overlay_mask(&mut frame.bgra, &settings, layer, oriented);
             }
             if framing.is_active() {
                 frame.bgra = rustyedit_processing::frame_bgra(&frame.bgra, &framing);
@@ -262,7 +287,7 @@ impl Workspace {
                 // A render for a photo that's no longer selected is dropped
                 // without ever reaching the GPU.
                 if this.preview_epoch == epoch {
-                    this.live_preview.show(image, framing);
+                    this.live_preview.show(image, framing, mask);
                     if let Some(before) = before {
                         this.live_preview.show_before(before, before_key);
                     }

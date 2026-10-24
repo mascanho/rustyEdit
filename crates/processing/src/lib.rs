@@ -33,21 +33,25 @@ mod geometry;
 mod gpu;
 mod lens;
 mod look;
+mod maskview;
 mod parallel;
 mod proof;
 mod retouch;
 mod sharpen;
 mod tone;
+mod upright;
 mod watermark;
 
-pub use auto::{auto_tone, neutral_white_balance, BalanceError, NeutralBalance};
+pub use auto::{auto_tone, neutral_white_balance, sample_colour, BalanceError, NeutralBalance};
 pub use cms::{is_proofing_profile, set_display_profile, OutputSpace};
 pub use proof::{apply_proof, ProofIntent, ProofSettings};
+pub use maskview::overlay_mask;
 pub use look::{match_look, preset_from_look, LookStats};
 pub use frame::{frame_bgra, frame_rgb16, frame_rgb8, framed_size};
 pub use watermark::apply_watermark;
 pub use develop_source::DevelopSource;
 pub use retouch::find_spot_source;
+pub use upright::{detect as detect_upright, Upright, UprightMode};
 
 use image::{imageops::FilterType, DynamicImage, RgbImage, RgbaImage};
 use rustyedit_core::{DevelopSettings, Histogram};

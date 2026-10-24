@@ -661,3 +661,16 @@ mod tests {
         );
     }
 }
+
+/// The colour (0..=1 display RGB) of the photo at `at` (fractions across and
+/// down the photo as shown), as it looks just before local masks apply:
+/// everything but the masks themselves. For picking the colour or
+/// brightness a mask's range should select.
+pub fn sample_colour(source: &DevelopSource, settings: &DevelopSettings, at: (f32, f32)) -> [f32; 3] {
+    let small = prepare_preview(source, WB_EDGE);
+    let mut base = *settings;
+    DevelopSection::Gradients.reset(&mut base);
+    DevelopSection::Frames.reset(&mut base);
+    let frame = render_preview(&small, &base, ClipWarnings::default());
+    sample_bgra(&frame.bgra, at, 2).map(|v| v / 255.0)
+}

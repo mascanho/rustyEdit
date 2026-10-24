@@ -79,7 +79,9 @@ impl Workspace {
         else {
             return;
         };
+        let sign = adjustment.display_sign();
         let format = |v: f32| {
+            let v = v * sign;
             if adjustment.is_signed() {
                 format!("{v:+.0}")
             } else {

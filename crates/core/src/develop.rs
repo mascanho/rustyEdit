@@ -348,6 +348,16 @@ impl Adjustment {
         self.get(&DevelopSettings::default())
     }
 
+    /// The slider's value is the stored one times this. Tint is stored with
+    /// positive as green, but its slider runs green to magenta, so it reads
+    /// the other way round: moving towards green adds green.
+    pub fn display_sign(&self) -> f32 {
+        match self {
+            Adjustment::Tint => -1.0,
+            _ => 1.0,
+        }
+    }
+
     /// Whether values read as offsets ("+12") rather than amounts ("12").
     pub fn is_signed(&self) -> bool {
         self.range().0 < 0.0
@@ -482,6 +492,22 @@ mod tests {
             assert!(settings.is_edited(), "{adjustment:?}");
             adjustment.set(&mut settings, adjustment.default_value());
             assert!(!settings.is_edited(), "{adjustment:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tint_tests {
+    use super::*;
+
+    #[test]
+    fn the_tint_slider_reads_green_to_magenta() {
+        // Stored, positive tint adds green; the slider is green on its left
+        // (negative) end, so it shows the opposite sign.
+        assert_eq!(Adjustment::Tint.display_sign(), -1.0);
+        assert_eq!(crate::LocalProp::Tint.display_sign(), -1.0);
+        for adjustment in [Adjustment::Temperature, Adjustment::Exposure, Adjustment::Vibrance] {
+            assert_eq!(adjustment.display_sign(), 1.0);
         }
     }
 }

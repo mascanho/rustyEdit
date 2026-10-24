@@ -143,6 +143,15 @@ impl LocalProp {
         LocalProp::Sharpening,
     ];
 
+    /// The slider's value is the stored one times this (see
+    /// `Adjustment::display_sign`): a layer's tint reads like the global one.
+    pub fn display_sign(&self) -> f32 {
+        match self {
+            LocalProp::Tint => -1.0,
+            _ => 1.0,
+        }
+    }
+
     /// The `(min, max)` the slider spans.
     pub fn range(&self) -> (f32, f32) {
         (-100.0, 100.0)

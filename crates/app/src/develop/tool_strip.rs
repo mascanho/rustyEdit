@@ -32,6 +32,8 @@ pub(crate) enum PhotoTool {
     Radial,
     Brush,
     WhiteBalance,
+    /// Picks the brightness or colour a mask layer's range should select.
+    RangePicker,
 }
 
 impl PhotoTool {
@@ -42,7 +44,7 @@ impl PhotoTool {
             PhotoTool::Linear => Icon::LinearGradient,
             PhotoTool::Radial => Icon::RadialGradient,
             PhotoTool::Brush => Icon::Brush,
-            PhotoTool::WhiteBalance => Icon::Eyedropper,
+            PhotoTool::WhiteBalance | PhotoTool::RangePicker => Icon::Eyedropper,
         }
     }
 
@@ -54,6 +56,7 @@ impl PhotoTool {
             PhotoTool::Radial => "Radial gradient (Shift+M)",
             PhotoTool::Brush => "Brush mask: paint where to adjust (Alt erases)",
             PhotoTool::WhiteBalance => "White balance: click something neutral (W)",
+            PhotoTool::RangePicker => "Pick a range: click a tone or colour in the photo",
         }
     }
 
@@ -61,7 +64,9 @@ impl PhotoTool {
     fn section_key(&self) -> &'static str {
         match self {
             PhotoTool::Heal | PhotoTool::Clone => "develop-retouch",
-            PhotoTool::Linear | PhotoTool::Radial | PhotoTool::Brush => "develop-gradients",
+            PhotoTool::Linear | PhotoTool::Radial | PhotoTool::Brush | PhotoTool::RangePicker => {
+                "develop-gradients"
+            },
             PhotoTool::WhiteBalance => "develop-color",
         }
     }
@@ -95,6 +100,7 @@ impl Workspace {
             .tool
             .map(PhotoTool::from)
             .or(ui.gradients.tool.map(PhotoTool::from))
+            .or(ui.gradients.range_pick.map(|_| PhotoTool::RangePicker))
             .or(ui.wb_picker.then_some(PhotoTool::WhiteBalance))
     }
 
@@ -105,6 +111,7 @@ impl Workspace {
         let ui = &mut self.develop_ui;
         ui.retouch.tool = None;
         ui.gradients.tool = None;
+        ui.gradients.range_pick = None;
         ui.wb_picker = false;
         if picking {
             match tool {
@@ -114,6 +121,7 @@ impl Workspace {
                 PhotoTool::Radial => ui.gradients.tool = Some(GradientKind::Radial),
                 PhotoTool::Brush => ui.gradients.tool = Some(GradientKind::Brush),
                 PhotoTool::WhiteBalance => ui.wb_picker = true,
+                PhotoTool::RangePicker => ui.gradients.range_pick = ui.gradients.pending_pick.take(),
             }
             self.collapsed_sections.remove(tool.section_key());
         }

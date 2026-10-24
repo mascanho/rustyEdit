@@ -32,6 +32,12 @@ const DEFAULT_BRUSH_SIZE: f32 = 0.05;
 pub(crate) struct GradientUi {
     /// Radius of new brush dabs, as a fraction of the photo's long edge.
     pub(crate) brush_size: f32,
+    /// Paint the selected layer's mask over the photo in red.
+    pub(crate) show_mask: bool,
+    /// The range picker: which layer it sets and whether it picks the
+    /// colour (else the brightness). `pending_pick` carries it into the tool.
+    pub(crate) range_pick: Option<(usize, bool)>,
+    pub(crate) pending_pick: Option<(usize, bool)>,
     /// The kind clicks on the photo add; `None` leaves the photo alone.
     pub(crate) tool: Option<GradientKind>,
     pub(crate) selected: Option<usize>,
@@ -45,6 +51,9 @@ impl Default for GradientUi {
     fn default() -> Self {
         Self {
             brush_size: DEFAULT_BRUSH_SIZE,
+            show_mask: false,
+            range_pick: None,
+            pending_pick: None,
             tool: None,
             selected: None,
             drag: None,
@@ -445,6 +454,27 @@ impl Workspace {
             ))
             .child(invert)
             .into_any_element()];
+        rows.push(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .text_size(sp(11.0))
+                .text_color(theme.text_muted)
+                .child("Show mask")
+                .child(rustyedit_ui::mini_toggle_switch(
+                    ("gradient-show-mask", index),
+                    self.develop_ui.gradients.show_mask,
+                    &theme,
+                    cx.listener(|this, _: &ClickEvent, _w, cx| {
+                        let ui = &mut this.develop_ui.gradients;
+                        ui.show_mask = !ui.show_mask;
+                        cx.notify();
+                    }),
+                ))
+                .into_any_element(),
+        );
 
         {
             let entity = cx.entity();
@@ -512,7 +542,7 @@ impl Workspace {
                 rustyedit_ui::labeled_slider(
                     SharedString::from(format!("gradient-{index}-{}", prop.label())),
                     prop.label(),
-                    gradient.adjust.get(prop),
+                    gradient.adjust.get(prop) * prop.display_sign(),
                     SliderSpec {
                         min,
                         max,
@@ -524,7 +554,9 @@ impl Workspace {
                     move |value, _w, cx| {
                         entity.update(cx, |this, cx| {
                             let label = format!("Gradient {}", prop.label().to_lowercase());
-                            this.edit_gradient(index, &label, cx, |g| g.adjust.set(prop, value));
+                            this.edit_gradient(index, &label, cx, |g| {
+                                g.adjust.set(prop, value * prop.display_sign())
+                            });
                         });
                     },
                 )
@@ -731,11 +763,19 @@ impl Workspace {
             track: SliderTrack::Accent,
         };
         let mut rows = vec![div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
             .pt_2()
-            .text_size(sp(10.0))
-            .font_weight(gpui::FontWeight::BOLD)
-            .text_color(theme.text_faint)
-            .child("RANGE")
+            .child(
+                div()
+                    .text_size(sp(10.0))
+                    .font_weight(gpui::FontWeight::BOLD)
+                    .text_color(theme.text_faint)
+                    .child("RANGE"),
+            )
+            .child(self.range_picker_button(index, false, "Pick the brightness from the photo", cx))
             .into_any_element()];
         rows.push(self.gradient_slider(
             index,
@@ -782,7 +822,8 @@ impl Workspace {
                         .items_center()
                         .gap_2()
                         .child("Colour range")
-                        .child(div().size(sp(12.0)).rounded_sm().bg(wheel(gradient.hue, 0.8, 0.5))),
+                        .child(div().size(sp(12.0)).rounded_sm().bg(wheel(gradient.hue, 0.8, 0.5)))
+                        .child(self.range_picker_button(index, true, "Pick the colour from the photo", cx)),
                 )
                 .child(rustyedit_ui::mini_toggle_switch(
                     ("gradient-hue-on", index),
@@ -848,6 +889,192 @@ impl Workspace {
             ));
         }
         rows
+    }
+
+    /// A small eyedropper that sets layer `index`'s brightness range (or
+    /// colour range, with `hue`) from a click on the photo.
+    fn range_picker_button(
+        &self,
+        index: usize,
+        hue: bool,
+        tip: &'static str,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = self.theme;
+        let active = self.develop_ui.gradients.range_pick == Some((index, hue));
+        div()
+            .id(SharedString::from(format!("gradient-pick-{index}-{hue}")))
+            .flex()
+            .items_center()
+            .justify_center()
+            .size(sp(20.0))
+            .rounded_sm()
+            .cursor_pointer()
+            .when(active, |el| el.bg(theme.accent_muted))
+            .hover(|el| el.bg(theme.surface_elevated))
+            .tooltip(rustyedit_ui::tip(tip, &theme))
+            .child(rustyedit_ui::icon(
+                rustyedit_ui::Icon::Eyedropper,
+                13.0,
+                if active { theme.accent } else { theme.text_muted },
+            ))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                use super::tool_strip::PhotoTool;
+                if active {
+                    // Already picking this one: put the eyedropper down.
+                    this.toggle_photo_tool(PhotoTool::RangePicker, cx);
+                    return;
+                }
+                this.develop_ui.gradients.pending_pick = Some((index, hue));
+                // Picking the other target: put that down first, so the
+                // toggle below picks the eyedropper up again for this one.
+                if this.active_photo_tool() == Some(PhotoTool::RangePicker) {
+                    this.toggle_photo_tool(PhotoTool::RangePicker, cx);
+                }
+                this.toggle_photo_tool(PhotoTool::RangePicker, cx);
+            }))
+            .into_any_element()
+    }
+
+    /// While a range is being picked: a crosshair over the photo that
+    /// samples where it's clicked, and a hint at the top.
+    pub(super) fn render_range_pick_overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (index, hue) = self.develop_ui.gradients.range_pick?;
+        if self.develop_ui.zoom.space_held {
+            return None;
+        }
+        let theme = self.theme;
+        let what = if hue { "colour" } else { "brightness" };
+        Some(
+            div()
+                .id("range-pick-overlay")
+                .absolute()
+                .inset_0()
+                .cursor_crosshair()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, event: &MouseDownEvent, _w, cx| {
+                        cx.stop_propagation();
+                        this.range_pick_click(event.position, index, hue, cx);
+                    }),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .top(sp(8.0))
+                        .left_0()
+                        .right_0()
+                        .flex()
+                        .justify_center()
+                        .child(
+                            div()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap_1p5()
+                                .h(sp(24.0))
+                                .px_2()
+                                .rounded_md()
+                                .bg(theme.surface.opacity(0.9))
+                                .border_1()
+                                .border_color(theme.border)
+                                .text_size(sp(11.0))
+                                .text_color(theme.text)
+                                .child(rustyedit_ui::icon(rustyedit_ui::Icon::Eyedropper, 12.0, theme.accent))
+                                .child(format!("Click a {what} to select \u{00B7} Esc to cancel")),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
+    fn range_pick_click(
+        &mut self,
+        position: Point<Pixels>,
+        index: usize,
+        hue: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if self.develop_ui.auto_busy {
+            return;
+        }
+        let Some((rect, develop)) = self.gradient_space() else {
+            return;
+        };
+        if !rect.contains(&position) {
+            return;
+        }
+        let at = display_point(position, rect);
+        let Some(asset) = self.catalog.selected_asset() else {
+            return;
+        };
+        let id = asset.id;
+        let Some(source) = self
+            .source_image
+            .clone()
+            .filter(|_| self.source_image_for == Some(id))
+        else {
+            self.status_message = Some("Wait for the photo to finish loading.".into());
+            cx.notify();
+            return;
+        };
+        self.develop_ui.auto_busy = true;
+        cx.notify();
+        let work = cx.background_executor().spawn(async move {
+            rustyedit_processing::sample_colour(&source, &develop, at)
+        });
+        cx.spawn(async move |this, cx| {
+            let rgb = work.await;
+            this.update(cx, |this, cx| {
+                this.develop_ui.auto_busy = false;
+                if this.catalog.selected_asset().map(|a| a.id) != Some(id) {
+                    return;
+                }
+                let luma = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+                let (max, min) = (rgb[0].max(rgb[1]).max(rgb[2]), rgb[0].min(rgb[1]).min(rgb[2]));
+                let hue_degrees = {
+                    let d = max - min;
+                    if d < 1e-4 {
+                        None
+                    } else {
+                        let h = if max == rgb[0] {
+                            ((rgb[1] - rgb[2]) / d).rem_euclid(6.0)
+                        } else if max == rgb[1] {
+                            (rgb[2] - rgb[0]) / d + 2.0
+                        } else {
+                            (rgb[0] - rgb[1]) / d + 4.0
+                        };
+                        Some(h * 60.0)
+                    }
+                };
+                if hue && hue_degrees.is_none() {
+                    this.status_message = Some("That's grey: pick something with a colour.".into());
+                } else {
+                    this.edit_gradient(index, "Pick mask range", cx, |g| {
+                        if hue {
+                            g.hue_on = true;
+                            g.hue = hue_degrees.unwrap_or(g.hue);
+                        } else {
+                            g.luma_range = ((luma - 0.15).max(0.0), (luma + 0.15).min(1.0));
+                            // A range wholly of the extremes keeps its edge at the end.
+                            if g.luma_range.0 <= 0.02 {
+                                g.luma_range.0 = 0.0;
+                            }
+                            if g.luma_range.1 >= 0.98 {
+                                g.luma_range.1 = 1.0;
+                            }
+                        }
+                    });
+                }
+                // Done: put the eyedropper down.
+                if this.develop_ui.gradients.range_pick.is_some() {
+                    this.toggle_photo_tool(super::tool_strip::PhotoTool::RangePicker, cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Adds a Range layer: a mask that needs no dragging, starting on the

@@ -45,6 +45,7 @@ impl Workspace {
             },
         );
 
+        let upright = self.upright_row(cx);
         let perspective_spec = SliderSpec {
             min: -MAX_PERSPECTIVE,
             max: MAX_PERSPECTIVE,
@@ -70,6 +71,7 @@ impl Workspace {
         };
 
         vec![
+            upright,
             aspects.into_any_element(),
             straighten.into_any_element(),
             perspective("crop-vertical", "Vertical", crop.vertical, true),

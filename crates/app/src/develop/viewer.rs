@@ -84,6 +84,7 @@ impl Workspace {
                     .children(self.render_grid_overlay())
                     .children(self.render_retouch_overlay(cx))
                     .children(self.render_gradient_overlay(cx))
+                    .children(self.render_range_pick_overlay(cx))
                     .children(self.render_white_balance_overlay(cx))
                     .children(self.develop_split_overlay(cx)),
             )

@@ -373,7 +373,7 @@ impl Workspace {
         let settings = recipe.to_settings();
         let mut mapped: Vec<(&str, f32)> = vec![
             ("Temperature", settings.temperature),
-            ("Tint", settings.tint),
+            ("Tint", -settings.tint),
             ("Contrast", settings.contrast),
             ("Highlights", settings.highlights),
             ("Shadows", settings.shadows),
