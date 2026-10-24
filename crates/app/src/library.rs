@@ -52,7 +52,12 @@ impl Workspace {
                             LibraryView::Loupe => self.render_loupe(window, cx),
                             LibraryView::Grid => self.render_grid(window, cx),
                             LibraryView::Compare => self.render_compare(cx),
-                            LibraryView::Survey => self.render_survey(cx),
+                            LibraryView::Survey => {
+                                // Survey tiles show their photos' edits.
+                                let shown = self.survey_indices();
+                                self.ensure_edited_thumbnails(&shown, cx);
+                                self.render_survey(cx)
+                            }
                         })
                         .children(self.render_search_chip(cx))
                         .children(self.render_rename_chip(cx)),

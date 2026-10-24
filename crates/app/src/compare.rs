@@ -193,7 +193,7 @@ impl Workspace {
     // --- Survey --------------------------------------------------------------
 
     /// The photos the survey shows.
-    fn survey_indices(&self) -> Vec<usize> {
+    pub(crate) fn survey_indices(&self) -> Vec<usize> {
         let targets = self.target_indices();
         if targets.len() > 1 {
             return targets.into_iter().take(SURVEY_MAX).collect();
@@ -273,7 +273,9 @@ impl Workspace {
             .cursor_pointer()
             .child(
                 div().size_full().p_1().child(
-                    img(asset.display_source().to_path_buf())
+                    img(self
+                        .display_thumbnail(asset)
+                        .unwrap_or_else(|| asset.display_source().to_path_buf()))
                         .object_fit(ObjectFit::Contain)
                         .size_full(),
                 ),

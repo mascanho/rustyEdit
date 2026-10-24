@@ -196,12 +196,11 @@ impl Workspace {
         let selected = self.catalog.selected;
 
         self.clamp_filmstrip_scroll();
-        let prefs = &self.settings.filmstrip;
         let scroll_x = self.filmstrip_scroll_x;
         let viewport = self.filmstrip_viewport_width() as f64;
         // Show the same photos as the grid: filters and collapsed stacks
         // apply to the filmstrip too.
-        let visible = self.catalog.visible_indices();
+        let visible: Vec<usize> = self.catalog.visible_indices().to_vec();
         let count = visible.len();
         let offsets = self.film_offsets(&visible);
 
@@ -214,6 +213,10 @@ impl Workspace {
         let last =
             (offsets.partition_point(|&o| o < scroll_x + viewport) + OVERSCAN_FRAMES).min(count);
 
+        // Frames in view show their photo's edits, like the grid's cards.
+        let on_screen: Vec<usize> = (first..last).map(|ix| visible[ix]).collect();
+        self.ensure_edited_thumbnails(&on_screen, cx);
+        let prefs = &self.settings.filmstrip;
         let culls = self.cull_info();
         let frames: Vec<AnyElement> = (first..last)
             .map(|ix| {
@@ -224,6 +227,7 @@ impl Workspace {
                 film_frame(
                     asset_ix,
                     &self.catalog.assets[asset_ix],
+                    self.display_thumbnail(&self.catalog.assets[asset_ix]),
                     asset_ix == selected || self.in_selection(asset_ix),
                     &theme,
                     &look,
@@ -404,6 +408,7 @@ impl Workspace {
 fn film_frame(
     ix: usize,
     asset: &Asset,
+    thumbnail: Option<std::path::PathBuf>,
     is_selected: bool,
     theme: &Theme,
     look: &FilmLook,
@@ -418,7 +423,7 @@ fn film_frame(
         .color_label(asset.color_label)
         .filter(|_| prefs.show_color_labels);
 
-    let image: AnyElement = match asset.thumbnail_path.as_ref() {
+    let image: AnyElement = match thumbnail.as_ref() {
         Some(path) => img(path.clone())
             // Landscapes fill the frame with no gaps; portraits are shown
             // whole with black at the sides rather than zoomed in.

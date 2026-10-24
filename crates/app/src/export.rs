@@ -70,6 +70,9 @@ pub(crate) enum ItemStatus {
 struct Tile {
     id: u64,
     thumbnail: Option<PathBuf>,
+    /// The photo has a frame, so its whole picture is shown rather than
+    /// cropped to fill the tile.
+    framed: bool,
     /// File name the photo will be written as.
     name: String,
     dims: String,
@@ -245,7 +248,7 @@ impl Workspace {
             .then(|| self.settings.export.watermark.clone());
         let tiles = jobs
             .iter()
-            .map(|(n, asset)| preview_tile(asset, *n, &options))
+            .map(|(n, asset)| preview_tile(asset, self.export_thumbnail(asset), *n, &options))
             .collect();
         let status = Arc::new(Mutex::new(vec![ItemStatus::Pending; jobs.len()]));
         let cancel = Arc::new(AtomicBool::new(false));
@@ -687,11 +690,17 @@ impl Workspace {
                 None,
             ));
         } else {
+            // Tiles show their photo's edits and frame.
+            let shown: Vec<usize> = selected_indices.iter().copied().take(MAX_TILES).collect();
+            self.ensure_export_thumbnails(&shown, cx);
             let tiles: Vec<Tile> = selected_indices
                 .iter()
                 .enumerate()
                 .take(MAX_TILES)
-                .map(|(n, &ix)| preview_tile(&self.catalog.assets[ix], n, &options))
+                .map(|(n, &ix)| {
+                    let asset = &self.catalog.assets[ix];
+                    preview_tile(asset, self.export_thumbnail(asset), n, &options)
+                })
                 .collect();
             top.push(self.preview_card(&options, count, &destination_text, cx));
             bottom.push(self.queue_bar(count, cx));
@@ -1355,7 +1364,7 @@ fn tile_view(
         // Landscapes fill the frame; portraits are shown whole with black
         // at the sides.
         Some(path) => img(path.clone())
-            .object_fit(if crate::filmstrip::thumb_is_portrait_of(path, (0, 0)) {
+            .object_fit(if tile.framed || crate::filmstrip::thumb_is_portrait_of(path, (0, 0)) {
                 ObjectFit::Contain
             } else {
                 ObjectFit::Cover
@@ -1561,7 +1570,12 @@ fn tile_view(
         .into_any_element()
 }
 
-fn preview_tile(asset: &Asset, index: usize, options: &ExportOptions) -> Tile {
+fn preview_tile(
+    asset: &Asset,
+    thumbnail: Option<PathBuf>,
+    index: usize,
+    options: &ExportOptions,
+) -> Tile {
     let name = format!(
         "{}.{}",
         options.naming.stem(asset, index),
@@ -1575,7 +1589,8 @@ fn preview_tile(asset: &Asset, index: usize, options: &ExportOptions) -> Tile {
     };
     Tile {
         id: asset.id,
-        thumbnail: asset.thumbnail_path.clone(),
+        thumbnail,
+        framed: asset.develop.effective().frame.is_active(),
         name,
         dims,
     }
