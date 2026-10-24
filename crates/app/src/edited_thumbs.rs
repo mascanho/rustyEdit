@@ -5,8 +5,8 @@
 //! their settings so it is redone whenever the edits change.
 
 use std::{
+    cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
-    hash::{Hash, Hasher},
     path::PathBuf,
 };
 
@@ -27,6 +27,49 @@ pub(crate) struct EditedThumbs {
     pending: HashSet<(u64, u64)>,
     queue: Vec<Job>,
     busy: bool,
+    /// What each photo's settings were when they were last given a version
+    /// number (see [`EditedThumbs::version`]).
+    versions: RefCell<HashMap<(u64, bool), Seen>>,
+    next_version: Cell<u64>,
+}
+
+/// The settings a version number was given to.
+struct Seen {
+    settings: DevelopSettings,
+    frame: Option<FrameSettings>,
+    version: u64,
+}
+
+impl EditedThumbs {
+    /// A number that stands for `settings` (and `frame`) of photo `id`: the
+    /// same while they stay the same, a new one once they change. Drawing
+    /// asks this for every card on screen every frame, so it compares the
+    /// settings with the last ones seen instead of fingerprinting them.
+    fn version(
+        &self,
+        id: u64,
+        framed: bool,
+        settings: &DevelopSettings,
+        frame: Option<&FrameSettings>,
+    ) -> u64 {
+        let mut seen = self.versions.borrow_mut();
+        if let Some(entry) = seen.get(&(id, framed)) {
+            if entry.settings == *settings && entry.frame.as_ref() == frame {
+                return entry.version;
+            }
+        }
+        let version = self.next_version.get() + 1;
+        self.next_version.set(version);
+        seen.insert(
+            (id, framed),
+            Seen {
+                settings: *settings,
+                frame: frame.copied(),
+                version,
+            },
+        );
+        version
+    }
 }
 
 struct Job {
@@ -36,20 +79,6 @@ struct Job {
     settings: DevelopSettings,
     /// Draw this frame around the render.
     frame: Option<FrameSettings>,
-}
-
-/// A fingerprint of the edits; equal settings give equal fingerprints.
-fn stamp(settings: &DevelopSettings) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{settings:?}").hash(&mut hasher);
-    hasher.finish()
-}
-
-/// [`stamp`] for the framed variant.
-fn framed_stamp(settings: &DevelopSettings, frame: &FrameSettings) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{settings:?}{frame:?}").hash(&mut hasher);
-    hasher.finish()
 }
 
 fn cache_dir() -> PathBuf {
@@ -81,9 +110,10 @@ impl Workspace {
     /// The thumbnail the grid should show for `asset`: its edited render
     /// when one is ready for its current settings, else the plain one.
     pub(crate) fn display_thumbnail(&self, asset: &Asset) -> Option<PathBuf> {
-        if thumbnail_settings(asset).is_edited() {
+        let settings = thumbnail_settings(asset);
+        if settings.is_edited() {
             if let Some((done_stamp, path)) = self.edited_thumbs.done.get(&asset.id) {
-                if *done_stamp == stamp(&thumbnail_settings(asset)) {
+                if *done_stamp == self.edited_thumbs.version(asset.id, false, &settings, None) {
                     return Some(path.clone());
                 }
             }
@@ -95,7 +125,12 @@ impl Workspace {
     /// photo's frame drawn around it once that's ready.
     pub(crate) fn export_thumbnail(&self, asset: &Asset) -> Option<PathBuf> {
         if let Some(frame) = thumbnail_frame(asset) {
-            let wanted = framed_stamp(&thumbnail_settings(asset), &frame);
+            let wanted = self.edited_thumbs.version(
+                asset.id,
+                true,
+                &thumbnail_settings(asset),
+                Some(&frame),
+            );
             if let Some((done_stamp, path)) = self.edited_thumbs.framed.get(&asset.id) {
                 if *done_stamp == wanted {
                     return Some(path.clone());
@@ -136,10 +171,11 @@ impl Workspace {
             // The plain edit, then (for the Export tiles) the framed one.
             let mut wanted: Vec<(u64, Option<FrameSettings>)> = Vec::new();
             if settings.is_edited() {
-                wanted.push((stamp(&settings), None));
+                wanted.push((self.edited_thumbs.version(asset.id, false, &settings, None), None));
             }
             if let Some(frame) = frame {
-                wanted.push((framed_stamp(&settings, &frame), Some(frame)));
+                let s = self.edited_thumbs.version(asset.id, true, &settings, Some(&frame));
+                wanted.push((s, Some(frame)));
             }
             for (s, frame) in wanted {
                 let done = if frame.is_some() {
@@ -214,5 +250,50 @@ impl Workspace {
             .ok();
         })
         .detach();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_version_changes_only_when_the_settings_do() {
+        let thumbs = EditedThumbs::default();
+        let mut settings = DevelopSettings::default();
+        settings.exposure = 10.0;
+        let a = thumbs.version(1, false, &settings, None);
+        assert_eq!(a, thumbs.version(1, false, &settings, None));
+        settings.exposure = 20.0;
+        let b = thumbs.version(1, false, &settings, None);
+        assert_ne!(a, b);
+        // Another photo, and the framed variant, have their own.
+        assert_ne!(b, thumbs.version(2, false, &settings, None));
+        let frame = rustyedit_core::FrameStyle::Matte.defaults();
+        let framed = thumbs.version(1, true, &settings, Some(&frame));
+        assert_eq!(framed, thumbs.version(1, true, &settings, Some(&frame)));
+        let mut other = frame;
+        other.size = 50.0;
+        assert_ne!(framed, thumbs.version(1, true, &settings, Some(&other)));
+    }
+
+    /// The point of versions: asking is far cheaper than fingerprinting.
+    #[test]
+    #[ignore = "timing: cargo test -p rustyedit --release -- --ignored --nocapture"]
+    fn asking_for_a_version_is_cheap() {
+        let thumbs = EditedThumbs::default();
+        let mut settings = DevelopSettings::default();
+        settings.exposure = 10.0;
+        thumbs.version(1, false, &settings, None);
+        let t = std::time::Instant::now();
+        for _ in 0..10_000 {
+            std::hint::black_box(thumbs.version(1, false, &settings, None));
+        }
+        let versions = t.elapsed();
+        let t = std::time::Instant::now();
+        for _ in 0..10_000 {
+            std::hint::black_box(format!("{settings:?}").len());
+        }
+        eprintln!("version: {versions:?}, formatting: {:?} (10k calls)", t.elapsed());
     }
 }

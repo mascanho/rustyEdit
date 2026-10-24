@@ -149,7 +149,10 @@ impl Default for DevelopSettings {
 impl DevelopSettings {
     /// Whether any adjustment differs from the neutral default.
     pub fn is_edited(&self) -> bool {
-        *self != Self::default()
+        // Asked of every photo on screen every frame: build the defaults
+        // once, not each time.
+        static NEUTRAL: std::sync::OnceLock<DevelopSettings> = std::sync::OnceLock::new();
+        self != NEUTRAL.get_or_init(Self::default)
     }
 
     pub fn reset(&mut self) {
