@@ -120,13 +120,14 @@ impl Workspace {
         let Some(asset) = self.catalog.selected_asset() else {
             return FrameSettings::default();
         };
-        let frame = asset.develop.effective().frame;
+        // What's rendered: the photo's settings, or the hovered preset's
+        // preview of them (which keep the photo's frame, so the preview
+        // stays inside it).
+        let frame = self.preview_override.unwrap_or(asset.develop).effective().frame;
         if self.mode == Mode::Develop
             && frame.is_active()
             && self.active_photo_tool().is_none()
             && self.develop_ui.zoom.scale.is_none()
-            // A hovered preset is previewed bare.
-            && self.preview_override.is_none()
         {
             frame
         } else {

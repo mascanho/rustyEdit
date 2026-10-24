@@ -381,6 +381,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn applying_a_preset_keeps_the_photos_frame() {
+        let mut photo = Asset::new(0, "a.jpg".into());
+        photo.develop.frame = crate::FrameStyle::Polaroid.defaults();
+        let look = DevelopSettings {
+            exposure: 30.0,
+            ..Default::default()
+        };
+        photo.apply_preset("Bright", &look, &crate::DevelopSection::LOOK, 1.0);
+        assert_eq!(photo.develop.exposure, 30.0);
+        assert_eq!(photo.develop.frame, crate::FrameStyle::Polaroid.defaults());
+    }
+
+    #[test]
     fn a_new_preset_replaces_the_previous_one_completely() {
         let mut photo = Asset::new(0, PathBuf::from("a.jpg"));
         photo.develop.exposure = 10.0;
