@@ -18,10 +18,11 @@ pub enum DevelopSection {
     Gradients,
     Crop,
     Lens,
+    Frames,
 }
 
 impl DevelopSection {
-    pub const ALL: [DevelopSection; 11] = [
+    pub const ALL: [DevelopSection; 12] = [
         DevelopSection::Crop,
         DevelopSection::Retouch,
         DevelopSection::Gradients,
@@ -33,6 +34,7 @@ impl DevelopSection {
         DevelopSection::Detail,
         DevelopSection::Effects,
         DevelopSection::Lens,
+        DevelopSection::Frames,
     ];
 
     pub fn label(&self) -> &'static str {
@@ -48,6 +50,7 @@ impl DevelopSection {
             DevelopSection::Detail => "Detail",
             DevelopSection::Effects => "Effects",
             DevelopSection::Lens => "Lens Corrections",
+            DevelopSection::Frames => "Frames",
         }
     }
 
@@ -65,6 +68,7 @@ impl DevelopSection {
             DevelopSection::Retouch => "retouch",
             DevelopSection::Gradients => "gradients",
             DevelopSection::Lens => "lens",
+            DevelopSection::Frames => "frames",
         }
     }
 
@@ -171,6 +175,7 @@ impl DevelopSection {
                 to.noise_luma = from.noise_luma;
                 to.noise_color = from.noise_color;
             }
+            DevelopSection::Frames => to.frame = from.frame,
             DevelopSection::Lens => {
                 to.lens_distortion = from.lens_distortion;
                 to.lens_vignetting = from.lens_vignetting;

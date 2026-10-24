@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     crop::Crop,
     curves::ToneCurves,
+    frame::FrameSettings,
     parametric::ParametricCurve,
     gradients::Gradients,
     retouch::Spots,
@@ -92,6 +93,9 @@ pub struct DevelopSettings {
     pub flip_horizontal: bool,
     pub flip_vertical: bool,
 
+    /// A border drawn around the finished photo.
+    pub frame: FrameSettings,
+
     /// Sections switched off in the panel, one bit per
     /// [`crate::DevelopSection`]: their values are kept but not applied
     /// (see [`DevelopSettings::effective`]).
@@ -136,6 +140,7 @@ impl Default for DevelopSettings {
             rotation_degrees: 0.0,
             flip_horizontal: false,
             flip_vertical: false,
+            frame: FrameSettings::default(),
             disabled_sections: 0,
         }
     }
@@ -159,6 +164,7 @@ impl DevelopSettings {
             rotation_degrees: self.rotation_degrees,
             flip_horizontal: self.flip_horizontal,
             flip_vertical: self.flip_vertical,
+            frame: self.frame,
             ..*look
         }
     }

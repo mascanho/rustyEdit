@@ -15,6 +15,7 @@ mod duplicates;
 mod export;
 mod fuji_recipe;
 mod filters;
+mod frame;
 mod flag;
 mod gradients;
 mod grading;
@@ -53,6 +54,7 @@ pub use export::{
 };
 pub use filters::{FilterSet, FocalBand, IsoBand};
 pub use flag::Flag;
+pub use frame::{FrameSettings, FrameStyle, FRAME_GROUPS};
 pub use gradients::{Dab, PackedDab, Gradient, GradientKind, DAB_SPACING, MAX_DABS, Gradients, LocalAdjust, LocalProp, MAX_GRADIENTS};
 pub use grading::{ColorGrading, Grade, GradeProp, ToneZone};
 pub use histogram::{

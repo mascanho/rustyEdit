@@ -1674,14 +1674,23 @@ fn render_to(
     let deep = options.bit_depth == ExportBitDepth::Sixteen
         && matches!(options.format, ExportFormat::Png | ExportFormat::Tiff)
         && watermark.is_none();
+    // A frame grows the picture, so the photo is fitted a little smaller to
+    // leave the whole within the size chosen.
+    let frame = asset.develop.effective().frame;
     if deep {
-        let image = rustyedit_processing::render_export16(
+        let mut image = rustyedit_processing::render_export16(
             &source,
             &asset.develop,
             options.size.0,
             options.sharpen.params(),
             &space,
         );
+        if frame.is_active() {
+            if let Some((w, h)) = fit_for_frame(image.dimensions(), &frame, options.size.0) {
+                image = image::imageops::resize(&image, w, h, image::imageops::FilterType::Lanczos3);
+            }
+            image = rustyedit_processing::frame_rgb16(&image, &frame);
+        }
         return write_deep(image, options, &space, file);
     }
     let mut rgb = rustyedit_processing::render_export(
@@ -1691,6 +1700,12 @@ fn render_to(
         options.sharpen.params(),
         &space,
     );
+    if frame.is_active() {
+        if let Some((w, h)) = fit_for_frame(rgb.dimensions(), &frame, options.size.0) {
+            rgb = image::imageops::resize(&rgb, w, h, image::imageops::FilterType::Lanczos3);
+        }
+        rgb = rustyedit_processing::frame_rgb8(&rgb, &frame);
+    }
     if let Some(watermark) = watermark {
         rustyedit_processing::apply_watermark(&mut rgb, watermark);
     }
@@ -1738,6 +1753,27 @@ fn render_to(
         .into_inner()
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     Ok(file.metadata()?.len())
+}
+
+/// The size to shrink a `photo`-sized picture to so that, once `frame` is
+/// drawn around it, the whole fits within `long_edge` (if one was chosen).
+/// `None` when it already does.
+fn fit_for_frame(
+    photo: (u32, u32),
+    frame: &rustyedit_core::FrameSettings,
+    long_edge: Option<u32>,
+) -> Option<(u32, u32)> {
+    let edge = long_edge?;
+    let (fw, fh) = rustyedit_processing::framed_size(photo.0, photo.1, frame);
+    let long = fw.max(fh);
+    if long <= edge {
+        return None;
+    }
+    let k = edge as f64 / long as f64;
+    Some((
+        ((photo.0 as f64 * k).round() as u32).max(1),
+        ((photo.1 as f64 * k).round() as u32).max(1),
+    ))
 }
 
 /// Writes a 16-bit PNG or TIFF, tagged with the colour space's profile.

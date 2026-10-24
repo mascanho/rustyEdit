@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use gpui::{Context, RenderImage, Window};
 use image::{Frame, RgbaImage};
-use rustyedit_core::DevelopSettings;
+use rustyedit_core::{DevelopSettings, FrameSettings};
 use rustyedit_processing::ClipWarnings;
 
 use crate::workspace::Workspace;
@@ -29,6 +29,8 @@ pub(crate) struct LivePreview {
     /// Before / After; `before_key` says which photo and geometry it is for.
     before: Option<Arc<RenderImage>>,
     before_key: Option<(u64, DevelopSettings)>,
+    /// The frame the current image has drawn around it (none if unframed).
+    shown_frame: FrameSettings,
     /// A render is running on the background executor.
     busy: bool,
     /// Adjustments changed while busy; render again when it finishes.
@@ -64,10 +66,11 @@ impl LivePreview {
     }
 
     /// Swaps in a freshly rendered frame, retiring the one it replaces.
-    fn show(&mut self, image: Arc<RenderImage>) {
+    fn show(&mut self, image: Arc<RenderImage>, frame: FrameSettings) {
         if let Some(old) = self.image.replace(image) {
             self.retire(old);
         }
+        self.shown_frame = frame;
     }
 
     /// Forgets the current frame (another photo was selected, caches were
@@ -81,6 +84,7 @@ impl LivePreview {
             self.retire(old);
         }
         self.before_key = None;
+        self.shown_frame = FrameSettings::default();
     }
 
     /// Frees the GPU memory of retired frames. Call once per render.
@@ -107,6 +111,41 @@ impl LivePreview {
 }
 
 impl Workspace {
+    /// The frame the Develop viewer should show around the photo right now.
+    /// Editing tools and the zoomed-in view work on the bare photo (their
+    /// overlays and detail renders are measured against it), so the frame
+    /// steps aside for them.
+    pub(crate) fn frame_in_view(&self) -> FrameSettings {
+        use crate::workspace::Mode;
+        let Some(asset) = self.catalog.selected_asset() else {
+            return FrameSettings::default();
+        };
+        let frame = asset.develop.effective().frame;
+        if self.mode == Mode::Develop
+            && frame.is_active()
+            && self.active_photo_tool().is_none()
+            && self.develop_ui.zoom.scale.is_none()
+            // A hovered preset is previewed bare.
+            && self.preview_override.is_none()
+        {
+            frame
+        } else {
+            FrameSettings::default()
+        }
+    }
+
+    /// Re-renders the preview when the frame that ought to be around it
+    /// isn't (a tool was picked, or the view zoomed). Called as the window
+    /// is drawn.
+    pub(crate) fn sync_frame_preview(&mut self, cx: &mut Context<Self>) {
+        if self.live_preview.image().is_none() || !self.wants_live_preview() {
+            return;
+        }
+        if self.frame_in_view() != self.live_preview.shown_frame {
+            self.request_preview_update(cx);
+        }
+    }
+
     /// Whether something on screen shows the selected photo rendered with
     /// its edits: Develop, Before / After, the Library's Presets panel, or
     /// the Library loupe for an edited photo.
@@ -169,7 +208,9 @@ impl Workspace {
         };
         // The before image only depends on the photo and its geometry, so it
         // is rendered once, not on every slider step.
+        let frame = self.frame_in_view();
         let geometry = DevelopSettings {
+            frame,
             crop: settings.crop,
             rotation_degrees: settings.rotation_degrees,
             flip_horizontal: settings.flip_horizontal,
@@ -186,11 +227,15 @@ impl Workspace {
         // The frame, its clipping warnings and the histogram all come
         // from one GPU pass (or the CPU fallback); nothing per-pixel is
         // left to do here.
+        let framing = frame;
         let render = cx.background_executor().spawn(async move {
             let mut frame = rustyedit_processing::render_preview(&source, &settings, clipping);
             // Soft proof (and the gamut warning) on top of the frame.
             if let Some(proof) = &proof {
                 rustyedit_processing::apply_proof(&mut frame.bgra, proof);
+            }
+            if framing.is_active() {
+                frame.bgra = rustyedit_processing::frame_bgra(&frame.bgra, &framing);
             }
             let before = need_before.then(|| {
                 let mut plain = rustyedit_processing::render_preview(
@@ -200,6 +245,9 @@ impl Workspace {
                 );
                 if let Some(proof) = &proof {
                     rustyedit_processing::apply_proof(&mut plain.bgra, proof);
+                }
+                if framing.is_active() {
+                    plain.bgra = rustyedit_processing::frame_bgra(&plain.bgra, &framing);
                 }
                 to_render_image(plain.bgra)
             });
@@ -213,7 +261,7 @@ impl Workspace {
                 // A render for a photo that's no longer selected is dropped
                 // without ever reaching the GPU.
                 if this.preview_epoch == epoch {
-                    this.live_preview.show(image);
+                    this.live_preview.show(image, framing);
                     if let Some(before) = before {
                         this.live_preview.show_before(before, before_key);
                     }

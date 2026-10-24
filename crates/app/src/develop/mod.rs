@@ -27,6 +27,7 @@ mod color_grading;
 mod color_mixer;
 mod crop;
 mod curve_editor;
+mod frames;
 mod detail;
 mod gradients;
 mod grid_overlay;
@@ -87,6 +88,8 @@ pub(crate) struct DevelopUi {
     pub(crate) grid_overlay: grid_overlay::GridOverlay,
     pub(crate) grid_orientation: u8,
     pub(crate) grid_menu_open: bool,
+    /// The Frames section's style list is open.
+    pub(crate) frame_picker_open: bool,
     pub(crate) ba_menu_open: bool,
     /// The tone curve channel being edited.
     pub(crate) curve_channel: CurveChannel,
@@ -124,6 +127,7 @@ impl DevelopUi {
             grid_overlay: grid_overlay::GridOverlay::Off,
             grid_orientation: 0,
             grid_menu_open: false,
+            frame_picker_open: false,
             ba_menu_open: false,
             curve_channel: CurveChannel::default(),
             curve_parametric: false,
@@ -260,6 +264,7 @@ impl Workspace {
             S::ColorGrading => ("develop-grading", self.color_grading_section(cx)),
             S::Detail => ("develop-detail", self.detail_section(cx)),
             S::Lens => ("develop-lens", self.lens_section(cx)),
+            S::Frames => ("develop-frames", self.frames_section(cx)),
             S::Effects => (
                 "develop-effects",
                 self.adjustment_sliders(&Adjustment::EFFECTS, cx),

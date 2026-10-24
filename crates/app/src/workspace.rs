@@ -1058,6 +1058,7 @@ impl Render for Workspace {
         // Replaced Develop preview frames are no longer drawn; free their
         // GPU memory before this frame paints.
         self.live_preview.release_retired(window);
+        self.sync_frame_preview(cx);
         self.pixel_ratio.set(window.scale_factor());
         // New status messages pop up as notifications.
         self.sync_toasts(cx);
