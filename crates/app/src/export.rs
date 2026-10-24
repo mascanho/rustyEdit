@@ -1014,7 +1014,7 @@ impl Workspace {
             })
             .into_iter()
             .collect();
-        rustyedit_ui::disclosure_section_with(
+        let card = rustyedit_ui::disclosure_section_with(
             key,
             &theme,
             title,
@@ -1030,8 +1030,9 @@ impl Workspace {
                 dimmed: false,
             },
             children,
-        )
-        .into_any_element()
+        );
+        // The shared section draws the card outline.
+        card.into_any_element()
     }
 
     /// Where the photos go: the folder's name large, its parent below, and

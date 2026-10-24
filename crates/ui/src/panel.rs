@@ -137,10 +137,18 @@ pub fn disclosure_section_with(
     let SectionExtras { trailing, dimmed } = extras;
     let has_trailing = !trailing.is_empty();
 
+    // Each collapsible section is a card: a thin, quiet outline with a
+    // little air around it, so sections read as separate blocks. (Plain
+    // `section`s nest inside these, so they stay unframed.)
     div()
         .flex()
         .flex_col()
-        .w_full()
+        .mx_1p5()
+        .my_0p5()
+        .rounded_md()
+        .overflow_hidden()
+        .border_1()
+        .border_color(theme.border_subtle)
         .child(
             section_header(&theme, title.into(), Some(expanded))
                 .id(id)
