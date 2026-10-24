@@ -79,7 +79,7 @@ pub fn cull_group(theme: &Theme, children: Vec<AnyElement>) -> impl IntoElement 
 /// with a tint of `color`; otherwise it only lights up on hover.
 pub fn cull_button(
     id: impl Into<ElementId>,
-    glyph: impl Into<SharedString>,
+    glyph: impl IntoElement,
     label: impl Into<SharedString>,
     tooltip: impl Into<SharedString>,
     color: Hsla,
@@ -111,7 +111,7 @@ pub fn cull_button(
                 .border_color(gpui::transparent_black())
                 .hover(|el| el.bg(theme.surface_elevated).text_color(color))
         })
-        .child(div().text_size(sp(14.0)).child(glyph.into()))
+        .child(div().text_size(sp(14.0)).child(glyph))
         .child(label.into())
         .tooltip(crate::tooltip::tip(tooltip, &theme))
         .on_click(on_click)

@@ -7,7 +7,7 @@ use gpui::{
     canvas, div, img, prelude::*, px, AnyElement, Context, MouseButton, MouseDownEvent, ObjectFit,
     Pixels, Point,
 };
-use rustyedit_ui::sp;
+use rustyedit_ui::{sp, Theme};
 
 use crate::workspace::Workspace;
 
@@ -20,6 +20,33 @@ use crate::workspace::Workspace;
 pub(crate) const NAVIGATOR_MAX_HEIGHT: f32 = 180.0;
 /// Horizontal room the dock's padding takes from its width.
 pub(crate) const NAVIGATOR_PADDING: f32 = 24.0;
+
+/// The Navigator's picture area: always the same height, with the picture
+/// centred in it (or a note when there is none), so what's below never
+/// moves when the photo changes shape or there is no photo at all.
+pub(crate) fn navigator_slot(
+    theme: &Theme,
+    picture: Option<AnyElement>,
+    empty: &'static str,
+) -> AnyElement {
+    div()
+        .w_full()
+        .h(px(NAVIGATOR_MAX_HEIGHT))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .bg(theme.background.opacity(0.45))
+        .child(match picture {
+            Some(picture) => picture,
+            None => div()
+                .text_xs()
+                .text_color(theme.text_faint)
+                .child(empty)
+                .into_any_element(),
+        })
+        .into_any_element()
+}
 
 /// The Navigator picture's size for a photo of `w` x `h` in a dock
 /// `dock_width` wide: as wide as the dock allows, no taller than
@@ -64,12 +91,7 @@ impl Workspace {
                 .flex()
                 .flex_col()
                 .child(header)
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(theme.text_faint)
-                        .child("No photo"),
-                )
+                .child(navigator_slot(&theme, None, "No photo"))
                 .into_any_element();
         };
 
@@ -115,21 +137,11 @@ impl Workspace {
                 }),
             );
 
-        let caption = div()
-            .pt_1()
-            .text_size(sp(9.5))
-            .text_color(theme.text_faint)
-            .text_center()
-            .child(match self.develop_ui.zoom.scale {
-                None => "",
-                Some(_) => "Drag the frame to move around",
-            });
-
         div()
             .flex()
             .flex_col()
             .child(header)
-            .child(picture)
+            .child(navigator_slot(&theme, Some(picture.into_any_element()), ""))
             .into_any_element()
     }
 

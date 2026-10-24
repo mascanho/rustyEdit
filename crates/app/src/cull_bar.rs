@@ -93,7 +93,7 @@ impl Workspace {
                     "Reject",
                     "\u{2715}",
                     "X",
-                    theme.reject,
+                    theme.text,
                 ),
                 flag_button(
                     "cull-pick",
@@ -101,7 +101,7 @@ impl Workspace {
                     "Pick",
                     "\u{2691}",
                     "P",
-                    theme.pick,
+                    theme.text,
                 ),
                 {
                     // Queue for deletion from disk; nothing is deleted until
@@ -109,10 +109,10 @@ impl Workspace {
                     let entity = cx.entity();
                     rustyedit_ui::cull_button(
                         "cull-mark-delete",
-                        "\u{2326}",
+                        rustyedit_ui::icon(rustyedit_ui::Icon::Trash, 14.0, theme.text),
                         "Delete",
                         "Mark for deletion from disk (asks before deleting)",
-                        theme.danger,
+                        theme.text,
                         marked,
                         &theme,
                         move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {

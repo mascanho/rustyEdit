@@ -49,8 +49,28 @@ impl Workspace {
         (self.settings.layout.filmstrip_height as f32).clamp(FILM_PICTURE_MIN, FILM_PICTURE_MAX)
     }
 
+    /// Width of a frame for a standard 3:2 photo.
     fn film_frame_width(&self) -> f32 {
         (self.film_picture_height() * FRAME_ASPECT).round()
+    }
+
+    /// Every frame is the same width, whatever the photo's shape: a
+    /// portrait sits centred in a frame as wide as a landscape's.
+    fn film_frame_width_for(&self, _asset: &Asset) -> f32 {
+        self.film_frame_width()
+    }
+
+    /// Where each visible frame starts along the roll (and, last, where
+    /// the roll ends).
+    fn film_offsets(&self, visible: &[usize]) -> Vec<f64> {
+        let mut offsets = Vec::with_capacity(visible.len() + 1);
+        let mut x = 0.0f64;
+        offsets.push(x);
+        for &ix in visible {
+            x += self.film_frame_width_for(&self.catalog.assets[ix]) as f64;
+            offsets.push(x);
+        }
+        offsets
     }
 
     /// Height of the roll (excluding the header).
@@ -179,25 +199,28 @@ impl Workspace {
         let prefs = &self.settings.filmstrip;
         let scroll_x = self.filmstrip_scroll_x;
         let viewport = self.filmstrip_viewport_width() as f64;
-        let frame_px = self.film_frame_width();
-        let frame_width = frame_px as f64;
         // Show the same photos as the grid: filters and collapsed stacks
         // apply to the filmstrip too.
         let visible = self.catalog.visible_indices();
         let count = visible.len();
+        let offsets = self.film_offsets(&visible);
 
-        let first = ((scroll_x / frame_width).floor() as usize)
+        // The frames in view, plus a few either side.
+        let first = offsets
+            .partition_point(|&o| o <= scroll_x)
+            .saturating_sub(1)
             .saturating_sub(OVERSCAN_FRAMES)
             .min(count);
-        let last =
-            (((scroll_x + viewport) / frame_width).ceil() as usize + OVERSCAN_FRAMES).min(count);
+        let last = (offsets.partition_point(|&o| o < scroll_x + viewport) + OVERSCAN_FRAMES)
+            .min(count);
 
         let culls = self.cull_info();
         let frames: Vec<AnyElement> = (first..last)
             .map(|ix| {
                 let entity = entity.clone();
                 let asset_ix = visible[ix];
-                let left = (ix as f64 * frame_width - scroll_x) as f32;
+                let left = (offsets[ix] - scroll_x) as f32;
+                let frame_px = (offsets[ix + 1] - offsets[ix]) as f32;
                 film_frame(
                     asset_ix,
                     &self.catalog.assets[asset_ix],
@@ -295,7 +318,8 @@ impl Workspace {
     }
 
     fn filmstrip_max_scroll(&self) -> f64 {
-        let content = self.catalog.visible_indices().len() as f64 * self.film_frame_width() as f64;
+        let visible = self.catalog.visible_indices();
+        let content = self.film_offsets(&visible).last().copied().unwrap_or(0.0);
         (content - self.filmstrip_viewport_width() as f64).max(0.0)
     }
 
@@ -310,10 +334,12 @@ impl Workspace {
         let Some(position) = self.catalog.visible_position(ix) else {
             return;
         };
-        let frame_width = self.film_frame_width() as f64;
         let viewport = self.filmstrip_viewport_width() as f64;
-        let left = position as f64 * frame_width;
-        let right = left + frame_width;
+        let visible = self.catalog.visible_indices();
+        let offsets = self.film_offsets(&visible);
+        let (Some(&left), Some(&right)) = (offsets.get(position), offsets.get(position + 1)) else {
+            return;
+        };
 
         if left < self.filmstrip_scroll_x {
             self.filmstrip_scroll_x = left;
@@ -394,7 +420,7 @@ fn film_frame(
 
     let image: AnyElement = match asset.thumbnail_path.as_ref() {
         Some(path) => img(path.clone())
-            .object_fit(ObjectFit::Cover)
+            .object_fit(ObjectFit::Contain)
             .grayscale(look.monochrome)
             .size_full()
             .into_any_element(),

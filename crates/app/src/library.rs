@@ -693,12 +693,7 @@ impl Workspace {
             return div()
                 .px_1()
                 .child(header(String::new()))
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(theme.text_faint)
-                        .child("No photo selected"),
-                )
+                .child(crate::develop::navigator_slot(&theme, None, "No photo selected"))
                 .into_any_element();
         };
 
@@ -730,16 +725,20 @@ impl Workspace {
             .flex_col()
             .px_1()
             .child(header(asset.file_name()))
-            .child(
-                div()
-                    .w(px(width))
-                    .h(px(height))
-                    .mx_auto()
-                    .overflow_hidden()
-                    .rounded_sm()
-                    .bg(theme.background)
-                    .child(img(source).object_fit(ObjectFit::Contain).size_full()),
-            )
+            .child(crate::develop::navigator_slot(
+                &theme,
+                Some(
+                    div()
+                        .w(px(width))
+                        .h(px(height))
+                        .overflow_hidden()
+                        .rounded_sm()
+                        .bg(theme.background)
+                        .child(img(source).object_fit(ObjectFit::Contain).size_full())
+                        .into_any_element(),
+                ),
+                "",
+            ))
             .into_any_element()
     }
 

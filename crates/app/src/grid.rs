@@ -616,14 +616,14 @@ fn card_controls(asset_ix: usize, entity: &Entity<Workspace>, theme: &Theme) -> 
                     "grid-pick",
                     "\u{2691}",
                     "Pick (P)",
-                    theme.pick,
+                    theme.text,
                     |this, cx| this.apply_cull(CullOp::Flag(Flag::Picked), cx),
                 ))
                 .child(button(
                     "grid-reject",
                     "\u{2715}",
                     "Reject (X)",
-                    theme.reject,
+                    theme.text,
                     |this, cx| this.apply_cull(CullOp::Flag(Flag::Rejected), cx),
                 )),
         )
@@ -631,13 +631,32 @@ fn card_controls(asset_ix: usize, entity: &Entity<Workspace>, theme: &Theme) -> 
             // One delete, kept apart from the flags: it moves the photo to
             // the Trash, and asks first. (Mark for deletion and remove from
             // library are in the right-click menu.)
-            pill().child(button(
-                "grid-delete",
-                "\u{2326}",
-                "Delete\u{2026} moves the photo to the Trash (asks first)",
-                theme.danger,
-                |this, cx| this.delete_selected(true, cx),
-            )),
+            pill().child({
+                let entity = entity.clone();
+                div()
+                    .id(("grid-delete", asset_ix))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(sp(20.0))
+                    .cursor_pointer()
+                    .hover(|el| el.bg(theme.surface_elevated))
+                    .child(rustyedit_ui::icon(
+                        rustyedit_ui::Icon::Trash,
+                        rustyedit_ui::ui_scale() * 12.0,
+                        theme.text,
+                    ))
+                    .tooltip(rustyedit_ui::tip(
+                        "Delete\u{2026} moves the photo to the Trash (asks first)",
+                        theme,
+                    ))
+                    .on_click(move |_: &ClickEvent, _window, cx| {
+                        cx.stop_propagation();
+                        entity.update(cx, |this, cx| {
+                            this.act_on_card(asset_ix, cx, |this, cx| this.delete_selected(true, cx))
+                        });
+                    })
+            }),
         )
         .child(
             pill()

@@ -32,6 +32,8 @@ pub enum Icon {
     Edit,
     /// A tick.
     Check,
+    /// A bin: delete.
+    Trash,
     /// An arrow down into a tray: import.
     Download,
     /// An arrow up out of a tray: export.
@@ -261,6 +263,13 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
         Icon::Edit => {
             pen.line(&[(3.0, 13.0), (3.6, 10.2), (11.0, 2.8), (13.2, 5.0), (5.8, 12.4), (3.0, 13.0)]);
             pen.line(&[(9.4, 4.4), (11.6, 6.6)]);
+        }
+        Icon::Trash => {
+            pen.line(&[(2.5, 4.0), (13.5, 4.0)]);
+            pen.line(&[(6.0, 4.0), (6.0, 2.5), (10.0, 2.5), (10.0, 4.0)]);
+            pen.line(&[(3.8, 4.0), (4.6, 13.5), (11.4, 13.5), (12.2, 4.0)]);
+            pen.line(&[(6.6, 6.5), (6.8, 11.5)]);
+            pen.line(&[(9.4, 6.5), (9.2, 11.5)]);
         }
         Icon::Check => pen.line(&[(3.0, 8.5), (6.5, 12.0), (13.0, 4.5)]),
         Icon::Download => {

@@ -33,7 +33,7 @@ mod grid_overlay;
 mod history;
 mod look;
 mod navigator;
-pub(crate) use navigator::navigator_size;
+pub(crate) use navigator::{navigator_size, navigator_slot};
 mod presets;
 mod proof_ui;
 mod preview;
