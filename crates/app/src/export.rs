@@ -33,12 +33,19 @@ use crate::workspace::Workspace;
 /// Most tiles drawn in the preview / run grid; the totals still count all.
 const MAX_TILES: usize = 160;
 /// Smallest and largest tile width, and the gap between tiles.
-const TILE_MIN: f32 = 150.0;
+pub(crate) const TILE_MIN: f32 = 150.0;
+/// Largest the tile size slider goes.
+const TILE_MAX: f32 = 480.0;
 const TILE_GAP: f32 = 16.0;
 
+/// The range the footer's size slider spans, in pixels.
+pub(crate) fn tile_size_range() -> (f32, f32) {
+    (TILE_MIN, TILE_MAX)
+}
+
 /// A tile width that makes whole tiles fill `avail` exactly, row after row.
-fn tile_width(avail: f32) -> (f32, usize) {
-    let cols = ((avail + TILE_GAP) / (TILE_MIN + TILE_GAP))
+fn tile_width(avail: f32, min: f32) -> (f32, usize) {
+    let cols = ((avail + TILE_GAP) / (min + TILE_GAP))
         .floor()
         .max(1.0);
     (
@@ -632,7 +639,7 @@ impl Workspace {
             - self.settings.layout.inspector_width as f32
             - 64.0)
             .max(TILE_MIN);
-        let (tile_w, cols) = tile_width(avail);
+        let (tile_w, cols) = tile_width(avail, self.export_tile_size.clamp(TILE_MIN, TILE_MAX));
         // The tiles are dressed like the filmstrip, in whatever style it's set to.
         let look = rustyedit_ui::FilmLook::for_style(self.settings.filmstrip.style, &theme);
         let show_edge_print = self.settings.filmstrip.show_edge_print;

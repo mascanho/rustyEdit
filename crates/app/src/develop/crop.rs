@@ -14,7 +14,6 @@ impl Workspace {
             return Vec::new();
         };
         let crop = asset.develop.crop;
-        let (width, height) = (asset.width.max(1) as f32, asset.height.max(1) as f32);
 
         let aspects = div()
             .flex()
@@ -42,7 +41,7 @@ impl Workspace {
             spec,
             &self.theme,
             move |angle, _window, cx| {
-                entity.update(cx, |this, cx| this.set_crop_angle(angle, width, height, cx));
+                entity.update(cx, |this, cx| this.set_crop_angle(angle, cx));
             },
         );
 
@@ -63,7 +62,7 @@ impl Workspace {
                 &self.theme,
                 move |value, _window, cx| {
                     entity.update(cx, |this, cx| {
-                        this.set_crop_perspective(vertical, value, width, height, cx)
+                        this.set_crop_perspective(vertical, value, cx)
                     });
                 },
             )
@@ -131,13 +130,7 @@ impl Workspace {
         );
     }
 
-    fn set_crop_angle(
-        &mut self,
-        angle: f32,
-        width: f32,
-        height: f32,
-        cx: &mut Context<Self>,
-    ) {
+    fn set_crop_angle(&mut self, angle: f32, cx: &mut Context<Self>) {
         let Some(before) = self
             .catalog
             .selected_asset()
@@ -149,7 +142,6 @@ impl Workspace {
             "Straighten",
             |develop| {
                 develop.crop.angle = angle.clamp(-MAX_STRAIGHTEN, MAX_STRAIGHTEN);
-                develop.crop.fit_inside(width, height);
                 develop.crop = develop.crop.clamped();
             },
             |develop| {
@@ -162,14 +154,12 @@ impl Workspace {
         );
     }
 
-    /// Sets the vertical or horizontal perspective correction, pulling the
-    /// crop back onto the picture where the correction leaves empty corners.
+    /// Sets the vertical or horizontal perspective correction. The crop is
+    /// left where it is, so the photo isn't zoomed; empty corners show black.
     fn set_crop_perspective(
         &mut self,
         vertical: bool,
         value: f32,
-        width: f32,
-        height: f32,
         cx: &mut Context<Self>,
     ) {
         let Some(before) = self.catalog.selected_asset().map(|asset| {
@@ -187,7 +177,6 @@ impl Workspace {
                 } else {
                     develop.crop.horizontal = value;
                 }
-                develop.crop.fit_inside(width, height);
                 develop.crop = develop.crop.clamped();
             },
             |_| (format!("{before:+.0}"), format!("{value:+.0}")),

@@ -223,6 +223,8 @@ pub struct Workspace {
     /// filmstrip, in the order they were added; they're exported on top of
     /// whatever the scope picks.
     pub(crate) export_added: Vec<u64>,
+    /// Smallest width of an export tile; the size slider in the queue bar.
+    pub(crate) export_tile_size: f32,
     pub(crate) export_message: Option<SharedString>,
     /// Active tool on each side's icon rail (see `rail.rs`).
     pub(crate) left_rail_tool: Option<RailTool>,
@@ -431,6 +433,7 @@ impl Workspace {
             export_run: None,
             export_excluded: HashSet::new(),
             export_added: Vec::new(),
+            export_tile_size: crate::export::TILE_MIN,
             export_message: None,
             left_rail_tool: None,
             right_rail_tool: None,

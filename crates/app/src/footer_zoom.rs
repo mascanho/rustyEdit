@@ -3,7 +3,8 @@
 //!
 //! - Library Grid: the card size;
 //! - Library Loupe: the photo's zoom, from Fit to 400%;
-//! - Develop: the photo's zoom, from Fit to 800%.
+//! - Develop: the photo's zoom, from Fit to 800%;
+//! - Export: the size of the photo tiles.
 //!
 //! Zoom is mapped logarithmically (each stretch of the slider multiplies
 //! the scale by the same amount), so it feels even from Fit to the top.
@@ -28,6 +29,7 @@ enum Target {
     GridCards,
     Loupe,
     Develop,
+    ExportTiles,
 }
 
 impl Workspace {
@@ -36,6 +38,7 @@ impl Workspace {
             (Mode::Library, LibraryView::Grid) => Some(Target::GridCards),
             (Mode::Library, LibraryView::Loupe) => Some(Target::Loupe),
             (Mode::Develop, _) => Some(Target::Develop),
+            (Mode::Export, _) => Some(Target::ExportTiles),
             _ => None,
         }
     }
@@ -43,7 +46,7 @@ impl Workspace {
     /// The scale range a zoom target spans: `(fit, max)`.
     fn zoom_range(&self, target: Target) -> Option<(f32, f32)> {
         let (fit, max) = match target {
-            Target::GridCards => return None,
+            Target::GridCards | Target::ExportTiles => return None,
             Target::Loupe => (self.loupe_fit_scale()?, LOUPE_MAX_ZOOM),
             Target::Develop => (self.develop_fit_scale()?, DEVELOP_MAX_ZOOM),
         };
@@ -72,6 +75,10 @@ impl Workspace {
                 let (min, max) = (GRID_CARD_MIN as f32, GRID_CARD_MAX as f32);
                 return ((size - min) / (max - min)).clamp(0.0, 1.0);
             }
+            Target::ExportTiles => {
+                let (min, max) = crate::export::tile_size_range();
+                return ((self.export_tile_size - min) / (max - min)).clamp(0.0, 1.0);
+            }
             Target::Loupe => self.loupe_zoom,
             Target::Develop => self.develop_ui.zoom.scale,
         };
@@ -95,6 +102,12 @@ impl Workspace {
             }
             return;
         }
+        if target == Target::ExportTiles {
+            let (min, max) = crate::export::tile_size_range();
+            self.export_tile_size = (min + t * (max - min)).round().clamp(min, max);
+            cx.notify();
+            return;
+        }
         let scale = match self.zoom_range(target) {
             Some((fit, max)) if t > FIT_SNAP => Some(fit * (max / fit).powf(t)),
             _ => None,
@@ -102,7 +115,7 @@ impl Workspace {
         match target {
             Target::Loupe => self.set_loupe_zoom(scale, cx),
             Target::Develop => self.set_develop_scale(scale, cx),
-            Target::GridCards => {}
+            Target::GridCards | Target::ExportTiles => {}
         }
     }
 
@@ -116,6 +129,7 @@ impl Workspace {
     fn footer_zoom_label(&self, target: Target) -> String {
         let scale = match target {
             Target::GridCards => return format!("{} px", self.settings.library.grid_card_size),
+            Target::ExportTiles => return format!("{} px", self.export_tile_size as u32),
             Target::Loupe => self.loupe_zoom,
             Target::Develop => self.develop_ui.zoom.scale,
         };
@@ -132,7 +146,7 @@ impl Workspace {
         let theme = self.theme;
         let fraction = self.footer_zoom_fraction(target);
         let tooltip = match target {
-            Target::GridCards => "Thumbnail size",
+            Target::GridCards | Target::ExportTiles => "Thumbnail size",
             Target::Loupe | Target::Develop => "Zoom",
         };
         let zoom_out = cx.listener(move |this, _: &ClickEvent, _w, cx| {
