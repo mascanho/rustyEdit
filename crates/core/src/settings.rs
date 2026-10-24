@@ -783,6 +783,11 @@ pub struct DevelopPreferences {
     pub section_order: Vec<String>,
     /// Hovering a preset shows its look on the photo before it's applied.
     pub preset_hover_preview: bool,
+    /// The ICC profile (a printer's, usually) last loaded for soft-proofing.
+    pub proof_profile: Option<std::path::PathBuf>,
+    /// A folder of Lensfun XML files to read lens profiles from, besides
+    /// the places Lensfun installs itself.
+    pub lens_db_folder: Option<std::path::PathBuf>,
 }
 
 impl Default for DevelopPreferences {
@@ -793,6 +798,8 @@ impl Default for DevelopPreferences {
             tools_expanded_on_startup: true,
             section_order: Vec::new(),
             preset_hover_preview: true,
+            proof_profile: None,
+            lens_db_folder: None,
         }
     }
 }

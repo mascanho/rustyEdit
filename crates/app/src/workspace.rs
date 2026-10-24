@@ -352,6 +352,14 @@ impl Workspace {
             .spawn(async { rustyedit_processing::gpu_adapter_name() })
             .detach();
         crate::display_profile::refresh();
+        // Parse any installed Lensfun database now, off the UI thread, so the
+        // Lens Corrections section opens instantly.
+        {
+            let folder = settings.develop.lens_db_folder.clone();
+            cx.background_executor()
+                .spawn(async move { rustyedit_io::lens_database_size(folder.as_deref()) })
+                .detach();
+        }
         let workspace = cx.weak_entity();
         let slider_keys = cx.intercept_keystrokes(move |event, window, cx| {
             // Arrows move a slider only in Develop, and not while a text

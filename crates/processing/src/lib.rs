@@ -33,13 +33,15 @@ mod gpu;
 mod lens;
 mod look;
 mod parallel;
+mod proof;
 mod retouch;
 mod sharpen;
 mod tone;
 mod watermark;
 
 pub use auto::{auto_tone, neutral_white_balance, BalanceError, NeutralBalance};
-pub use cms::{set_display_profile, OutputSpace};
+pub use cms::{is_proofing_profile, set_display_profile, OutputSpace};
+pub use proof::{apply_proof, ProofIntent, ProofSettings};
 pub use look::{match_look, preset_from_look, LookStats};
 pub use watermark::apply_watermark;
 pub use develop_source::DevelopSource;
@@ -72,6 +74,7 @@ pub fn render_export(
         fit: long_edge,
         sharpen,
         space: space.clone(),
+        deep: false,
     };
     if let Some(gpu::Rendered::Rgb(image)) = gpu::render(source, settings, output) {
         return image;
@@ -90,6 +93,34 @@ pub fn render_export(
         lut.apply_rgb8(&mut rgb);
     }
     rgb
+}
+
+/// [`render_export`] at 16 bits per channel, for PNG and TIFF files. The
+/// whole pipeline runs in floating point and the conversion into `space`
+/// happens just before the 16-bit quantisation, so wide spaces like
+/// ProPhoto don't band. Without a GPU the 8-bit render is widened instead
+/// (still correctly tagged, just not smoother).
+pub fn render_export16(
+    source: &DevelopSource,
+    settings: &DevelopSettings,
+    long_edge: Option<u32>,
+    sharpen: Option<(f32, i32)>,
+    space: &OutputSpace,
+) -> image::ImageBuffer<image::Rgb<u16>, Vec<u16>> {
+    let effective = settings.effective();
+    let output = gpu::Output::Rgb {
+        fit: long_edge,
+        sharpen,
+        space: space.clone(),
+        deep: true,
+    };
+    if let Some(gpu::Rendered::Rgb16(image)) = gpu::render(source, &effective, output) {
+        return image;
+    }
+    let rgb = render_export(source, settings, long_edge, sharpen, space);
+    let (w, h) = rgb.dimensions();
+    let samples: Vec<u16> = rgb.as_raw().iter().map(|&v| v as u16 * 257).collect();
+    image::ImageBuffer::from_raw(w, h, samples).expect("same number of samples")
 }
 
 /// The size `width` x `height` scales to so its longest edge is `edge`,
@@ -384,6 +415,7 @@ mod tests {
             fit: None,
             sharpen: None,
             space: OutputSpace::DisplayP3,
+            deep: false,
         };
         match gpu::render(source, &settings.effective(), output)? {
             gpu::Rendered::Rgb(image) => Some(image),
@@ -719,6 +751,38 @@ mod tests {
                 .sum::<f64>()
                 / expected.as_raw().len() as f64;
             assert!(mean < 0.75, "mean diff {mean}");
+        }
+    }
+
+    #[test]
+    fn sixteen_bit_export_matches_eight_bit_and_has_finer_steps() {
+        if !gpu_available() {
+            return;
+        }
+        let source = card(517, 389);
+        let settings = with(|s| {
+            s.exposure = 12.0;
+            s.contrast = 10.0;
+        });
+        for space in [OutputSpace::Srgb, OutputSpace::AdobeRgb, OutputSpace::ProPhoto] {
+            let eight = render_export(&source, &settings, None, None, &space);
+            let deep = render_export16(&source, &settings, None, None, &space);
+            assert_eq!(eight.dimensions(), deep.dimensions(), "{space:?}");
+            // Same picture: the 16-bit values, scaled down, agree with the
+            // 8-bit ones to within rounding.
+            let worst = eight
+                .as_raw()
+                .iter()
+                .zip(deep.as_raw())
+                .map(|(a, b)| (*a as i32 - (*b as i32 + 128) / 257).abs())
+                .max()
+                .unwrap();
+            assert!(worst <= 2, "{space:?}: worst difference {worst}");
+            // And it really has more than 256 levels per channel.
+            let mut distinct: Vec<u16> = deep.as_raw().iter().copied().collect();
+            distinct.sort_unstable();
+            distinct.dedup();
+            assert!(distinct.len() > 400, "{space:?}: {} distinct levels", distinct.len());
         }
     }
 

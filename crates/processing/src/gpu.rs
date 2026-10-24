@@ -172,13 +172,14 @@ enum Kernel {
     ResizeV,
     ResizeH,
     OutRgb,
+    OutRgb16,
     OutBgra,
     Histogram,
     /// Not a kernel: copies `src` to `dst` (`Pass::dst_bytes` of them).
     Copy,
 }
 
-const ENTRY_POINTS: [&str; 19] = [
+const ENTRY_POINTS: [&str; 20] = [
     "load",
     "demosaic",
     "spot_ring",
@@ -196,6 +197,7 @@ const ENTRY_POINTS: [&str; 19] = [
     "resize_v",
     "resize_h",
     "out_rgb",
+    "out_rgb16",
     "out_bgra",
     "histogram",
 ];
@@ -295,6 +297,8 @@ pub(crate) enum Output {
         fit: Option<u32>,
         sharpen: Option<(f32, i32)>,
         space: OutputSpace,
+        /// 16 bits per channel instead of 8.
+        deep: bool,
     },
     /// The live preview: a BGRA frame in the display's colour space, plus
     /// the histogram and scopes (of the working-space render).
@@ -313,6 +317,7 @@ pub(crate) enum Output {
 
 pub(crate) enum Rendered {
     Rgb(RgbImage),
+    Rgb16(image::ImageBuffer<image::Rgb<u16>, Vec<u16>>),
     Preview { bgra: RgbaImage, histogram: Histogram },
     Detail(RgbaImage),
 }
@@ -751,6 +756,7 @@ impl Gpu {
                 fit,
                 sharpen,
                 space,
+                deep,
             } => {
                 if let Some(edge) = fit {
                     if plan.width.max(plan.height) > *edge {
@@ -762,8 +768,16 @@ impl Gpu {
                     plan.unsharpen(*sigma, *threshold);
                 }
                 plan.set_lut(space);
-                let words = (plan.pixels() * 3).div_ceil(4);
-                plan.out_rgb();
+                let words = if *deep {
+                    (plan.pixels() * 3).div_ceil(2)
+                } else {
+                    (plan.pixels() * 3).div_ceil(4)
+                };
+                if *deep {
+                    plan.out_rgb16();
+                } else {
+                    plan.out_rgb();
+                }
                 copies.push(ReadCopy {
                     from: Slot::of(plan.cur)?,
                     to: 0,
@@ -825,6 +839,13 @@ impl Gpu {
         res.early_key = None;
         let prepared_key = res.source_key.take();
         let rendered = self.execute(res, &plan, &copies, |data| match &output {
+            Output::Rgb { deep: true, .. } => {
+                let samples: Vec<u16> = data[..pixels * 6]
+                    .chunks_exact(2)
+                    .map(|b| u16::from_le_bytes([b[0], b[1]]))
+                    .collect();
+                image::ImageBuffer::from_raw(out_w, out_h, samples).map(Rendered::Rgb16)
+            }
             Output::Rgb { .. } => {
                 RgbImage::from_raw(out_w, out_h, data[..pixels * 3].to_vec()).map(Rendered::Rgb)
             }
@@ -1336,6 +1357,25 @@ impl Planner {
         let dst = self.next();
         self.push(Pass {
             kernel: Kernel::OutRgb,
+            params,
+            src: self.cur,
+            dst,
+            img_a: Buf::NoInput,
+            img_b: Buf::NoInput,
+            groups: flat_groups(words),
+            dst_bytes: words * 4,
+            tmp_bytes: 0,
+        });
+        self.cur = dst;
+    }
+
+    /// Packs the current image as tightly packed 16-bit RGB samples.
+    fn out_rgb16(&mut self) {
+        let words = (self.pixels() * 3).div_ceil(2);
+        let params = self.params();
+        let dst = self.next();
+        self.push(Pass {
+            kernel: Kernel::OutRgb16,
             params,
             src: self.cur,
             dst,

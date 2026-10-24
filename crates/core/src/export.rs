@@ -299,6 +299,28 @@ impl ExportSharpen {
     }
 }
 
+/// How many bits per channel PNG and TIFF files are written with. JPEG is
+/// always 8.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ExportBitDepth {
+    #[default]
+    Eight,
+    /// Smoother gradients and room for wide colour spaces; the files are
+    /// twice the size.
+    Sixteen,
+}
+
+impl ExportBitDepth {
+    pub const ALL: [ExportBitDepth; 2] = [ExportBitDepth::Eight, ExportBitDepth::Sixteen];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            ExportBitDepth::Eight => "8-bit",
+            ExportBitDepth::Sixteen => "16-bit",
+        }
+    }
+}
+
 /// The colour space exported pixels are written in; its ICC profile is
 /// embedded in the file so other apps show the colours as intended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -310,13 +332,17 @@ pub enum ExportColorSpace {
     DisplayP3,
     /// Wider gamut, common in print workflows.
     AdobeRgb,
+    /// The widest of the set, for archives and high-end print. Best at 16
+    /// bits: 8 bits spread over so wide a gamut can band.
+    ProPhoto,
 }
 
 impl ExportColorSpace {
-    pub const ALL: [ExportColorSpace; 3] = [
+    pub const ALL: [ExportColorSpace; 4] = [
         ExportColorSpace::Srgb,
         ExportColorSpace::DisplayP3,
         ExportColorSpace::AdobeRgb,
+        ExportColorSpace::ProPhoto,
     ];
 
     pub fn label(&self) -> &'static str {
@@ -324,6 +350,7 @@ impl ExportColorSpace {
             ExportColorSpace::Srgb => "sRGB",
             ExportColorSpace::DisplayP3 => "Display P3",
             ExportColorSpace::AdobeRgb => "Adobe RGB",
+            ExportColorSpace::ProPhoto => "ProPhoto RGB",
         }
     }
 }
@@ -367,6 +394,7 @@ pub struct ExportOptions {
     pub sharpen: ExportSharpen,
     pub png_compression: ExportPngCompression,
     pub color_space: ExportColorSpace,
+    pub bit_depth: ExportBitDepth,
     /// Leave rejected photos out, whatever the scope.
     pub skip_rejected: bool,
     /// Reveal the destination in the file manager when finished.
@@ -390,6 +418,7 @@ impl Default for ExportOptions {
             sharpen: ExportSharpen::Off,
             png_compression: ExportPngCompression::Balanced,
             color_space: ExportColorSpace::Srgb,
+            bit_depth: ExportBitDepth::Eight,
             skip_rejected: true,
             open_when_done: false,
             watermark: false,

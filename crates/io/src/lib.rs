@@ -10,6 +10,7 @@ mod catalog_store;
 mod decode;
 mod maintenance;
 mod metadata;
+mod lens_db;
 mod preset_store;
 mod scan;
 mod settings_store;
@@ -29,6 +30,7 @@ pub use maintenance::{
     build_backup, move_to_trash, optimize_catalog, read_backup, restore_backup, write_backup,
     BackupSidecar, CatalogBackup, OptimizeReport,
 };
+pub use lens_db::{find_lens_profile, lens_database_size, lensfun_dirs, LensDb};
 pub use preset_store::{
     export_to as export_presets, import_from as import_presets, load as load_presets,
     save as save_presets,

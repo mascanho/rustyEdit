@@ -494,6 +494,7 @@ impl Workspace {
         let theme = self.theme;
         let open = self.develop_ui.view_menu_open;
         let ui = &self.histogram_ui;
+        let proofing = self.develop_ui.proof.active();
 
         let button = div()
             .id("tool-view")
@@ -506,19 +507,34 @@ impl Workspace {
             .px_1p5()
             .rounded_md()
             .cursor_pointer()
-            .when(open, |el| el.bg(theme.accent_muted))
-            .when(!open, |el| el.hover(|el| el.bg(theme.surface_elevated)))
+            // Lit while a soft proof is showing, so it isn't mistaken for the
+            // photo's own colours.
+            .when(open || proofing, |el| el.bg(theme.accent_muted))
+            .when(!(open || proofing), |el| {
+                el.hover(|el| el.bg(theme.surface_elevated))
+            })
             .child(rustyedit_ui::icon(
                 Icon::View,
                 16.0,
-                if open { theme.text } else { theme.text_muted },
+                if open || proofing {
+                    theme.text
+                } else {
+                    theme.text_muted
+                },
             ))
             .child(rustyedit_ui::icon(
                 Icon::ChevronDown,
                 10.0,
                 theme.text_faint,
             ))
-            .tooltip(rustyedit_ui::tip("View options", &theme))
+            .tooltip(rustyedit_ui::tip(
+                if proofing {
+                    "View options (soft proof on)"
+                } else {
+                    "View options"
+                },
+                &theme,
+            ))
             .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
                 this.develop_ui.view_menu_open = !this.develop_ui.view_menu_open;
                 this.develop_ui.grid_menu_open = false;
@@ -574,7 +590,9 @@ impl Workspace {
             .absolute()
             .top(sp(30.0))
             .right_0()
-            .w(sp(220.0))
+            .w(sp(230.0))
+            .max_h(sp(560.0))
+            .overflow_y_scroll()
             .py_1()
             .bg(theme.surface_elevated)
             .border_1()
@@ -682,6 +700,9 @@ impl Workspace {
                     },
                 ))
             })
+            .child(div().h(sp(1.0)).my_1().bg(theme.border_subtle))
+            .children(self.proof_menu_rows(cx))
+            .child(div().h(sp(1.0)).my_1().bg(theme.border_subtle))
             .child(item(
                 "view-zoom",
                 "Zoom to 100%",

@@ -22,7 +22,7 @@ use gpui::{
 };
 use image::{codecs::jpeg::JpegEncoder, ExtendedColorType, ImageEncoder};
 use rustyedit_core::{
-    Asset, ExportColorSpace, ExportConflict, ExportFormat, ExportNaming, ExportOptions,
+    Asset, ExportBitDepth, ExportColorSpace, ExportConflict, ExportFormat, ExportNaming, ExportOptions,
     ExportPngCompression,
     ExportScope, ExportSharpen, ExportSize, ExportSubfolder, Flag,
 };
@@ -404,6 +404,19 @@ impl Workspace {
                 options.color_space,
                 |c| c.label().to_string(),
                 |o, v| o.color_space = v,
+            ));
+        }
+        // 16 bits per channel, for the formats that have them.
+        if matches!(options.format, ExportFormat::Png | ExportFormat::Tiff) {
+            format_children.push(labelled(&theme, "Bit depth", div().into_any_element()));
+            format_children.push(option_row(
+                &theme,
+                &entity,
+                "export-bit-depth",
+                &ExportBitDepth::ALL,
+                options.bit_depth,
+                |d| d.label().to_string(),
+                |o, v| o.bit_depth = v,
             ));
         }
 
@@ -1537,6 +1550,7 @@ fn output_space(options: &ExportOptions) -> rustyedit_processing::OutputSpace {
         ExportColorSpace::Srgb => OutputSpace::Srgb,
         ExportColorSpace::DisplayP3 => OutputSpace::DisplayP3,
         ExportColorSpace::AdobeRgb => OutputSpace::AdobeRgb,
+        ExportColorSpace::ProPhoto => OutputSpace::ProPhoto,
     }
 }
 
@@ -1550,6 +1564,21 @@ fn render_to(
     let space = output_space(options);
     // Develop (from the RAW data for RAW files), resize, output sharpening
     // and colour conversion in one GPU pass (or the CPU fallback).
+    // PNG and TIFF can carry 16 bits per channel. A watermark is stamped on
+    // 8-bit pixels, so those exports stay 8-bit.
+    let deep = options.bit_depth == ExportBitDepth::Sixteen
+        && matches!(options.format, ExportFormat::Png | ExportFormat::Tiff)
+        && watermark.is_none();
+    if deep {
+        let image = rustyedit_processing::render_export16(
+            &source,
+            &asset.develop,
+            options.size.0,
+            options.sharpen.params(),
+            &space,
+        );
+        return write_deep(image, options, &space, file);
+    }
     let mut rgb = rustyedit_processing::render_export(
         &source,
         &asset.develop,
@@ -1598,6 +1627,49 @@ fn render_to(
             h,
             ExtendedColorType::Rgb8,
         )?,
+    }
+    out.flush()?;
+    let file = out
+        .into_inner()
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    Ok(file.metadata()?.len())
+}
+
+/// Writes a 16-bit PNG or TIFF, tagged with the colour space's profile.
+fn write_deep(
+    image: image::ImageBuffer<image::Rgb<u16>, Vec<u16>>,
+    options: &ExportOptions,
+    space: &rustyedit_processing::OutputSpace,
+    file: std::fs::File,
+) -> anyhow::Result<u64> {
+    let (w, h) = image.dimensions();
+    // The encoders take 16-bit samples as native-endian bytes.
+    let bytes: Vec<u8> = image.as_raw().iter().flat_map(|v| v.to_ne_bytes()).collect();
+    let icc = space.icc();
+    let tag = |encoder: &mut dyn ImageEncoderIcc| {
+        if let Some(icc) = &icc {
+            encoder.embed(icc.clone());
+        }
+    };
+    let mut out = std::io::BufWriter::new(file);
+    match options.format {
+        ExportFormat::Png => {
+            use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+            let compression = match options.png_compression {
+                ExportPngCompression::Fast => CompressionType::Fast,
+                ExportPngCompression::Balanced => CompressionType::Default,
+                ExportPngCompression::Smallest => CompressionType::Best,
+            };
+            let mut encoder =
+                PngEncoder::new_with_quality(&mut out, compression, FilterType::Adaptive);
+            tag(&mut encoder);
+            encoder.write_image(&bytes, w, h, ExtendedColorType::Rgb16)?
+        }
+        _ => {
+            let mut encoder = image::codecs::tiff::TiffEncoder::new(&mut out);
+            tag(&mut encoder);
+            encoder.write_image(&bytes, w, h, ExtendedColorType::Rgb16)?
+        }
     }
     out.flush()?;
     let file = out
@@ -1663,5 +1735,69 @@ fn claim_target(
         };
         claimed.insert(path.clone());
         return Ok(Some((path, file)));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::ImageDecoder;
+
+    fn temp(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("rustyedit-export-{name}-{}", std::process::id()))
+    }
+
+    /// A 16-bit file keeps its depth and carries the space's profile.
+    #[test]
+    fn deep_png_and_tiff_are_16_bit_and_tagged() {
+        let image = image::ImageBuffer::from_fn(8, 4, |x, y| {
+            image::Rgb([(x * 8000) as u16, (y * 16000) as u16, 40_000])
+        });
+        for (format, ext) in [(ExportFormat::Png, "png"), (ExportFormat::Tiff, "tif")] {
+            let options = ExportOptions {
+                format,
+                bit_depth: ExportBitDepth::Sixteen,
+                ..ExportOptions::default()
+            };
+            let path = temp(ext).with_extension(ext);
+            let file = std::fs::File::create(&path).unwrap();
+            write_deep(
+                image.clone(),
+                &options,
+                &rustyedit_processing::OutputSpace::AdobeRgb,
+                file,
+            )
+            .unwrap();
+
+            let mut decoder = image::ImageReader::open(&path)
+                .unwrap()
+                .with_guessed_format()
+                .unwrap()
+                .into_decoder()
+                .unwrap();
+            assert_eq!(
+                decoder.color_type(),
+                image::ColorType::Rgb16,
+                "{ext} should be 16-bit"
+            );
+            // PNG stores the profile compressed; read it back. TIFF stores it
+            // as a plain field that this decoder doesn't surface, so look for
+            // the profile's "acsp" signature in the file.
+            let tagged = if format == ExportFormat::Png {
+                decoder
+                    .icc_profile()
+                    .unwrap()
+                    .is_some_and(|profile| profile.len() > 100)
+            } else {
+                std::fs::read(&path)
+                    .unwrap()
+                    .windows(4)
+                    .any(|w| w == b"acsp")
+            };
+            assert!(tagged, "{ext} should carry a profile");
+            let decoded = image::DynamicImage::from_decoder(decoder).unwrap().to_rgb16();
+            assert_eq!(decoded.get_pixel(3, 2).0, image.get_pixel(3, 2).0, "{ext}");
+            let _ = std::fs::remove_file(&path);
+        }
     }
 }

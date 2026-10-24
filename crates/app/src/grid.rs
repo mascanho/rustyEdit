@@ -5,7 +5,6 @@
 //! to Bare (only the photo). All the styles share one geometry so the
 //! uniform row height and keyboard row-stepping stay exact.
 
-use rustyedit_ui::sp;
 use gpui::{
     div, img, prelude::*, px, uniform_list, Animation, AnimationExt, AnyElement, App, ClickEvent,
     Context, Entity, ObjectFit, Window,
@@ -14,6 +13,7 @@ use rustyedit_core::{
     settings::{DockSide, GridSettings, GridStyle},
     Asset, Flag,
 };
+use rustyedit_ui::sp;
 use rustyedit_ui::Theme;
 use std::time::Duration;
 
@@ -625,28 +625,19 @@ fn card_controls(asset_ix: usize, entity: &Entity<Workspace>, theme: &Theme) -> 
                     "Reject (X)",
                     theme.reject,
                     |this, cx| this.apply_cull(CullOp::Flag(Flag::Rejected), cx),
-                ))
-                .child(button(
-                    "grid-mark-delete",
-                    "\u{2326}",
-                    "Mark for deletion (asks before deleting)",
-                    theme.danger,
-                    |this, cx| this.toggle_mark_for_deletion(cx),
-                ))
-                .child(button(
-                    "grid-remove",
-                    "\u{2212}",
-                    "Remove from library \u{2014} the file stays on disk (\u{232B})",
-                    theme.text,
-                    |this, cx| this.delete_selected(false, cx),
-                ))
-                .child(button(
-                    "grid-delete",
-                    "\u{2326}",
-                    "Move to Trash\u{2026} (\u{2318}\u{232B})",
-                    theme.danger,
-                    |this, cx| this.delete_selected(true, cx),
                 )),
+        )
+        .child(
+            // One delete, kept apart from the flags: it moves the photo to
+            // the Trash, and asks first. (Mark for deletion and remove from
+            // library are in the right-click menu.)
+            pill().child(button(
+                "grid-delete",
+                "\u{2326}",
+                "Delete\u{2026} moves the photo to the Trash (asks first)",
+                theme.danger,
+                |this, cx| this.delete_selected(true, cx),
+            )),
         )
         .child(
             pill()

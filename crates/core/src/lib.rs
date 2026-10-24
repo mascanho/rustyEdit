@@ -47,7 +47,7 @@ pub use duplicates::{
     SIMILAR_HAMMING,
 };
 pub use export::{
-    builtin_export_presets, ExportColorSpace, ExportConflict, ExportFormat, ExportNaming,
+    builtin_export_presets, ExportBitDepth, ExportColorSpace, ExportConflict, ExportFormat, ExportNaming,
     ExportOptions, ExportPngCompression, ExportPreset, ExportScope, ExportSharpen, ExportSize,
     ExportSubfolder, Watermark, WatermarkPosition,
 };

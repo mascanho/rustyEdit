@@ -49,7 +49,17 @@ impl Workspace {
         };
         let lens = asset.meta.lens.trim().to_string();
         let focal = asset.meta.focal_mm;
-        let profile = lens_profile(&lens, focal);
+        // Measured data from a Lensfun database when there is one, else the
+        // built-in estimates.
+        let aspect = if asset.width > 0 && asset.height > 0 {
+            asset.width.max(asset.height) as f32 / asset.width.min(asset.height) as f32
+        } else {
+            1.5
+        };
+        let db_folder = self.settings.develop.lens_db_folder.clone();
+        let profile = rustyedit_io::find_lens_profile(db_folder.as_deref(), &lens, focal, aspect)
+            .or_else(|| lens_profile(&lens, focal));
+        let db_size = rustyedit_io::lens_database_size(db_folder.as_deref());
 
         let lens_line = if lens.is_empty() {
             "No lens recorded in this photo".to_string()
@@ -130,6 +140,37 @@ impl Workspace {
         }
 
         rows.extend(self.adjustment_sliders(&Adjustment::LENS, cx));
+        // Where the measured profiles come from.
+        rows.push(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .gap_2()
+                .pt_1()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(rustyedit_ui::sp(0.0))
+                        .truncate()
+                        .text_size(rustyedit_ui::sp(10.0))
+                        .text_color(theme.text_faint)
+                        .child(if db_size > 0 {
+                            format!("Lensfun database: {db_size} lenses")
+                        } else {
+                            "No Lensfun database found; using built-in estimates".to_string()
+                        }),
+                )
+                .child(rustyedit_ui::chrome_button(
+                    "lens-db-choose",
+                    "Database\u{2026}",
+                    false,
+                    &theme,
+                    cx.listener(|this, _: &ClickEvent, _w, cx| this.choose_lens_database(cx)),
+                ))
+                .into_any_element(),
+        );
         rows.push(
             div()
                 .text_size(sp(10.0))
@@ -138,5 +179,42 @@ impl Workspace {
                 .into_any_element(),
         );
         rows
+    }
+}
+
+impl Workspace {
+    /// Asks for a folder of Lensfun XML files (the `data/db` folder of a
+    /// Lensfun download, say) and remembers it.
+    fn choose_lens_database(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let folder = cx
+                .background_executor()
+                .spawn(async {
+                    rfd::FileDialog::new()
+                        .set_title("Choose the folder holding the Lensfun XML files")
+                        .pick_folder()
+                })
+                .await;
+            let Some(folder) = folder else { return };
+            // Read it off the UI thread so the section doesn't stall.
+            let probe = folder.clone();
+            let lenses = cx
+                .background_executor()
+                .spawn(async move { rustyedit_io::lens_database_size(Some(&probe)) })
+                .await;
+            this.update(cx, |this, cx| {
+                if lenses == 0 {
+                    this.status_message =
+                        Some("No Lensfun lens data found in that folder.".into());
+                } else {
+                    this.status_message =
+                        Some(format!("Lens database: {lenses} lenses.").into());
+                    this.update_settings(|s| s.develop.lens_db_folder = Some(folder), cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 }

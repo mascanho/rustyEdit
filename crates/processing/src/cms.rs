@@ -46,16 +46,19 @@ pub enum OutputSpace {
     DisplayP3,
     /// Wide gamut, common in print workflows.
     AdobeRgb,
+    /// The widest standard RGB space.
+    ProPhoto,
     /// Any ICC profile, e.g. the display's.
     Profile(Vec<u8>),
 }
 
 impl OutputSpace {
-    fn profile(&self) -> Option<ColorProfile> {
+    pub(crate) fn profile(&self) -> Option<ColorProfile> {
         Some(match self {
             OutputSpace::Srgb => ColorProfile::new_srgb(),
             OutputSpace::DisplayP3 => ColorProfile::new_display_p3(),
             OutputSpace::AdobeRgb => ColorProfile::new_adobe_rgb(),
+            OutputSpace::ProPhoto => ColorProfile::new_pro_photo_rgb(),
             OutputSpace::Profile(bytes) => ColorProfile::new_from_slice(bytes).ok()?,
         })
     }
@@ -206,6 +209,17 @@ pub(crate) fn lut(space: &OutputSpace) -> Option<Arc<Lut3d>> {
         .clone()
 }
 
+/// Whether `bytes` is an ICC profile the colour engine can use for
+/// proofing: an RGB or CMYK one.
+pub fn is_proofing_profile(bytes: &[u8]) -> bool {
+    ColorProfile::new_from_slice(bytes).is_ok_and(|p| {
+        matches!(
+            p.color_space,
+            moxcms::DataColorSpace::Rgb | moxcms::DataColorSpace::Cmyk
+        )
+    })
+}
+
 /// sRGB's curve undone (the working space's).
 pub(crate) fn decode_srgb(v: f32) -> f32 {
     if v <= 0.04045 {
@@ -312,7 +326,12 @@ mod tests {
 
     #[test]
     fn export_profiles_encode() {
-        for space in [OutputSpace::Srgb, OutputSpace::DisplayP3, OutputSpace::AdobeRgb] {
+        for space in [
+            OutputSpace::Srgb,
+            OutputSpace::DisplayP3,
+            OutputSpace::AdobeRgb,
+            OutputSpace::ProPhoto,
+        ] {
             assert!(space.icc().is_some_and(|icc| icc.len() > 100), "{space:?}");
         }
     }

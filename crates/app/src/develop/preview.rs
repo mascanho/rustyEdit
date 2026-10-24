@@ -176,6 +176,7 @@ impl Workspace {
             flip_vertical: settings.flip_vertical,
             ..DevelopSettings::default()
         };
+        let proof = self.develop_ui.proof.settings();
         let before_key = (asset_id, geometry);
         let need_before =
             self.ba_active() && self.live_preview.before_key.as_ref() != Some(&before_key);
@@ -186,13 +187,20 @@ impl Workspace {
         // from one GPU pass (or the CPU fallback); nothing per-pixel is
         // left to do here.
         let render = cx.background_executor().spawn(async move {
-            let frame = rustyedit_processing::render_preview(&source, &settings, clipping);
+            let mut frame = rustyedit_processing::render_preview(&source, &settings, clipping);
+            // Soft proof (and the gamut warning) on top of the frame.
+            if let Some(proof) = &proof {
+                rustyedit_processing::apply_proof(&mut frame.bgra, proof);
+            }
             let before = need_before.then(|| {
-                let plain = rustyedit_processing::render_preview(
+                let mut plain = rustyedit_processing::render_preview(
                     &source,
                     &geometry,
                     ClipWarnings::default(),
                 );
+                if let Some(proof) = &proof {
+                    rustyedit_processing::apply_proof(&mut plain.bgra, proof);
+                }
                 to_render_image(plain.bgra)
             });
             (to_render_image(frame.bgra), frame.histogram, before)

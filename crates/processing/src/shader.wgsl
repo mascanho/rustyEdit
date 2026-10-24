@@ -1120,6 +1120,25 @@ fn out_rgb(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups
     dst[word] = out;
 }
 
+// Image -> tightly packed 16-bit RGB samples in the output colour space,
+// two samples per output word (the first in the low half).
+@compute @workgroup_size(256)
+fn out_rgb16(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let word = flat_index(id, groups);
+    let total = p.width * p.height * 3u;
+    if (word * 2u >= total) { return; }
+    var out = 0u;
+    for (var k = 0u; k < 2u; k++) {
+        let b = word * 2u + k;
+        if (b < total) {
+            let c = clamp(apply_lut(px_src(b / 3u)), vec3<f32>(0.0), vec3<f32>(1.0));
+            let v = u32(floor(c[b % 3u] * 65535.0 + 0.5));
+            out |= v << (k * 16u);
+        }
+    }
+    dst[word] = out;
+}
+
 // Image -> the BGRA frame the viewer shows, in the display's colour
 // space, with clipped pixels painted when the warnings are on (blue:
 // crushed shadows, red: blown highlights).
