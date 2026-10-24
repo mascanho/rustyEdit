@@ -6,7 +6,7 @@
 use std::time::{Duration, Instant};
 
 use gpui::{Context, Window};
-use rustyedit_core::AssetState;
+use rustyedit_core::{AssetState, DevelopSettings};
 
 use crate::{
     actions::{Redo, Undo},
@@ -66,6 +66,24 @@ impl Workspace {
         if self.undo_stack.len() > MAX_ENTRIES {
             self.undo_stack.remove(0);
         }
+    }
+
+    /// A slider drag changes one photo's Develop settings many times a
+    /// second under one label. When the newest undo step is such a drag on
+    /// photo `ix`, folds the new `develop` into it in place and returns
+    /// `true`, without snapshotting the whole photo again for every step.
+    /// Returns `false` when a new step has to be recorded instead.
+    pub(crate) fn coalesce_develop_undo(
+        &mut self,
+        label: &str,
+        ix: usize,
+        develop: DevelopSettings,
+    ) -> bool {
+        let folded = fold_develop(&mut self.undo_stack, label, ix, develop);
+        if folded {
+            self.redo_stack.clear();
+        }
+        folded
     }
 
     /// Follows photos to their new positions after some were removed from
@@ -169,5 +187,74 @@ impl Workspace {
             }
         }
         self.refresh_live_preview(cx);
+    }
+}
+
+/// The folding behind [`Workspace::coalesce_develop_undo`].
+fn fold_develop(stack: &mut Vec<UndoEntry>, label: &str, ix: usize, develop: DevelopSettings) -> bool {
+    let Some(top) = stack.last_mut() else {
+        return false;
+    };
+    if top.label != label
+        || top.at.elapsed() >= COALESCE
+        || top.changes.len() != 1
+        || top.changes[0].0 != ix
+    {
+        return false;
+    }
+    top.changes[0].2.develop = develop;
+    top.at = Instant::now();
+    // Dragged back to where it started: nothing to undo.
+    if top.changes[0].1 == top.changes[0].2 {
+        stack.pop();
+    }
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustyedit_core::Asset;
+
+    fn drag_start() -> (Vec<UndoEntry>, AssetState) {
+        let mut asset = Asset::new(0, "a.jpg".into());
+        let before = asset.state();
+        asset.develop.exposure = 5.0;
+        let entry = UndoEntry {
+            label: "Exposure".into(),
+            at: Instant::now(),
+            changes: vec![(3, before.clone(), asset.state())],
+        };
+        (vec![entry], before)
+    }
+
+    #[test]
+    fn steps_of_a_drag_fold_into_one_entry() {
+        let (mut stack, before) = drag_start();
+        for v in [10.0, 20.0, 30.0] {
+            let develop = DevelopSettings { exposure: v, ..Default::default() };
+            assert!(fold_develop(&mut stack, "Exposure", 3, develop));
+        }
+        assert_eq!(stack.len(), 1);
+        assert_eq!(stack[0].changes[0].2.develop.exposure, 30.0);
+        assert_eq!(stack[0].changes[0].1, before);
+    }
+
+    #[test]
+    fn other_labels_photos_and_old_steps_start_a_new_entry() {
+        let (mut stack, _) = drag_start();
+        let develop = DevelopSettings::default();
+        assert!(!fold_develop(&mut stack, "Contrast", 3, develop));
+        assert!(!fold_develop(&mut stack, "Exposure", 4, develop));
+        stack[0].at = Instant::now() - COALESCE - Duration::from_millis(10);
+        assert!(!fold_develop(&mut stack, "Exposure", 3, develop));
+        assert!(!fold_develop(&mut Vec::new(), "Exposure", 3, develop));
+    }
+
+    #[test]
+    fn dragging_back_to_the_start_leaves_nothing_to_undo() {
+        let (mut stack, _) = drag_start();
+        assert!(fold_develop(&mut stack, "Exposure", 3, DevelopSettings::default()));
+        assert!(stack.is_empty());
     }
 }

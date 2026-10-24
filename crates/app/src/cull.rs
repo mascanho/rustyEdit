@@ -30,6 +30,24 @@ impl Workspace {
     /// they depend on changed.
     pub(crate) fn cull_info(&self) -> Rc<CullInfo> {
         let culling = &self.settings.culling;
+        // Asked for by the grid, the filmstrip, the cull bar and the loupe
+        // on every frame; fingerprinting every photo each time adds up in a
+        // big catalog. So a cached answer is trusted for a moment, as long
+        // as the photo count and settings are the same.
+        const TRUST: std::time::Duration = std::time::Duration::from_millis(300);
+        let now = std::time::Instant::now();
+        let shape = (
+            self.catalog.assets.len(),
+            culling.enabled,
+            culling.detect_bursts,
+        );
+        if let (Some((at, n, on, bursts)), Some((_, info))) =
+            (self.cull_checked.get(), &*self.cull_cache.borrow())
+        {
+            if (n, on, bursts) == shape && now.duration_since(at) < TRUST {
+                return info.clone();
+            }
+        }
         // A cheap fingerprint of what the analysis reads.
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         culling.enabled.hash(&mut hasher);
@@ -44,6 +62,7 @@ impl Workspace {
             asset.copy_name.is_some().hash(&mut hasher);
         }
         let key = hasher.finish();
+        self.cull_checked.set(Some((now, shape.0, shape.1, shape.2)));
         if let Some((cached, info)) = &*self.cull_cache.borrow() {
             if *cached == key {
                 return info.clone();

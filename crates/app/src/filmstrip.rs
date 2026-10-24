@@ -55,22 +55,10 @@ impl Workspace {
     }
 
     /// Every frame is the same width, whatever the photo's shape: a
-    /// portrait sits centred in a frame as wide as a landscape's.
-    fn film_frame_width_for(&self, _asset: &Asset) -> f32 {
-        self.film_frame_width()
-    }
-
-    /// Where each visible frame starts along the roll (and, last, where
-    /// the roll ends).
-    fn film_offsets(&self, visible: &[usize]) -> Vec<f64> {
-        let mut offsets = Vec::with_capacity(visible.len() + 1);
-        let mut x = 0.0f64;
-        offsets.push(x);
-        for &ix in visible {
-            x += self.film_frame_width_for(&self.catalog.assets[ix]) as f64;
-            offsets.push(x);
-        }
-        offsets
+    /// portrait sits centred in a frame as wide as a landscape's. So the
+    /// roll's layout is plain arithmetic: frame `i` starts at `i * width`.
+    fn film_frame_pitch(&self) -> f64 {
+        self.film_frame_width() as f64
     }
 
     /// Height of the roll (excluding the header).
@@ -200,30 +188,24 @@ impl Workspace {
         let viewport = self.filmstrip_viewport_width() as f64;
         // Show the same photos as the grid: filters and collapsed stacks
         // apply to the filmstrip too.
-        let visible: Vec<usize> = self.catalog.visible_indices().to_vec();
-        let count = visible.len();
-        let offsets = self.film_offsets(&visible);
+        let count = self.catalog.visible_indices().len();
+        let pitch = self.film_frame_pitch();
 
         // The frames in view, plus a few either side.
-        let first = offsets
-            .partition_point(|&o| o <= scroll_x)
-            .saturating_sub(1)
-            .saturating_sub(OVERSCAN_FRAMES)
-            .min(count);
-        let last =
-            (offsets.partition_point(|&o| o < scroll_x + viewport) + OVERSCAN_FRAMES).min(count);
+        let (first, last) = frames_in_view(scroll_x, viewport, pitch, count);
 
         // Frames in view show their photo's edits, like the grid's cards.
-        let on_screen: Vec<usize> = (first..last).map(|ix| visible[ix]).collect();
+        let on_screen: Vec<usize> = self.catalog.visible_indices()[first..last].to_vec();
         self.ensure_edited_thumbnails(&on_screen, cx);
+        let visible = self.catalog.visible_indices();
         let prefs = &self.settings.filmstrip;
         let culls = self.cull_info();
         let frames: Vec<AnyElement> = (first..last)
             .map(|ix| {
                 let entity = entity.clone();
                 let asset_ix = visible[ix];
-                let left = (offsets[ix] - scroll_x) as f32;
-                let frame_px = (offsets[ix + 1] - offsets[ix]) as f32;
+                let left = (ix as f64 * pitch - scroll_x) as f32;
+                let frame_px = pitch as f32;
                 film_frame(
                     asset_ix,
                     &self.catalog.assets[asset_ix],
@@ -322,8 +304,7 @@ impl Workspace {
     }
 
     fn filmstrip_max_scroll(&self) -> f64 {
-        let visible = self.catalog.visible_indices();
-        let content = self.film_offsets(&visible).last().copied().unwrap_or(0.0);
+        let content = self.catalog.visible_indices().len() as f64 * self.film_frame_pitch();
         (content - self.filmstrip_viewport_width() as f64).max(0.0)
     }
 
@@ -339,11 +320,8 @@ impl Workspace {
             return;
         };
         let viewport = self.filmstrip_viewport_width() as f64;
-        let visible = self.catalog.visible_indices();
-        let offsets = self.film_offsets(&visible);
-        let (Some(&left), Some(&right)) = (offsets.get(position), offsets.get(position + 1)) else {
-            return;
-        };
+        let pitch = self.film_frame_pitch();
+        let (left, right) = (position as f64 * pitch, (position + 1) as f64 * pitch);
 
         if left < self.filmstrip_scroll_x {
             self.filmstrip_scroll_x = left;
@@ -399,6 +377,17 @@ impl Workspace {
         self.clamp_filmstrip_scroll();
         cx.notify();
     }
+}
+
+/// The frames to draw (`first..last`) when the roll is scrolled to
+/// `scroll_x` in a `viewport` wide window, every frame `pitch` wide: those
+/// showing, plus a few either side.
+fn frames_in_view(scroll_x: f64, viewport: f64, pitch: f64, count: usize) -> (usize, usize) {
+    let first = ((scroll_x / pitch).floor().max(0.0) as usize)
+        .saturating_sub(OVERSCAN_FRAMES)
+        .min(count);
+    let last = (((scroll_x + viewport) / pitch).ceil().max(0.0) as usize + OVERSCAN_FRAMES).min(count);
+    (first, last)
 }
 
 /// One frame of the strip, structured by `look`: optional sprocket rows
@@ -663,5 +652,23 @@ mod portrait_tests {
         asset.height = 20;
         assert!(thumb_is_portrait(&tall, &asset));
         assert!(!thumb_is_portrait(&wide, &asset));
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    #[test]
+    fn the_frames_in_view_are_found_by_arithmetic() {
+        // Frames 100 wide in a 350 wide window, scrolled 250 along: frames
+        // 2..=5 show (200-300, 300-400, 400-500, 500-600 → up to 600).
+        let (first, last) = frames_in_view(250.0, 350.0, 100.0, 50);
+        assert_eq!(first, 2usize.saturating_sub(OVERSCAN_FRAMES));
+        assert_eq!(last, 6 + OVERSCAN_FRAMES);
+        // At the start, and near the end of a short roll, it stays in range.
+        assert_eq!(frames_in_view(0.0, 350.0, 100.0, 50).0, 0);
+        assert_eq!(frames_in_view(0.0, 350.0, 100.0, 3), (0, 3));
+        assert_eq!(frames_in_view(0.0, 350.0, 100.0, 0), (0, 0));
     }
 }

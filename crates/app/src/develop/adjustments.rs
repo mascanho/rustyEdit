@@ -3,7 +3,7 @@
 //! snapshots, history steps, pasted or reset edits).
 
 use gpui::{hsla, prelude::*, AnyElement, Context, Hsla};
-use rustyedit_core::{Adjustment, ColorBand, DevelopSettings, GradeProp, MixerProp};
+use rustyedit_core::{Adjustment, AssetState, ColorBand, DevelopSettings, GradeProp, MixerProp};
 use rustyedit_ui::{SliderSpec, SliderTrack};
 
 use crate::workspace::Workspace;
@@ -109,15 +109,25 @@ impl Workspace {
         let Some(asset) = self.catalog.assets.get_mut(ix) else {
             return;
         };
-        let before = asset.state();
+        let previous = asset.develop;
         edit(&mut asset.develop);
-        if asset.develop == before.develop {
+        if asset.develop == previous {
             return;
         }
         let (from, to) = describe(&asset.develop);
         asset.record_develop_change(label, from, to);
-        let after = asset.state();
-        self.push_undo(label.to_string(), vec![(ix, before, after)], true);
+        let develop = asset.develop;
+        // The steps of a slider drag fold into one undo entry in place; only
+        // the first of a gesture snapshots the photo.
+        if !self.coalesce_develop_undo(label, ix, develop) {
+            let asset = &self.catalog.assets[ix];
+            let after = asset.state();
+            let before = AssetState {
+                develop: previous,
+                ..after.clone()
+            };
+            self.push_undo(label.to_string(), vec![(ix, before, after)], true);
+        }
         self.mark_catalog_dirty(cx);
         self.request_preview_update(cx);
         cx.notify();

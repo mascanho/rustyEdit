@@ -26,7 +26,12 @@ pub(crate) struct EditedThumbs {
     /// (asset id, fingerprint) jobs queued or running.
     pending: HashSet<(u64, u64)>,
     queue: Vec<Job>,
-    busy: bool,
+    /// Jobs that failed (an unreadable thumbnail): not retried every frame.
+    failed: HashSet<(u64, u64)>,
+    /// How many renders are running right now.
+    running: usize,
+    /// Counts requests, so newer ones (what's on screen now) go first.
+    tick: u64,
     /// What each photo's settings were when they were last given a version
     /// number (see [`EditedThumbs::version`]).
     versions: RefCell<HashMap<(u64, bool), Seen>>,
@@ -72,7 +77,12 @@ impl EditedThumbs {
     }
 }
 
+/// How many thumbnails are rendered at once.
+const PARALLEL: usize = 3;
+
 struct Job {
+    /// Higher goes first: the latest request, then the earliest on screen.
+    priority: u64,
     id: u64,
     stamp: u64,
     thumbnail: PathBuf,
@@ -153,7 +163,12 @@ impl Workspace {
 
     fn queue_thumbnails(&mut self, indices: &[usize], with_frames: bool, cx: &mut Context<Self>) {
         let mut added = false;
-        for &ix in indices {
+        self.edited_thumbs.tick += 1;
+        let tick = self.edited_thumbs.tick;
+        for (position, &ix) in indices.iter().enumerate() {
+            // This request's photos outrank older requests', and within it
+            // the first on screen come first.
+            let priority = tick * 1_000_000 + (999_999 - position.min(999_999) as u64);
             let Some(asset) = self.catalog.assets.get(ix) else {
                 continue;
             };
@@ -184,10 +199,23 @@ impl Workspace {
                     &self.edited_thumbs.done
                 };
                 let fresh = done.get(&asset.id).is_some_and(|(done, _)| *done == s);
-                if fresh || !self.edited_thumbs.pending.insert((asset.id, s)) {
+                if fresh || self.edited_thumbs.failed.contains(&(asset.id, s)) {
+                    continue;
+                }
+                if !self.edited_thumbs.pending.insert((asset.id, s)) {
+                    // Already queued: it's on screen again, so move it up.
+                    if let Some(job) = self
+                        .edited_thumbs
+                        .queue
+                        .iter_mut()
+                        .find(|j| j.id == asset.id && j.stamp == s)
+                    {
+                        job.priority = priority;
+                    }
                     continue;
                 }
                 self.edited_thumbs.queue.push(Job {
+                    priority,
                     id: asset.id,
                     stamp: s,
                     thumbnail: thumbnail.clone(),
@@ -197,26 +225,40 @@ impl Workspace {
                 added = true;
             }
         }
+        // Photos scrolled well out of view aren't worth rendering any more;
+        // they're asked for again if they come back.
+        let thumbs = &mut self.edited_thumbs;
+        let pending = &mut thumbs.pending;
+        thumbs.queue.retain(|job| {
+            let keep = job.priority / 1_000_000 + 120 >= tick;
+            if !keep {
+                pending.remove(&(job.id, job.stamp));
+            }
+            keep
+        });
         if added {
             self.run_edited_thumbnail_queue(cx);
         }
     }
 
-    /// Renders queued thumbnails one at a time on a background thread.
+    /// Renders queued thumbnails, a few at a time on background threads,
+    /// the most wanted first.
     fn run_edited_thumbnail_queue(&mut self, cx: &mut Context<Self>) {
-        if self.edited_thumbs.busy {
-            return;
+        while self.edited_thumbs.running < PARALLEL {
+            let thumbs = &mut self.edited_thumbs;
+            let Some((job, stale)) = take_best(&mut thumbs.queue) else {
+                return;
+            };
+            for key in stale {
+                thumbs.pending.remove(&key);
+            }
+            thumbs.running += 1;
+            self.spawn_edited_thumbnail(job, cx);
         }
-        // Newest first: the most recent edit is what the user is looking at.
-        let Some(job) = self.edited_thumbs.queue.pop() else {
-            return;
-        };
-        // Drop older jobs for the same photo; only its latest edit matters.
-        self.edited_thumbs
-            .queue
-            .retain(|j| !(j.id == job.id && j.frame.is_some() == job.frame.is_some()));
-        self.edited_thumbs.busy = true;
+    }
 
+    fn spawn_edited_thumbnail(&mut self, job: Job, cx: &mut Context<Self>) {
+        let (id, stamp, framed) = (job.id, job.stamp, job.frame.is_some());
         let render = cx.background_executor().spawn(async move {
             let image = image::open(&job.thumbnail).ok()?;
             // Cached thumbnails are sRGB JPEGs.
@@ -230,17 +272,22 @@ impl Workspace {
             let tag = if job.frame.is_some() { "-framed" } else { "" };
             let path = dir.join(format!("{}-{:016x}{tag}.jpg", job.id, job.stamp));
             rendered.save(&path).ok()?;
-            Some((job.id, job.stamp, job.frame.is_some(), path))
+            Some(path)
         });
         cx.spawn(async move |this, cx| {
             let result = render.await;
             this.update(cx, |this, cx| {
                 let thumbs = &mut this.edited_thumbs;
-                thumbs.busy = false;
-                if let Some((id, s, framed, path)) = result {
-                    thumbs.pending.remove(&(id, s));
+                thumbs.running = thumbs.running.saturating_sub(1);
+                // Done or failed, it's no longer in flight (a failure would
+                // otherwise block that photo from ever being tried again).
+                thumbs.pending.remove(&(id, stamp));
+                if result.is_none() {
+                    thumbs.failed.insert((id, stamp));
+                }
+                if let Some(path) = result {
                     let map = if framed { &mut thumbs.framed } else { &mut thumbs.done };
-                    if let Some((_, old)) = map.insert(id, (s, path)) {
+                    if let Some((_, old)) = map.insert(id, (stamp, path)) {
                         let _ = std::fs::remove_file(old);
                     }
                 }
@@ -253,9 +300,54 @@ impl Workspace {
     }
 }
 
+/// Takes the most wanted job off `queue`, along with the keys of the
+/// older jobs for the same photo, which it makes pointless and drops.
+fn take_best(queue: &mut Vec<Job>) -> Option<(Job, Vec<(u64, u64)>)> {
+    let best = queue
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, job)| job.priority)
+        .map(|(i, _)| i)?;
+    let job = queue.swap_remove(best);
+    let same = |j: &Job| j.id == job.id && j.frame.is_some() == job.frame.is_some();
+    let stale = queue.iter().filter(|j| same(j)).map(|j| (j.id, j.stamp)).collect();
+    queue.retain(|j| !same(j));
+    Some((job, stale))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn job(priority: u64, id: u64, stamp: u64) -> Job {
+        Job {
+            priority,
+            id,
+            stamp,
+            thumbnail: PathBuf::new(),
+            settings: DevelopSettings::default(),
+            frame: None,
+        }
+    }
+
+    #[test]
+    fn the_most_recently_wanted_photo_renders_first() {
+        let mut queue = vec![job(1_000_900, 1, 1), job(2_000_999, 2, 1), job(2_000_998, 3, 1)];
+        // The newest request, earliest on screen first.
+        assert_eq!(take_best(&mut queue).unwrap().0.id, 2);
+        assert_eq!(take_best(&mut queue).unwrap().0.id, 3);
+        assert_eq!(take_best(&mut queue).unwrap().0.id, 1);
+        assert!(take_best(&mut queue).is_none());
+    }
+
+    #[test]
+    fn an_older_job_for_the_same_photo_is_dropped() {
+        let mut queue = vec![job(1, 7, 10), job(5, 7, 11), job(3, 8, 1)];
+        let (best, stale) = take_best(&mut queue).unwrap();
+        assert_eq!((best.id, best.stamp), (7, 11));
+        assert_eq!(stale, vec![(7, 10)]);
+        assert_eq!(queue.len(), 1);
+    }
 
     #[test]
     fn a_version_changes_only_when_the_settings_do() {

@@ -307,6 +307,9 @@ pub struct Workspace {
     /// fingerprint it was made from, the full-screen cull view, and whether
     /// entering it made the window full screen (so leaving undoes that).
     pub(crate) cull_cache: std::cell::RefCell<Option<(u64, Rc<rustyedit_core::CullInfo>)>>,
+    /// When the cull cache was last checked against the photos, with the
+    /// photo count and settings it was checked at (see `cull_info`).
+    pub(crate) cull_checked: std::cell::Cell<Option<(std::time::Instant, usize, bool, bool)>>,
     pub(crate) cull_view: bool,
     pub(crate) cull_made_fullscreen: bool,
 
@@ -483,6 +486,7 @@ impl Workspace {
             edited_thumbs: Default::default(),
             import_append: false,
             cull_cache: Default::default(),
+            cull_checked: Default::default(),
             cull_view: false,
             cull_made_fullscreen: false,
             xmp_known: Default::default(),
