@@ -89,7 +89,7 @@ pub fn icon(icon: Icon, size: f32, color: Hsla) -> impl IntoElement {
         |_, _, _| {},
         move |bounds, _, window, _| paint_icon(window, bounds, icon, color),
     )
-    .size(px(size))
+    .size(crate::sp(size))
     .flex_shrink_0()
 }
 

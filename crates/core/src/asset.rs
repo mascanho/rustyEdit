@@ -145,6 +145,10 @@ pub struct Asset {
     /// thumbnail. `None` until measured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exposure: Option<crate::culling::ExposureStats>,
+    /// Camera matching (the camera's look and lens corrections) has been
+    /// done for this RAW photo, so opening it again doesn't redo it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub camera_matched: bool,
     /// The preset currently making up the photo's look, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applied_preset: Option<AppliedPreset>,
@@ -186,6 +190,7 @@ impl Asset {
             snapshots: Vec::new(),
             copy_name: None,
             sharpness: None,
+            camera_matched: false,
             exposure: None,
             applied_preset: None,
             marked_delete: false,
@@ -223,6 +228,7 @@ impl Asset {
         if old.sharpness.is_some() {
             self.sharpness = old.sharpness;
         }
+        self.camera_matched |= old.camera_matched;
         if old.exposure.is_some() {
             self.exposure = old.exposure;
         }

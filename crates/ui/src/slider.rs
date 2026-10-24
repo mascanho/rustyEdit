@@ -2,7 +2,7 @@ use crate::sp;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gpui::{
-    div, hsla, linear_color_stop, linear_gradient, prelude::*, px, relative, AnyElement, App,
+    div, hsla, linear_color_stop, linear_gradient, prelude::*, relative, AnyElement, App,
     ClickEvent, Context, CursorStyle, DragMoveEvent, ElementId, Hsla, Keystroke, MouseButton,
     MouseDownEvent, Render, SharedString, Window,
 };
@@ -573,9 +573,9 @@ fn slider_handle(
     div()
         .absolute()
         .left(relative(fraction))
-        .top(px(top))
-        .size(px(size))
-        .ml(px(-size / 2.0))
+        .top(sp(top))
+        .size(sp(size))
+        .ml(sp(-size / 2.0))
         .rounded_full()
         .bg(if active { accent } else { theme.text })
         .border_1()
@@ -584,9 +584,9 @@ fn slider_handle(
         .group_hover(group, move |style| {
             style
                 .bg(accent)
-                .size(px(grown))
-                .ml(px(-grown / 2.0))
-                .top(px(top - 1.0))
+                .size(sp(grown))
+                .ml(sp(-grown / 2.0))
+                .top(sp(top - 1.0))
         })
 }
 
@@ -698,7 +698,7 @@ pub fn compact_slider(
         .relative()
         .flex()
         .items_center()
-        .w(px(width))
+        .w(sp(width))
         .h(sp(14.0))
         .cursor(CursorStyle::ResizeLeftRight)
         .child(

@@ -291,6 +291,38 @@ pub fn read_photo_meta(path: &Path) -> rustyedit_core::PhotoMeta {
             meta.captured = parse_exif_time(&text).unwrap_or(0);
         }
     }
+    // Containers the EXIF reader can't open (Canon CR3, Fujifilm RAF, ...):
+    // the RAW decoder reads the same facts.
+    if meta.camera.is_empty() && crate::decode::is_raw(path) {
+        if let Some(raw) = crate::decode::raw_metadata(path) {
+            let (make, model) = (raw.make.trim(), raw.model.trim());
+            meta.camera = if model.to_lowercase().starts_with(&make.to_lowercase()) {
+                model.to_string()
+            } else {
+                format!("{make} {model}").trim().to_string()
+            };
+            let exif = &raw.exif;
+            meta.lens = raw
+                .lens
+                .as_ref()
+                .map(|lens| format!("{} {}", lens.lens_make, lens.lens_model).trim().to_string())
+                .or_else(|| exif.lens_model.clone())
+                .unwrap_or_default();
+            meta.iso = exif
+                .iso_speed_ratings
+                .map(u32::from)
+                .or(exif.iso_speed)
+                .or(exif.recommended_exposure_index)
+                .unwrap_or(0);
+            meta.focal_mm = exif
+                .focal_length
+                .filter(|r| r.d != 0)
+                .map_or(0.0, |r| r.n as f32 / r.d as f32);
+            if let Some(text) = exif.date_time_original.as_deref().or(exif.create_date.as_deref()) {
+                meta.captured = parse_exif_time(text).unwrap_or(0);
+            }
+        }
+    }
     if meta.captured == 0 {
         meta.captured = std::fs::metadata(path)
             .and_then(|m| m.modified())

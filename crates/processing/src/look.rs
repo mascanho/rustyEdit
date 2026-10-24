@@ -243,6 +243,25 @@ impl LookStats {
     }
 }
 
+/// How [`match_look_with`] fits.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MatchOptions {
+    /// Fit Vignette to darkened corners.
+    pub(crate) vignette: bool,
+    /// How much of each colour range's difference the Color Mixer copies:
+    /// partly for a different scene, fully for the same one.
+    pub(crate) mixer_strength: f32,
+}
+
+impl Default for MatchOptions {
+    fn default() -> Self {
+        Self {
+            vignette: true,
+            mixer_strength: MIXER_DAMPING,
+        }
+    }
+}
+
 /// `settings` with its look (tone, colour, grading, effects) fitted so the
 /// photo in `source` measures like `reference`. Detail, lens corrections,
 /// crop, retouching and masks are left as they were.
@@ -250,6 +269,15 @@ pub fn match_look(
     source: &DevelopSource,
     settings: &DevelopSettings,
     reference: &LookStats,
+) -> DevelopSettings {
+    match_look_with(source, settings, reference, MatchOptions::default())
+}
+
+pub(crate) fn match_look_with(
+    source: &DevelopSource,
+    settings: &DevelopSettings,
+    reference: &LookStats,
+    options: MatchOptions,
 ) -> DevelopSettings {
     if reference.is_empty() {
         return *settings;
@@ -398,12 +426,12 @@ pub fn match_look(
             let adjust = &mut s.mixer[i];
             // Hue: ±100 shifts by up to 30 degrees.
             let shift = ((want.hue_offset - have.hue_offset + 540.0) % 360.0) - 180.0;
-            adjust.hue = (shift / 30.0 * 100.0 * MIXER_DAMPING).clamp(-60.0, 60.0).round();
+            adjust.hue = (shift / 30.0 * 100.0 * options.mixer_strength).clamp(-60.0, 60.0).round();
             // Saturation scales by (1 + value / 100).
             if have.saturation > 0.05 {
                 adjust.saturation = ((want.saturation / have.saturation - 1.0)
                     * 100.0
-                    * MIXER_DAMPING)
+                    * options.mixer_strength)
                     .clamp(-60.0, 60.0)
                     .round();
             }
@@ -412,7 +440,7 @@ pub fn match_look(
                 adjust.luminance = ((want.lightness - have.lightness)
                     / (0.25 * have.saturation)
                     * 100.0
-                    * MIXER_DAMPING)
+                    * options.mixer_strength)
                     .clamp(-50.0, 50.0)
                     .round();
             }
@@ -421,7 +449,7 @@ pub fn match_look(
 
     // 7. Vignette: darker corners, if the reference has them.
     let now = stats(&s).vignette;
-    if reference.vignette < now - 0.05 {
+    if options.vignette && reference.vignette < now - 0.05 {
         s.vignette = solve_increasing(
             |v| {
                 let mut t = s;

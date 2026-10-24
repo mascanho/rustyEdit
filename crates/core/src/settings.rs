@@ -786,6 +786,12 @@ pub struct DevelopPreferences {
     pub section_order: Vec<String>,
     /// Hovering a preset shows its look on the photo before it's applied.
     pub preset_hover_preview: bool,
+    /// The first time a RAW photo is opened in Develop, start it from the
+    /// camera's own colour look (taken from the JPEG preview in the file).
+    pub camera_look_on_open: bool,
+    /// ...and with lens corrections: the lens profile when the lens is
+    /// known, otherwise the corrections the camera applied.
+    pub camera_lens_on_open: bool,
     /// The ICC profile (a printer's, usually) last loaded for soft-proofing.
     pub proof_profile: Option<std::path::PathBuf>,
     /// A folder of Lensfun XML files to read lens profiles from, besides
@@ -801,6 +807,8 @@ impl Default for DevelopPreferences {
             tools_expanded_on_startup: true,
             section_order: Vec::new(),
             preset_hover_preview: true,
+            camera_look_on_open: true,
+            camera_lens_on_open: true,
             proof_profile: None,
             lens_db_folder: None,
         }
@@ -1518,6 +1526,31 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                         set: |s, v| s.develop.tools_expanded_on_startup = v,
                     },
                 }],
+            },
+            SettingsSection {
+                title: "RAW photos",
+                items: &[
+                    SettingItem {
+                        label: "Start from the camera's look",
+                        description: "The first time a RAW photo is opened in Develop, match its \
+                                      tone and colour to how the camera showed it (from the \
+                                      preview in the file). One undo step; edits stay yours.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.develop.camera_look_on_open,
+                            set: |s, v| s.develop.camera_look_on_open = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Start with lens corrections",
+                        description: "Also correct distortion and vignetting: from the lens \
+                                      profile when the lens is known, otherwise as the camera \
+                                      corrected it.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.develop.camera_lens_on_open,
+                            set: |s, v| s.develop.camera_lens_on_open = v,
+                        },
+                    },
+                ],
             },
             SettingsSection {
                 title: "Presets",

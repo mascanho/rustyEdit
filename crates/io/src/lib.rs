@@ -25,7 +25,10 @@ pub mod registry {
 pub use catalog_store::{
     load as load_catalog, merge_saved_state, missing_assets, save as save_catalog,
 };
-pub use decode::{exif_orientation, image_dimensions, open_for_develop, open_image};
+pub use decode::{
+    embedded_preview, exif_orientation, image_dimensions, is_raw_file, open_for_develop,
+    open_image,
+};
 pub use maintenance::{
     build_backup, move_to_trash, optimize_catalog, read_backup, restore_backup, write_backup,
     BackupSidecar, CatalogBackup, OptimizeReport,

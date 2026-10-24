@@ -1087,6 +1087,10 @@ impl Render for Workspace {
         self.live_preview.release_retired(window);
         self.sync_frame_preview(cx);
         self.pixel_ratio.set(window.scale_factor());
+        // Interface scale: fixed sizes (`sp`) and rem-based ones together.
+        let scale = self.settings.appearance.ui_scale.clamp(90, 130) as f32 / 100.0;
+        rustyedit_ui::set_ui_scale(scale);
+        window.set_rem_size(gpui::px(16.0 * scale));
         // New status messages pop up as notifications.
         self.sync_toasts(cx);
         let theme = self.theme;

@@ -21,6 +21,7 @@
 //! fallback; they work in 8 bits between stages.
 
 mod auto;
+mod camera;
 mod cms;
 mod color;
 mod crop;
