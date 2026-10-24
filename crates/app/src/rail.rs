@@ -38,7 +38,10 @@ impl Workspace {
 
     pub(crate) fn active_rail_tool(&self, side: DockSide) -> Option<RailTool> {
         match side {
-            DockSide::Left => self.left_rail_tool,
+            // Frames belong to Develop; the Library never shows them.
+            DockSide::Left => self
+                .left_rail_tool
+                .filter(|tool| *tool != RailTool::Frames || self.mode == crate::workspace::Mode::Develop),
             // In the Library the right column's icons are tabs: one is
             // always showing, Info by default.
             DockSide::Right if self.mode == crate::workspace::Mode::Library => {
@@ -55,8 +58,10 @@ impl Workspace {
             DockSide::Left => ("rail-left", PanelSide::Left),
             DockSide::Right => ("rail-right", PanelSide::Right),
         };
+        let develop = self.mode == crate::workspace::Mode::Develop;
         let buttons = RailTool::for_side(side)
             .iter()
+            .filter(|tool| develop || **tool != RailTool::Frames)
             .map(|&tool| RailButton {
                 id: format!("{id}-{}", tool.label()).into(),
                 icon: rail_icon(tool),
@@ -140,6 +145,7 @@ impl Workspace {
             RailTool::Search => Some(self.search_sections(cx)),
             RailTool::Filters => Some(self.filters_sections(cx)),
             RailTool::Presets => Some(self.presets_sections(cx)),
+            RailTool::Frames => Some(self.frames_sections(cx)),
             RailTool::Keywords => Some(self.keywords_sections(cx)),
             RailTool::Info => Some(self.info_tab_sections(cx)),
             RailTool::Details => Some(self.details_tab_sections(cx)),
@@ -182,6 +188,7 @@ impl Workspace {
                 | RailTool::Search
                 | RailTool::Filters
                 | RailTool::Presets
+                | RailTool::Frames
                 | RailTool::Keywords
                 | RailTool::Info
                 | RailTool::Details
@@ -201,6 +208,7 @@ fn rail_icon(tool: RailTool) -> Icon {
         RailTool::Collections => Icon::Collections,
         RailTool::Filters => Icon::Filter,
         RailTool::Presets => Icon::Presets,
+        RailTool::Frames => Icon::Frame,
         RailTool::Duplicates => Icon::Duplicates,
         RailTool::History => Icon::History,
         RailTool::Snapshots => Icon::Camera,

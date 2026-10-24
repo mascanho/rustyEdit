@@ -62,6 +62,8 @@ pub enum Icon {
     RadialGradient,
     /// A paintbrush: the brush mask.
     Brush,
+    /// A picture inside a mat: frames.
+    Frame,
     /// A band between two ticks: a brightness / colour range mask.
     RangeMask,
     Clipping,
@@ -366,6 +368,10 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
             pen.shape(&[(2.0, 2.0), (14.0, 2.0), (14.0, 14.0), (2.0, 14.0)]);
             pen.circle(8.0, 8.0, 4.0);
             pen.dot(8.0, 8.0, 1.1);
+        }
+        Icon::Frame => {
+            pen.shape(&[(1.5, 2.5), (14.5, 2.5), (14.5, 13.5), (1.5, 13.5)]);
+            pen.shape(&[(4.0, 5.0), (12.0, 5.0), (12.0, 11.0), (4.0, 11.0)]);
         }
         Icon::Brush => {
             // The handle, the ferrule and the bristle tip.

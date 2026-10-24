@@ -116,6 +116,17 @@ impl Workspace {
                     .child(self.presets_pinned(cx))
                     .into_any_element(),
             )
+        } else if !collapsed && self.active_rail_tool(side) == Some(RailTool::Frames) {
+            // Frames pins its controls there too.
+            Some(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .children(navigator)
+                    .child(self.frames_pinned(cx))
+                    .into_any_element(),
+            )
         } else {
             navigator
         };

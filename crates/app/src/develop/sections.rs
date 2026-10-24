@@ -53,7 +53,11 @@ impl Render for SectionGhost {
 impl Workspace {
     /// The editing sections in the user's order.
     pub(super) fn develop_section_order(&self) -> Vec<DevelopSection> {
+        // Frames has its own rail tool rather than a place in this panel.
         DevelopSection::arrange(&self.settings.develop.section_order)
+            .into_iter()
+            .filter(|section| *section != DevelopSection::Frames)
+            .collect()
     }
 
     /// `section` as a collapsible block holding `children`; `key`
@@ -133,7 +137,11 @@ impl Workspace {
 
     /// "Reset order" under the sections, once they've been rearranged.
     pub(super) fn section_order_footer(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.develop_section_order() == DevelopSection::ALL.to_vec() {
+        let default_order: Vec<DevelopSection> = DevelopSection::ALL
+            .into_iter()
+            .filter(|section| *section != DevelopSection::Frames)
+            .collect();
+        if self.develop_section_order() == default_order {
             return None;
         }
         let theme = self.theme;
@@ -189,7 +197,7 @@ impl Workspace {
     }
 
     /// Switches `section`'s edits on or off without changing them.
-    fn set_section_enabled(
+    pub(super) fn set_section_enabled(
         &mut self,
         section: DevelopSection,
         enabled: bool,
