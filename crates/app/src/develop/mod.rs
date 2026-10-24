@@ -35,8 +35,8 @@ mod look;
 mod navigator;
 pub(crate) use navigator::{navigator_size, navigator_slot};
 mod presets;
-mod proof_ui;
 mod preview;
+mod proof_ui;
 mod recipe_modal;
 mod retouch;
 mod sections;
@@ -48,10 +48,10 @@ mod viewer;
 mod zoom;
 
 pub(crate) use adjustments::HistoryNote;
-use rustyedit_ui::sp;
 use gradients::GradientUi;
 pub(crate) use preview::LivePreview;
 use retouch::RetouchUi;
+use rustyedit_ui::sp;
 use zoom::DevelopZoom;
 
 use std::{cell::Cell, rc::Rc};
@@ -184,9 +184,7 @@ impl Workspace {
                     .child(self.render_histogram_panel(cx))
                     .child(self.render_tool_strip(cx))
                     // Stacked layouts keep the Navigator in view here.
-                    .when(stacked, |el| {
-                        el.child(self.render_navigator(cx))
-                    })
+                    .when(stacked, |el| el.child(self.render_navigator(cx)))
                     .into_any_element(),
             ),
             Some(self.develop_edit_footer(stacked, cx)),

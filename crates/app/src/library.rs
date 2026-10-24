@@ -1,4 +1,3 @@
-use rustyedit_ui::sp;
 use gpui::{
     div, img, prelude::*, px, relative, Animation, AnimationExt, AnyElement, App, ClickEvent,
     Context, ObjectFit, SharedString, Window,
@@ -7,6 +6,7 @@ use rustyedit_core::{
     settings::{DockSide, PanelKind},
     ColorLabel, Flag,
 };
+use rustyedit_ui::sp;
 use rustyedit_ui::{PanelSide, Theme};
 use std::{sync::atomic::Ordering, time::Duration};
 
@@ -260,8 +260,8 @@ impl Workspace {
                 {
                     // The left column always starts with a preview of the
                     // selected photo; the Presets tab adds its controls.
-                    let preview = (side == DockSide::Left)
-                        .then(|| self.library_navigator_preview(width));
+                    let preview =
+                        (side == DockSide::Left).then(|| self.library_navigator_preview(width));
                     let presets = presets_tab.then(|| self.presets_pinned(cx));
                     // The Info tab keeps its histogram fixed; only what is
                     // below it scrolls.
@@ -339,104 +339,108 @@ impl Workspace {
     }
 
     /// Flag, rating and colour label for the selected photo(s).
-    pub(crate) fn quick_cull_section(&self, asset: &rustyedit_core::Asset, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn quick_cull_section(
+        &self,
+        asset: &rustyedit_core::Asset,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = self.theme;
-            let entity = cx.entity();
-            let flags = div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap_1()
-                .child(rustyedit_ui::glyph_button(
-                    "library-flag-pick",
-                    "\u{2691}",
-                    "Pick (P)",
-                    theme.pick,
-                    asset.flag == Flag::Picked,
-                    &theme,
-                    cx.listener(|this, _: &ClickEvent, window, cx| {
-                        this.flag_pick(&FlagPick, window, cx);
-                    }),
-                ))
-                .child(rustyedit_ui::glyph_button(
-                    "library-flag-reject",
-                    "\u{2715}",
-                    "Reject (X)",
-                    theme.reject,
-                    asset.flag == Flag::Rejected,
-                    &theme,
-                    cx.listener(|this, _: &ClickEvent, window, cx| {
-                        this.flag_reject(&FlagReject, window, cx);
-                    }),
-                ));
-
-            let swatches = div().flex().flex_row().items_center().gap_1().children(
-                ColorLabel::ALL.into_iter().filter_map(|label| {
-                    let color = theme.color_label(label)?;
-                    let is_active = asset.color_label == label;
-                    Some(
-                        div()
-                            .id(SharedString::from(format!(
-                                "library-label-{}",
-                                label.label()
-                            )))
-                            .size(sp(14.0))
-                            .rounded_full()
-                            .bg(color)
-                            .border_2()
-                            .border_color(if is_active { theme.text } else { color })
-                            .cursor_pointer()
-                            .hover(|el| el.border_color(theme.text_muted))
-                            .tooltip(rustyedit_ui::tip(
-                                format!("{} label", label.label()),
-                                &theme,
-                            ))
-                            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
-                                this.set_color_label_value(label, cx);
-                            })),
-                    )
+        let entity = cx.entity();
+        let flags = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_1()
+            .child(rustyedit_ui::glyph_button(
+                "library-flag-pick",
+                "\u{2691}",
+                "Pick (P)",
+                theme.pick,
+                asset.flag == Flag::Picked,
+                &theme,
+                cx.listener(|this, _: &ClickEvent, window, cx| {
+                    this.flag_pick(&FlagPick, window, cx);
                 }),
-            );
+            ))
+            .child(rustyedit_ui::glyph_button(
+                "library-flag-reject",
+                "\u{2715}",
+                "Reject (X)",
+                theme.reject,
+                asset.flag == Flag::Rejected,
+                &theme,
+                cx.listener(|this, _: &ClickEvent, window, cx| {
+                    this.flag_reject(&FlagReject, window, cx);
+                }),
+            ));
 
-            rustyedit_ui::section(
-                    &theme,
-                    "Quick Cull",
-                    vec![
-                        labeled_row(&theme, "Flag", flags.into_any_element()),
-                        labeled_row(
+        let swatches = div().flex().flex_row().items_center().gap_1().children(
+            ColorLabel::ALL.into_iter().filter_map(|label| {
+                let color = theme.color_label(label)?;
+                let is_active = asset.color_label == label;
+                Some(
+                    div()
+                        .id(SharedString::from(format!(
+                            "library-label-{}",
+                            label.label()
+                        )))
+                        .size(sp(14.0))
+                        .rounded_full()
+                        .bg(color)
+                        .border_2()
+                        .border_color(if is_active { theme.text } else { color })
+                        .cursor_pointer()
+                        .hover(|el| el.border_color(theme.text_muted))
+                        .tooltip(rustyedit_ui::tip(
+                            format!("{} label", label.label()),
                             &theme,
-                            "Rating",
-                            rustyedit_ui::rating_stars(
-                                "library-panel-rating",
-                                asset.rating,
-                                &theme,
-                                12.0,
-                                Some(move |value: u8, _window: &mut Window, cx: &mut App| {
-                                    entity.update(cx, |this, cx| this.set_rating_value(value, cx));
-                                }),
-                            )
-                            .into_any_element(),
-                        ),
-                        labeled_row(&theme, "Label", swatches.into_any_element()),
-                        labeled_row(
-                            &theme,
-                            "Delete",
-                            rustyedit_ui::glyph_button(
-                                "library-mark-delete",
-                                "\u{2326}",
-                                "Mark for deletion from disk (asks before deleting)",
-                                theme.danger,
-                                asset.marked_delete,
-                                &theme,
-                                cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                    this.toggle_mark_for_deletion(cx)
-                                }),
-                            )
-                            .into_any_element(),
-                        ),
-                    ],
+                        ))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                            this.set_color_label_value(label, cx);
+                        })),
                 )
-                .into_any_element()
+            }),
+        );
+
+        rustyedit_ui::section(
+            &theme,
+            "Quick Cull",
+            vec![
+                labeled_row(&theme, "Flag", flags.into_any_element()),
+                labeled_row(
+                    &theme,
+                    "Rating",
+                    rustyedit_ui::rating_stars(
+                        "library-panel-rating",
+                        asset.rating,
+                        &theme,
+                        12.0,
+                        Some(move |value: u8, _window: &mut Window, cx: &mut App| {
+                            entity.update(cx, |this, cx| this.set_rating_value(value, cx));
+                        }),
+                    )
+                    .into_any_element(),
+                ),
+                labeled_row(&theme, "Label", swatches.into_any_element()),
+                labeled_row(
+                    &theme,
+                    "Delete",
+                    rustyedit_ui::glyph_button(
+                        "library-mark-delete",
+                        "\u{2326}",
+                        "Mark for deletion from disk (asks before deleting)",
+                        theme.danger,
+                        asset.marked_delete,
+                        &theme,
+                        cx.listener(|this, _: &ClickEvent, _window, cx| {
+                            this.toggle_mark_for_deletion(cx)
+                        }),
+                    )
+                    .into_any_element(),
+                ),
+            ],
+        )
+        .into_any_element()
     }
 
     /// Histogram ("Main") and the selected photo's metadata.
@@ -693,7 +697,11 @@ impl Workspace {
             return div()
                 .px_1()
                 .child(header(String::new()))
-                .child(crate::develop::navigator_slot(&theme, None, "No photo selected"))
+                .child(crate::develop::navigator_slot(
+                    &theme,
+                    None,
+                    "No photo selected",
+                ))
                 .into_any_element();
         };
 
@@ -702,8 +710,8 @@ impl Workspace {
         // different from the photo until something has been applied.
         let live = (self.source_image_for == Some(asset.id)
             && (asset.develop.is_edited() || self.preview_override.is_some()))
-            .then(|| self.live_preview.image())
-            .flatten();
+        .then(|| self.live_preview.image())
+        .flatten();
         let (w, h) = match (&live, self.live_preview.size()) {
             (Some(_), Some(size)) => size,
             _ => (asset.width.max(1) as f32, asset.height.max(1) as f32),
@@ -781,7 +789,11 @@ impl Workspace {
 }
 
 /// A muted label above a value, for read-only facts in the side panels.
-pub(crate) fn info_row(theme: &Theme, label: &'static str, value: impl Into<SharedString>) -> AnyElement {
+pub(crate) fn info_row(
+    theme: &Theme,
+    label: &'static str,
+    value: impl Into<SharedString>,
+) -> AnyElement {
     div()
         .flex()
         .flex_col()

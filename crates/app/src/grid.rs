@@ -322,16 +322,19 @@ fn thumb_image(
     theme: &Theme,
 ) -> AnyElement {
     match thumbnail {
-        Some(path) => img(path)
-            // Landscapes fill the frame with no gaps; portraits are shown
-            // whole with black at the sides rather than zoomed in.
-            .object_fit(if asset.height > asset.width {
-                ObjectFit::Contain
-            } else {
-                ObjectFit::Cover
-            })
-            .size_full()
-            .into_any_element(),
+        Some(path) => {
+            let portrait = crate::filmstrip::thumb_is_portrait(&path, asset);
+            img(path)
+                // Landscapes fill the frame with no gaps; portraits are shown
+                // whole with black at the sides rather than zoomed in.
+                .object_fit(if portrait {
+                    ObjectFit::Contain
+                } else {
+                    ObjectFit::Cover
+                })
+                .size_full()
+                .into_any_element()
+        }
         // No thumbnail will ever arrive for a missing original, so don't pulse.
         None if asset.missing => div()
             .size_full()
@@ -654,7 +657,9 @@ fn card_controls(asset_ix: usize, entity: &Entity<Workspace>, theme: &Theme) -> 
                     .on_click(move |_: &ClickEvent, _window, cx| {
                         cx.stop_propagation();
                         entity.update(cx, |this, cx| {
-                            this.act_on_card(asset_ix, cx, |this, cx| this.delete_selected(true, cx))
+                            this.act_on_card(asset_ix, cx, |this, cx| {
+                                this.delete_selected(true, cx)
+                            })
                         });
                     })
             }),

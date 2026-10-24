@@ -1,4 +1,3 @@
-use rustyedit_ui::sp;
 use gpui::{
     canvas, div, img, linear_color_stop, linear_gradient, prelude::*, px, AnyElement, Context,
     ObjectFit, ScrollWheelEvent, SharedString,
@@ -7,6 +6,7 @@ use rustyedit_core::{
     settings::{FilmstripPosition, FilmstripSettings},
     Asset, Flag,
 };
+use rustyedit_ui::sp;
 use rustyedit_ui::{FilmLook, Sprockets, Theme};
 
 use crate::workspace::Workspace;
@@ -211,8 +211,8 @@ impl Workspace {
             .saturating_sub(1)
             .saturating_sub(OVERSCAN_FRAMES)
             .min(count);
-        let last = (offsets.partition_point(|&o| o < scroll_x + viewport) + OVERSCAN_FRAMES)
-            .min(count);
+        let last =
+            (offsets.partition_point(|&o| o < scroll_x + viewport) + OVERSCAN_FRAMES).min(count);
 
         let culls = self.cull_info();
         let frames: Vec<AnyElement> = (first..last)
@@ -422,7 +422,7 @@ fn film_frame(
         Some(path) => img(path.clone())
             // Landscapes fill the frame with no gaps; portraits are shown
             // whole with black at the sides rather than zoomed in.
-            .object_fit(if asset.height > asset.width {
+            .object_fit(if thumb_is_portrait(path, asset) {
                 ObjectFit::Contain
             } else {
                 ObjectFit::Cover
@@ -457,7 +457,11 @@ fn film_frame(
             look.picture_border
         })
         .child(image)
-        .children(crate::cull::corner_badges(asset.copy_name.clone(), mark, &theme))
+        .children(crate::cull::corner_badges(
+            asset.copy_name.clone(),
+            mark,
+            &theme,
+        ))
         .when_some(label_color, |el, color| {
             el.child(
                 div()
@@ -602,4 +606,25 @@ fn film_stars(value: u8, look: &FilmLook) -> impl IntoElement {
                 })
                 .child(if filled { "\u{2605}" } else { "\u{2606}" })
         }))
+}
+
+/// Whether the thumbnail at `path` is taller than wide. Read from the
+/// image itself, since the catalog's recorded size can be stale or
+/// unrotated; remembered so each file's header is read once.
+pub(crate) fn thumb_is_portrait(path: &std::path::Path, asset: &Asset) -> bool {
+    use std::{collections::HashMap, path::PathBuf, sync::Mutex};
+    static SIZES: Mutex<Option<HashMap<PathBuf, (u32, u32)>>> = Mutex::new(None);
+    let mut sizes = SIZES.lock().unwrap_or_else(|e| e.into_inner());
+    let sizes = sizes.get_or_insert_with(HashMap::new);
+    let (w, h) = match sizes.get(path) {
+        Some(&size) => size,
+        None => match image::image_dimensions(path) {
+            Ok(size) => {
+                sizes.insert(path.to_path_buf(), size);
+                size
+            }
+            Err(_) => (asset.width, asset.height),
+        },
+    };
+    h > w
 }
