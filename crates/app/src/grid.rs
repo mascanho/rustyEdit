@@ -109,6 +109,7 @@ impl Workspace {
 
         div()
             .id("library-body")
+            .relative()
             .flex_1()
             .min_h(sp(0.0))
             .min_w(sp(0.0))
@@ -161,6 +162,13 @@ impl Workspace {
                 .pt_3()
                 .size_full(),
             )
+            // A thin scrollbar over the right edge, only when there's more
+            // than fits.
+            .child(rustyedit_ui::vertical_scrollbar(
+                "library-grid-scrollbar",
+                self.grid_scroll.0.borrow().base_handle.clone(),
+                &self.theme,
+            ))
             .into_any_element()
     }
 
