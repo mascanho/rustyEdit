@@ -131,7 +131,8 @@ impl Workspace {
                                 .map(|i| visible[i])
                                 .collect()
                         };
-                        this.ensure_edited_thumbnails(&on_screen, cx);
+                        // Cards on screen show their edits and frames.
+                        this.ensure_export_thumbnails(&on_screen, cx);
                         let culls = this.cull_info();
                         let visible = this.catalog.visible_indices();
                         range
@@ -216,7 +217,7 @@ impl Workspace {
             .when(style == GridStyle::Bare, |el| el.rounded_sm())
             .child(thumb_image(
                 asset,
-                self.display_thumbnail(asset),
+                self.export_thumbnail(asset),
                 asset_ix,
                 &theme,
             ))
@@ -331,7 +332,9 @@ fn thumb_image(
 ) -> AnyElement {
     match thumbnail {
         Some(path) => {
-            let portrait = crate::filmstrip::thumb_is_portrait(&path, asset);
+            // A framed photo is shown whole, so its border isn't cropped.
+            let framed = asset.develop.effective().frame.is_active();
+            let portrait = framed || crate::filmstrip::thumb_is_portrait(&path, asset);
             img(path)
                 // Landscapes fill the frame with no gaps; portraits are shown
                 // whole with black at the sides rather than zoomed in.

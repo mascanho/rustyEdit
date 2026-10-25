@@ -20,8 +20,8 @@ use crate::workspace::Workspace;
 pub(crate) struct EditedThumbs {
     /// Asset id -> (settings fingerprint, rendered file).
     done: HashMap<u64, (u64, PathBuf)>,
-    /// The same with the photo's frame drawn around it, for the Export
-    /// tiles (the grid and filmstrip show photos unframed).
+    /// The same with the photo's frame drawn around it, for the grid's
+    /// cards and the Export tiles.
     framed: HashMap<u64, (u64, PathBuf)>,
     /// (asset id, fingerprint) jobs queued or running.
     pending: HashSet<(u64, u64)>,
@@ -131,8 +131,8 @@ impl Workspace {
         asset.thumbnail_path.clone()
     }
 
-    /// The thumbnail the Export tiles show: the edited render, with the
-    /// photo's frame drawn around it once that's ready.
+    /// The thumbnail the grid's cards and the Export tiles show: the edited
+    /// render, with the photo's frame drawn around it once that's ready.
     pub(crate) fn export_thumbnail(&self, asset: &Asset) -> Option<PathBuf> {
         if let Some(frame) = thumbnail_frame(asset) {
             let wanted = self.edited_thumbs.version(
@@ -150,7 +150,7 @@ impl Workspace {
         self.display_thumbnail(asset)
     }
 
-    /// Queues the edited and framed thumbnails the Export tiles need.
+    /// Queues the edited and framed thumbnails the grid and Export tiles need.
     pub(crate) fn ensure_export_thumbnails(&mut self, indices: &[usize], cx: &mut Context<Self>) {
         self.queue_thumbnails(indices, true, cx);
     }
