@@ -310,6 +310,8 @@ pub struct LibrarySettings {
     pub loupe_background: LoupeBackground,
     /// How photos are ordered.
     pub sort: crate::catalog::SortOrder,
+    /// Which half of a RAW + JPEG pair the library shows.
+    pub pair_view: crate::catalog::PairView,
 }
 
 impl Default for LibrarySettings {
@@ -322,6 +324,7 @@ impl Default for LibrarySettings {
             auto_advance: false,
             loupe_background: LoupeBackground::Theme,
             sort: crate::catalog::SortOrder::default(),
+            pair_view: crate::catalog::PairView::default(),
         }
     }
 }

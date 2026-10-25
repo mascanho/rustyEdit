@@ -1055,6 +1055,28 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Saves the photo's tone and colour as a look named for its camera,
+    /// so a match to the camera's JPEG can be reused on other RAWs.
+    pub(crate) fn save_camera_look(&mut self, cx: &mut Context<Self>) {
+        let Some(asset) = self.catalog.selected_asset() else {
+            return;
+        };
+        let camera = asset.meta.camera.trim();
+        let name = if camera.is_empty() {
+            "Camera JPEG look".to_string()
+        } else {
+            format!("{camera} JPEG look")
+        };
+        let develop = asset.develop;
+        let category = PRESET_CATEGORIES[self.develop_ui.preset_ui.new_category];
+        let name = self
+            .develop_ui
+            .presets
+            .save_in(&name, category, &develop, &DevelopSection::LOOK);
+        self.persist_presets(format!("Saved preset \u{201C}{name}\u{201D}"));
+        cx.notify();
+    }
+
     pub(crate) fn rename_preset(&mut self, name: String, cx: &mut Context<Self>) {
         if let Some(ix) = self.develop_ui.preset_ui.renaming.take() {
             if self.develop_ui.presets.rename(ix, &name) {

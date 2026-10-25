@@ -283,6 +283,7 @@ impl Workspace {
             S::Gradients => ("develop-gradients", self.gradients_section(cx)),
             S::Basic => {
                 let mut children = vec![self.auto_tone_row(cx)];
+                children.extend(self.camera_jpeg_row(cx));
                 children.extend(self.adjustment_sliders(&Adjustment::BASIC, cx));
                 ("develop-basic", children)
             }

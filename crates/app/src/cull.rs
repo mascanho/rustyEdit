@@ -529,6 +529,7 @@ fn cull_pill(text: &str, color: gpui::Hsla, _theme: &Theme) -> AnyElement {
 /// culling, and a virtual copy's name.
 pub(crate) fn corner_badges(
     copy_name: Option<String>,
+    pair_tag: Option<&str>,
     mark: CullMark,
     theme: &Theme,
 ) -> Option<AnyElement> {
@@ -559,6 +560,11 @@ pub(crate) fn corner_badges(
     }
     if mark.bright {
         pills.push(pill("BRIGHT".into(), theme.text_muted));
+    }
+    // RAW and JPG are told apart by colour as well as by name.
+    if let Some(tag) = pair_tag {
+        let color = if tag == "JPG" { theme.star } else { theme.accent };
+        pills.push(pill(tag.to_string(), color));
     }
     if let Some(name) = copy_name {
         pills.push(pill(name, theme.accent));

@@ -30,6 +30,9 @@ struct Job {
     decoded: Option<DevelopSource>,
     /// The lens profile's corrections, when the lens is known exactly.
     profile: Option<LensCorrection>,
+    /// The JPEG shot with this RAW, when there is one: a better reference
+    /// than the small preview inside the RAW file.
+    jpeg: Option<PathBuf>,
 }
 
 /// `own` with the parts `what` covers taken from `matched` (and the lens
@@ -93,6 +96,16 @@ impl Workspace {
             .map(|p| p.correction)
     }
 
+    /// The JPEG shot with RAW photo `ix`, if the library has it.
+    pub(crate) fn companion_jpeg(&self, ix: usize) -> Option<&rustyedit_core::Asset> {
+        let asset = self.catalog.assets.get(ix)?;
+        if !rustyedit_core::is_raw_path(&asset.path) {
+            return None;
+        }
+        let other = self.catalog.assets.get(self.catalog.companion_of(ix)?)?;
+        (!other.missing).then_some(other)
+    }
+
     /// Whether the selected photo is a RAW file (so camera matching applies).
     pub(crate) fn selected_is_raw(&self) -> bool {
         self.catalog
@@ -127,6 +140,7 @@ impl Workspace {
                     ix,
                     id: asset.id,
                     path: asset.path.clone(),
+                    jpeg: self.companion_jpeg(ix).map(|a| a.path.clone()),
                     settings: asset.develop,
                     decoded,
                     // Opening a photo prefers a known lens profile; the
@@ -155,7 +169,11 @@ impl Workspace {
             jobs.into_iter()
                 .map(|job| {
                     let matched = (|| {
-                        let preview = rustyedit_io::embedded_preview(&job.path)?;
+                        let preview = job
+                            .jpeg
+                            .as_ref()
+                            .and_then(|jpeg| rustyedit_io::open_image(jpeg).ok())
+                            .or_else(|| rustyedit_io::embedded_preview(&job.path))?;
                         let source = match job.decoded {
                             Some(source) => source,
                             None => rustyedit_io::open_for_develop(&job.path).ok()?,
@@ -294,5 +312,97 @@ mod tests {
 
         let look_only = merged(&own, &matched, CameraMatch { look: true, lens: false }, None);
         assert_eq!(look_only.lens_distortion, 0.0);
+    }
+}
+
+impl Workspace {
+    /// "Film" (beside Camera in Basic): gives each target photo the look of
+    /// the film simulation its Fujifilm recorded in it (Classic Chrome,
+    /// Acros with a red filter, ...), with the tone, grain and colour
+    /// settings it was shot with, as the starting preset. Photos that
+    /// aren't from a Fujifilm are left alone.
+    pub(crate) fn apply_film_simulation(&mut self, cx: &mut Context<Self>) {
+        use rustyedit_core::DevelopSection;
+        if self.develop_ui.auto_busy || self.is_importing {
+            return;
+        }
+        let jobs: Vec<(usize, u64, PathBuf)> = self
+            .target_indices()
+            .into_iter()
+            .filter_map(|ix| {
+                let asset = self.catalog.assets.get(ix).filter(|a| !a.missing)?;
+                Some((ix, asset.id, asset.path.clone()))
+            })
+            .collect();
+        if jobs.is_empty() {
+            return;
+        }
+        let count = jobs.len();
+        self.develop_ui.auto_busy = true;
+        self.status_message = Some("Reading the film simulation\u{2026}".into());
+        cx.notify();
+
+        let work = cx.background_executor().spawn(async move {
+            jobs.into_iter()
+                .map(|(ix, id, path)| {
+                    let recipe = rustyedit_io::read_fuji_recipe(&path);
+                    (ix, id, path, recipe)
+                })
+                .collect::<Vec<_>>()
+        });
+        cx.spawn(async move |this, cx| {
+            let results = work.await;
+            this.update(cx, |this, cx| {
+                this.develop_ui.auto_busy = false;
+                let mut updates = Vec::new();
+                let mut records = std::collections::HashMap::new();
+                let mut last = String::new();
+                for (ix, id, path, recipe) in results {
+                    let Some(recipe) = recipe else { continue };
+                    let Some(asset) = this
+                        .catalog
+                        .assets
+                        .get(ix)
+                        .filter(|a| a.id == id && a.path == path)
+                    else {
+                        continue;
+                    };
+                    let mut preset = recipe.to_preset();
+                    preset.name = format!("{} (from the camera)", recipe.film_simulation.label());
+                    last = recipe.film_simulation.label().to_string();
+                    let mut next = asset.clone();
+                    next.apply_preset(&preset.name, &preset.settings, &DevelopSection::LOOK, 1.0);
+                    updates.push((ix, next.develop));
+                    records.insert(asset.id, next.applied_preset);
+                }
+                let done = updates.len();
+                this.replace_develop_each_and(
+                    updates,
+                    "film simulation",
+                    HistoryNote::Record {
+                        title: "Film simulation",
+                        detail: "From the camera",
+                    },
+                    false,
+                    cx,
+                    move |asset, _| {
+                        asset.camera_matched = true;
+                        if let Some(record) = records.get(&asset.id) {
+                            asset.applied_preset = record.clone();
+                        }
+                    },
+                );
+                this.mark_catalog_dirty(cx);
+                this.status_message = Some(match (done, count) {
+                    (0, 1) => "No Fujifilm film simulation found in this photo.".into(),
+                    (0, _) => "None of these photos has a Fujifilm film simulation.".into(),
+                    (1, _) => format!("Film simulation: {last}.").into(),
+                    (n, _) => format!("Film simulation applied to {n} photos.").into(),
+                });
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 }

@@ -158,6 +158,52 @@ const EXIF_GROUPS: &[(&str, &[(&str, Tag)])] = &[
 ];
 
 pub fn read_metadata(path: &Path, dimensions: Option<(u32, u32)>) -> Metadata {
+    let mut meta = read_basic_metadata(path, dimensions);
+    // A Fujifilm also records its film simulation and other settings.
+    if meta.camera.to_lowercase().contains("fuji") {
+        if let Some(recipe) = crate::fuji::read_fuji_recipe(path) {
+            add_fuji_settings(&mut meta, &recipe);
+        }
+    }
+    meta
+}
+
+/// The Fujifilm settings as a tag beside the exposure facts and a group of
+/// their own.
+fn add_fuji_settings(meta: &mut Metadata, r: &rustyedit_core::FujiRecipe) {
+    use rustyedit_core::{MonoFilter, WhiteBalance};
+    let mut sim = r.film_simulation.label().to_string();
+    if r.film_simulation.is_monochrome() && r.mono_filter != MonoFilter::Off {
+        sim.push_str(&format!(" + {}", r.mono_filter.label()));
+    }
+    meta.chips.insert(0, ("Film", sim.clone()));
+    let tone = |v: f32| if v == v.trunc() { format!("{:+}", v as i32) } else { format!("{v:+.1}") };
+    let wb = if r.white_balance == WhiteBalance::Kelvin {
+        format!("{}K", r.kelvin)
+    } else {
+        r.white_balance.label().to_string()
+    };
+    let mut rows = vec![
+        ("Film simulation", sim),
+        ("Dynamic range", r.dynamic_range.label().to_string()),
+        ("Grain", r.grain.label().to_string()),
+        ("Colour Chrome", r.color_chrome.label().to_string()),
+        ("Chrome FX Blue", r.color_chrome_blue.label().to_string()),
+        ("White balance", format!("{wb}, {:+} R / {:+} B", r.wb_red, r.wb_blue)),
+        ("Highlight tone", tone(r.highlight)),
+        ("Shadow tone", tone(r.shadow)),
+    ];
+    // A black and white simulation has no colour of its own to describe.
+    if r.film_simulation.is_monochrome() {
+        rows.retain(|(l, _)| *l != "Colour Chrome" && *l != "Chrome FX Blue");
+    }
+    meta.groups.insert(
+        meta.groups.iter().position(|g| g.title != "File").unwrap_or(meta.groups.len()),
+        MetaGroup { title: "Fujifilm", rows },
+    );
+}
+
+fn read_basic_metadata(path: &Path, dimensions: Option<(u32, u32)>) -> Metadata {
     let mut meta = Metadata::default();
 
     // File facts first: these exist even when the file has no EXIF.

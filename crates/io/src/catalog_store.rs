@@ -109,7 +109,7 @@ pub fn missing_assets(saved: &Catalog) -> Vec<Asset> {
     saved
         .assets
         .iter()
-        .filter(|asset| !asset.path.exists())
+        .filter(|asset| !asset.path.exists() && !crate::scan::is_hidden(&asset.path))
         .cloned()
         .map(|mut asset| {
             asset.missing = true;

@@ -165,6 +165,7 @@ enum Kernel {
     Demosaic,
     SpotRing,
     SpotApply,
+    Defringe,
     DenoisePrep,
     DenoiseFilter,
     DenoiseCombine,
@@ -185,11 +186,12 @@ enum Kernel {
     Copy,
 }
 
-const ENTRY_POINTS: [&str; 20] = [
+const ENTRY_POINTS: [&str; 21] = [
     "load",
     "demosaic",
     "spot_ring",
     "spot_apply",
+    "defringe",
     "denoise_prep",
     "denoise_filter",
     "denoise_combine",
@@ -1599,6 +1601,9 @@ fn plan_early(
     let denoise = plan.full_w >= 3
         && plan.full_h >= 3
         && !(s.noise_luma < 0.5 && s.noise_color < 0.5);
+    let defringe = plan.full_w >= 3
+        && plan.full_h >= 3
+        && crate::defringe::is_active(s.defringe_purple, s.defringe_green);
     let lens_on = crate::lens::is_active(s) && w >= 2 && h >= 2;
     let (cx, cy) = ((w as f32 - 1.0) / 2.0, (h as f32 - 1.0) / 2.0);
     let norm = (cx * cx + cy * cy).sqrt().max(1.0);
@@ -1625,7 +1630,14 @@ fn plan_early(
         raw_offset,
         ..plan.params()
     };
-    let loaded = if denoise { Buf::Ping } else { Buf::Early };
+    // Defringe reads one buffer and writes another, and noise reduction
+    // starts from `Ping` and ends in `Early`: with both, the load goes to
+    // `Early` and defringe moves it to `Ping`.
+    let loaded = match (defringe, denoise) {
+        (true, true) => Buf::Early,
+        (false, false) => Buf::Early,
+        _ => Buf::Ping,
+    };
     let bytes = plan.pixels() * HALF_PX;
     plan.push(Pass {
         kernel: Kernel::Load,
@@ -1638,6 +1650,25 @@ fn plan_early(
         dst_bytes: bytes,
         tmp_bytes: 0,
     });
+    if defringe {
+        // The two amounts ride in the noise slots, unused by this pass.
+        let params = Params {
+            dn_luma: (s.defringe_purple / 100.0).clamp(0.0, 1.0),
+            dn_color: (s.defringe_green / 100.0).clamp(0.0, 1.0),
+            ..plan.params()
+        };
+        plan.push(Pass {
+            kernel: Kernel::Defringe,
+            params,
+            src: loaded,
+            dst: if denoise { Buf::Ping } else { Buf::Early },
+            img_a: Buf::NoInput,
+            img_b: Buf::NoInput,
+            groups: plan.groups(),
+            dst_bytes: bytes,
+            tmp_bytes: 0,
+        });
+    }
     if denoise {
         let la = (s.noise_luma / 100.0).clamp(0.0, 1.0);
         let ca = (s.noise_color / 100.0).clamp(0.0, 1.0);
@@ -1752,8 +1783,8 @@ fn local_sigmas(full_w: u32, full_h: u32, lens_blur: bool) -> (f32, f32) {
 /// right.
 fn margin(s: &DevelopSettings, raw: bool, full: (u32, u32)) -> u32 {
     let (base, custom) = base_settings(s, raw);
-    // Noise reduction reaches 6 pixels; the crop's sampling 2.
-    let mut m = 6 + 2 + 2;
+    // Noise reduction reaches 6 pixels, defringe 2; the crop's sampling 2.
+    let mut m = 6 + 2 + 2 + 2;
     if crate::has_base_edits(&base) {
         if base.clarity.abs() > 0.5 {
             m += blur_radius(crate::detail::clarity_sigma(full.0, full.1));

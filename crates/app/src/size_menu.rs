@@ -366,6 +366,20 @@ impl Workspace {
         .into_any_element()
     }
 
+    pub(crate) fn apply_pair_view(&mut self, view: rustyedit_core::PairView, cx: &mut Context<Self>) {
+        let was = self.catalog.selected;
+        self.catalog.set_pair_view(view);
+        self.update_settings(|s| s.library.pair_view = view, cx);
+        // The photo on screen may be the half that just hid: follow its twin.
+        if self.catalog.visible_position(was).is_none() {
+            if let Some(twin) = self.catalog.companion_of(was) {
+                self.select_asset(twin, cx);
+            }
+        }
+        self.selection.clear();
+        self.on_selection_changed(cx);
+    }
+
     pub(crate) fn apply_sort(&mut self, order: SortOrder, cx: &mut Context<Self>) {
         self.catalog.set_sort(order);
         self.update_settings(|s| s.library.sort = order, cx);

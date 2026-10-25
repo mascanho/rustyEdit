@@ -64,6 +64,9 @@ pub(crate) struct BaState {
     pub(crate) split: f32,
     /// The view `\` brings back.
     last: BaMode,
+    /// Compare against the JPEG shot with this RAW instead of the photo
+    /// without its edits.
+    reference: bool,
 }
 
 impl Default for BaState {
@@ -72,6 +75,7 @@ impl Default for BaState {
             mode: BaMode::Off,
             split: 0.5,
             last: BaMode::Split,
+            reference: false,
         }
     }
 }
@@ -95,7 +99,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         if !self.ba_screen() {
-            if self.ba_photo_edited() {
+            if self.ba_can_compare() {
                 return;
             }
             self.status_message = Some("Before / After needs a photo that has been edited.".into());
@@ -126,7 +130,42 @@ impl Workspace {
             Mode::Library => self.library_view == LibraryView::Loupe,
             Mode::Export => false,
         };
-        screen && self.ba_photo_edited()
+        screen && self.ba_can_compare()
+    }
+
+    /// The JPEG the comparison is against, when it is against the camera's.
+    pub(crate) fn ba_reference(&self) -> Option<&rustyedit_core::Asset> {
+        if !self.ba.reference {
+            return None;
+        }
+        self.companion_jpeg(self.catalog.selected)
+    }
+
+    /// Something to compare: edits, or a JPEG reference.
+    fn ba_can_compare(&self) -> bool {
+        self.ba_photo_edited() || self.ba_reference().is_some()
+    }
+
+    /// Compares the RAW with the JPEG the camera made of the same shot.
+    pub(crate) fn compare_with_jpeg(&mut self, cx: &mut Context<Self>) {
+        let ix = self.catalog.selected;
+        let Some(jpeg) = self.companion_jpeg(ix).map(|_| self.catalog.companion_of(ix)) else {
+            return;
+        };
+        if self.ba.reference && self.ba.mode != BaMode::Off {
+            self.set_ba_mode(BaMode::Off, cx);
+            return;
+        }
+        self.ba.reference = true;
+        if let Some(jpeg) = jpeg {
+            self.request_loupe_for(jpeg, cx);
+        }
+        let mode = if self.ba.last == BaMode::Before {
+            BaMode::Split
+        } else {
+            self.ba.last
+        };
+        self.set_ba_mode(mode, cx);
     }
 
     /// Comparison is on and this screen shows it.
@@ -135,10 +174,13 @@ impl Workspace {
     }
 
     pub(crate) fn set_ba_mode(&mut self, mode: BaMode, cx: &mut Context<Self>) {
-        if mode != BaMode::Off && !self.ba_photo_edited() {
+        if mode != BaMode::Off && !self.ba_can_compare() {
             return;
         }
         self.ba.mode = mode;
+        if mode == BaMode::Off {
+            self.ba.reference = false;
+        }
         if mode != BaMode::Off {
             self.ba.last = mode;
             // The before image comes out of the develop pipeline, which in
@@ -154,10 +196,20 @@ impl Workspace {
 
     /// The rendered (before, after) pair, once both exist.
     fn ba_pair(&self) -> Option<(ImageSource, ImageSource)> {
-        Some((
-            self.live_preview.before()?.into(),
-            self.live_preview.image()?.into(),
-        ))
+        let before: ImageSource = match self.ba_reference() {
+            Some(jpeg) => self.loupe_source(jpeg).into(),
+            None => self.live_preview.before()?.into(),
+        };
+        Some((before, self.live_preview.image()?.into()))
+    }
+
+    /// The two corner tags: what is on the left and what is on the right.
+    fn ba_labels(&self) -> (&'static str, &'static str) {
+        if self.ba_reference().is_some() {
+            ("CAMERA JPEG", "RAW")
+        } else {
+            ("BEFORE", "AFTER")
+        }
     }
 
     /// What replaces the photo for the Before and Side-by-side views (the
@@ -179,6 +231,7 @@ impl Workspace {
                     .into_any_element(),
             );
         };
+        let (before_label, after_label) = self.ba_labels();
         let tag = |text: &'static str| {
             div()
                 .absolute()
@@ -207,15 +260,15 @@ impl Workspace {
                 .relative()
                 .size_full()
                 .child(img(before).object_fit(ObjectFit::Contain).size_full())
-                .child(tag("BEFORE"))
+                .child(tag(before_label))
                 .into_any_element(),
             _ => div()
                 .flex()
                 .flex_row()
                 .gap_2()
                 .size_full()
-                .child(frame(before, "BEFORE"))
-                .child(frame(after, "AFTER"))
+                .child(frame(before, before_label))
+                .child(frame(after, after_label))
                 .into_any_element(),
         })
     }
@@ -234,6 +287,7 @@ impl Workspace {
             return None;
         }
         let (before, _) = self.ba_pair()?;
+        let (before_label, after_label) = self.ba_labels();
         let split = self.ba.split.clamp(0.02, 0.98);
         let rx = f32::from(photo.origin.x - container.origin.x);
         let ry = f32::from(photo.origin.y - container.origin.y);
@@ -319,8 +373,8 @@ impl Workspace {
                         .h(px(rh))
                         .bg(gpui::white().opacity(0.9)),
                 )
-                .child(tag("BEFORE", true))
-                .child(tag("AFTER", false))
+                .child(tag(before_label, true))
+                .child(tag(after_label, false))
                 .child(handle)
                 .into_any_element(),
         )
@@ -380,7 +434,11 @@ impl Workspace {
                                 .text_size(sp(10.0))
                                 .font_weight(gpui::FontWeight::BOLD)
                                 .text_color(theme.text_faint)
-                                .child("BEFORE / AFTER"),
+                                .child(if self.ba_reference().is_some() {
+                                    "CAMERA JPEG / RAW"
+                                } else {
+                                    "BEFORE / AFTER"
+                                }),
                         )
                         .children(BaMode::ON.map(button))
                         .child(

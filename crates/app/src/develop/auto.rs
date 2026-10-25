@@ -308,17 +308,88 @@ impl Workspace {
                 )
             }),
         );
+        let film = small_button(
+            "develop-film-simulation",
+            Icon::Film,
+            "Film",
+            "Start from the film simulation a Fujifilm recorded in the photo (Classic Chrome, Acros, ...)",
+            false,
+            !busy,
+            &theme,
+            cx.listener(|this, _: &ClickEvent, _w, cx| this.apply_film_simulation(cx)),
+        );
         section_row(
             "Tone",
             gpui::div()
                 .flex()
                 .flex_row()
                 .gap_1()
+                .child(film)
                 .child(camera)
                 .child(auto)
                 .into_any_element(),
             &theme,
         )
+    }
+
+    /// For a RAW with its JPEG in the library: look at the camera's JPEG
+    /// beside the RAW, or take the RAW to that look.
+    pub(super) fn camera_jpeg_row(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.companion_jpeg(self.catalog.selected)?;
+        let theme = self.theme;
+        let busy = self.develop_ui.auto_busy;
+        let comparing = self.ba_reference().is_some() && self.ba_active();
+        let compare = small_button(
+            "develop-jpeg-compare",
+            Icon::BeforeAfter,
+            if comparing { "Hide" } else { "Compare" },
+            "See the camera's JPEG beside this RAW, to judge what the RAW still needs",
+            comparing,
+            true,
+            &theme,
+            cx.listener(|this, _: &ClickEvent, _w, cx| this.compare_with_jpeg(cx)),
+        );
+        let matched = small_button(
+            "develop-jpeg-match",
+            Icon::Camera,
+            "Match",
+            "Take this RAW to the look of its JPEG (tone and colour), then edit from there",
+            false,
+            !busy,
+            &theme,
+            cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.match_camera(
+                    rustyedit_processing::CameraMatch {
+                        look: true,
+                        lens: false,
+                    },
+                    false,
+                    cx,
+                )
+            }),
+        );
+        let save = small_button(
+            "develop-jpeg-save-look",
+            Icon::SaveLook,
+            "Save",
+            "Save this photo's tone and colour as a look, to start other RAWs from the camera's JPEG look",
+            false,
+            true,
+            &theme,
+            cx.listener(|this, _: &ClickEvent, _w, cx| this.save_camera_look(cx)),
+        );
+        Some(section_row(
+            "Camera JPEG",
+            gpui::div()
+                .flex()
+                .flex_row()
+                .gap_1()
+                .child(compare)
+                .child(matched)
+                .child(save)
+                .into_any_element(),
+            &theme,
+        ))
     }
 
     /// The Color section's first row: "White balance" and the eyedropper.

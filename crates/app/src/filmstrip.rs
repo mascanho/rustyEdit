@@ -216,6 +216,7 @@ impl Workspace {
                     prefs,
                     frame_px,
                     self.shown_mark(&culls, asset_ix),
+                    self.catalog.pair_tag(asset_ix),
                 )
                 .absolute()
                 .top_0()
@@ -404,6 +405,7 @@ fn film_frame(
     prefs: &FilmstripSettings,
     frame_width: f32,
     mark: rustyedit_core::CullMark,
+    pair_tag: Option<&str>,
 ) -> gpui::Stateful<gpui::Div> {
     let theme = *theme;
     let look = *look;
@@ -459,6 +461,7 @@ fn film_frame(
         .child(image)
         .children(crate::cull::corner_badges(
             asset.copy_name.clone(),
+            pair_tag,
             mark,
             &theme,
         ))

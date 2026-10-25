@@ -505,6 +505,56 @@ fn load(@builtin(global_invocation_id) id: vec3<u32>) {
     store_hdr(id.y * p.width + id.x, c);
 }
 
+// ------------------------------------------------- defringe
+
+// defringe.rs: purple / green desaturated next to strong edges. The two
+// amounts arrive in `dn_luma` (purple) and `dn_color` (green).
+fn defringe_band(hue: f32, lo: f32, hi: f32) -> f32 {
+    return smoothstep2(lo - 20.0, lo, hue) * (1.0 - smoothstep2(hi, hi + 20.0, hue));
+}
+
+@compute @workgroup_size(16, 16)
+fn defringe(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (!in_bounds(id)) { return; }
+    let w = i32(p.width);
+    let h = i32(p.height);
+    let i = id.y * p.width + id.x;
+    let c = px_src(i);
+    var lo = 1.0e9;
+    var hi = -1.0e9;
+    for (var j = -2; j <= 2; j++) {
+        let sy = clamp(i32(id.y) + j, 0, h - 1);
+        for (var k = -2; k <= 2; k++) {
+            let sx = clamp(i32(id.x) + k, 0, w - 1);
+            let t = px_src(u32(sy * w + sx));
+            let l = 0.299 * t.x + 0.587 * t.y + 0.114 * t.z;
+            lo = min(lo, l);
+            hi = max(hi, l);
+        }
+    }
+    let near_edge = smoothstep2(0.10, 0.30, hi - lo);
+    let mx = max(c.x, max(c.y, c.z));
+    let mn = min(c.x, min(c.y, c.z));
+    let d = mx - mn;
+    if (near_edge <= 0.0 || d <= 0.0 || mx <= 0.0) {
+        store_hdr(i, c);
+        return;
+    }
+    var hue: f32;
+    if (mx == c.x) {
+        hue = 60.0 * rem_euclid((c.y - c.z) / d, 6.0);
+    } else if (mx == c.y) {
+        hue = 60.0 * ((c.z - c.x) / d + 2.0);
+    } else {
+        hue = 60.0 * ((c.x - c.y) / d + 4.0);
+    }
+    let colour = p.dn_luma * defringe_band(hue, 255.0, 335.0)
+        + p.dn_color * defringe_band(hue, 70.0, 160.0);
+    let amount = min(colour * near_edge * smoothstep2(0.12, 0.35, d / mx), 1.0);
+    let grey = 0.299 * c.x + 0.587 * c.y + 0.114 * c.z;
+    store_hdr(i, c + (vec3<f32>(grey) - c) * amount);
+}
+
 // ------------------------------------------------- noise reduction
 
 // Image -> (Y, Cb, Cr) planes in `tmp`, on denoise.rs's 0..255 scale.

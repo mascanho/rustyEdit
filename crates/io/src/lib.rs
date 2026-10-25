@@ -8,6 +8,7 @@ mod browse;
 mod catalog_registry;
 mod catalog_store;
 mod decode;
+mod fuji;
 mod maintenance;
 mod metadata;
 mod lens_db;
@@ -25,6 +26,7 @@ pub mod registry {
 pub use catalog_store::{
     load as load_catalog, merge_saved_state, missing_assets, save as save_catalog,
 };
+pub use fuji::read_fuji_recipe;
 pub use decode::{
     embedded_preview, exif_orientation, image_dimensions, is_raw_file, open_for_develop,
     open_image,

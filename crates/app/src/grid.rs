@@ -244,11 +244,21 @@ impl Workspace {
             .when(grid.hover_controls, |el| {
                 el.child(card_controls(asset_ix, entity, &theme))
             })
+            .when(self.catalog.is_pair_cover(asset_ix), |el| {
+                el.child(pair_badge(
+                    asset_ix,
+                    self.catalog.is_pair_open(asset_ix),
+                    stack.is_some(),
+                    entity,
+                    &theme,
+                ))
+            })
             .when_some(stack, |el, (id, count, collapsed)| {
                 el.child(stack_badge(asset_ix, id, count, collapsed, entity, &theme))
             })
             .children(crate::cull::corner_badges(
                 asset.copy_name.clone(),
+                self.catalog.pair_tag(asset_ix),
                 mark,
                 &theme,
             ));
@@ -576,6 +586,54 @@ fn stack_badge(
             cx.stop_propagation();
             entity.update(cx, |this, cx| {
                 this.catalog.toggle_stack_collapsed(id);
+                this.on_selection_changed(cx);
+            });
+        })
+        .into_any_element()
+}
+
+/// Opens or closes a stacked RAW + JPEG pair, pinned to the cover's
+/// top-right corner (below a virtual-copy stack's own toggle).
+fn pair_badge(
+    asset_ix: usize,
+    open: bool,
+    below_stack: bool,
+    entity: &Entity<Workspace>,
+    theme: &Theme,
+) -> AnyElement {
+    let entity = entity.clone();
+    div()
+        .id(("grid-pair", asset_ix))
+        .absolute()
+        .top(sp(if below_stack { 26.0 } else { 4.0 }))
+        .right(sp(4.0))
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap_0p5()
+        .h(sp(18.0))
+        .px_1p5()
+        .rounded_full()
+        .bg(theme.background.opacity(0.85))
+        .border_1()
+        .border_color(theme.border)
+        .text_size(sp(9.5))
+        .text_color(theme.text)
+        .cursor_pointer()
+        .tooltip(rustyedit_ui::tip(
+            if open {
+                "Hide the JPEG under the RAW"
+            } else {
+                "Show the JPEG that was shot with this RAW"
+            },
+            theme,
+        ))
+        .child(if open { "\u{25BE}" } else { "\u{25B8}" })
+        .child("2")
+        .on_click(move |_, _window, cx| {
+            cx.stop_propagation();
+            entity.update(cx, |this, cx| {
+                this.catalog.toggle_pair_open(asset_ix);
                 this.on_selection_changed(cx);
             });
         })

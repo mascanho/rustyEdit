@@ -130,6 +130,34 @@ impl RatingFilter {
 /// them is O(n) — too slow for catalogs with hundreds of thousands of
 /// photos. Flags and the filter must therefore only be changed through
 /// [`Catalog::set_flag`] and [`Catalog::set_filter`].
+/// How a RAW and the JPEG shot with it (same name, same folder) are shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PairView {
+    /// Both, as two photos, told apart by their RAW / JPG badges.
+    #[default]
+    Both,
+    /// One tile per shot, the RAW as its cover; the JPEG tucks underneath
+    /// until the stack is opened.
+    Stack,
+    /// One photo per shot: the RAW, with its JPEG beside it unseen.
+    Raw,
+    /// One photo per shot: the JPEG.
+    Jpeg,
+}
+
+impl PairView {
+    pub const ALL: [PairView; 4] = [PairView::Both, PairView::Stack, PairView::Raw, PairView::Jpeg];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            PairView::Both => "Both",
+            PairView::Stack => "Stacked",
+            PairView::Raw => "RAW",
+            PairView::Jpeg => "JPEG",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Catalog {
     /// The first folder; kept for single-folder sidecars and as a label.
@@ -163,6 +191,15 @@ pub struct Catalog {
     visible: Vec<usize>,
     #[serde(skip)]
     counts: CatalogCounts,
+    /// Which of a RAW + JPEG pair shows.
+    #[serde(skip)]
+    pair_view: PairView,
+    /// For a photo that is half of a RAW + JPEG pair, the other half.
+    #[serde(skip)]
+    companions: Vec<Option<u32>>,
+    /// RAWs whose stacked pair is open, showing the JPEG too.
+    #[serde(skip)]
+    open_pairs: HashSet<u32>,
 }
 
 impl Catalog {
@@ -181,6 +218,9 @@ impl Catalog {
             collapsed_stacks: HashSet::new(),
             visible: Vec::new(),
             counts: CatalogCounts::default(),
+            pair_view: PairView::Both,
+            companions: Vec::new(),
+            open_pairs: HashSet::new(),
         };
         catalog.rebuild_index();
         catalog
@@ -265,6 +305,27 @@ impl Catalog {
             passing.extend(chosen.into_values().map(|(ix, _)| ix));
         }
 
+        // One photo per RAW + JPEG shot, when asked for.
+        self.companions = find_companions(&self.assets);
+        if self.pair_view != PairView::Both {
+            let (view, companions, assets, open) =
+                (self.pair_view, &self.companions, &self.assets, &self.open_pairs);
+            passing.retain(|&ix| {
+                if companions.get(ix).copied().flatten().is_none() {
+                    return true;
+                }
+                let raw = crate::asset::is_raw_path(&assets[ix].path);
+                match view {
+                    PairView::Raw => raw,
+                    PairView::Jpeg => !raw,
+                    PairView::Stack => {
+                        raw || companions[ix].is_some_and(|other| open.contains(&other))
+                    }
+                    PairView::Both => true,
+                }
+            });
+        }
+
         if self.rank.is_empty() {
             passing.sort_unstable();
         } else {
@@ -272,6 +333,62 @@ impl Catalog {
             passing.sort_unstable_by_key(|&ix| rank[ix]);
         }
         self.visible = passing;
+    }
+
+    /// The other half of `index`'s RAW + JPEG pair, if it is in one.
+    pub fn companion_of(&self, index: usize) -> Option<usize> {
+        self.companions.get(index).copied().flatten().map(|c| c as usize)
+    }
+
+    /// Whether any photo is half of a RAW + JPEG pair.
+    /// "RAW" or "JPG" on each half of a pair, so the two are told apart.
+    pub fn pair_tag(&self, ix: usize) -> Option<&'static str> {
+        self.companion_of(ix)?;
+        let raw = crate::asset::is_raw_path(&self.assets[ix].path);
+        if self.pair_view == PairView::Stack && raw && !self.open_pairs.contains(&(ix as u32)) {
+            return Some("RAW+JPG");
+        }
+        Some(if crate::asset::is_raw_path(&self.assets[ix].path) {
+            "RAW"
+        } else {
+            "JPG"
+        })
+    }
+
+    /// Whether the stacked pair with RAW `ix` is open.
+    pub fn is_pair_open(&self, ix: usize) -> bool {
+        self.open_pairs.contains(&(ix as u32))
+    }
+
+    /// Opens or closes the stacked pair whose RAW is `ix`.
+    pub fn toggle_pair_open(&mut self, ix: usize) {
+        if !self.open_pairs.remove(&(ix as u32)) {
+            self.open_pairs.insert(ix as u32);
+        }
+        self.rebuild_index();
+    }
+
+    /// Whether `ix` is a RAW with a JPEG stacked under it right now.
+    pub fn is_pair_cover(&self, ix: usize) -> bool {
+        self.pair_view == PairView::Stack
+            && self.companion_of(ix).is_some()
+            && crate::asset::is_raw_path(&self.assets[ix].path)
+    }
+
+    pub fn has_pairs(&self) -> bool {
+        self.companions.iter().any(Option::is_some)
+    }
+
+    pub fn pair_view(&self) -> PairView {
+        self.pair_view
+    }
+
+    /// Chooses which of each RAW + JPEG pair shows.
+    pub fn set_pair_view(&mut self, view: PairView) {
+        if self.pair_view != view {
+            self.pair_view = view;
+            self.rebuild_index();
+        }
     }
 
     /// Rebuilds the visible index after a bulk edit that can affect filters
@@ -776,6 +893,37 @@ impl Catalog {
     }
 }
 
+/// Pairs each RAW with the JPEG (or other plain image) shot with it: the
+/// same name, in the same folder, with exactly one RAW among them.
+fn find_companions(assets: &[Asset]) -> Vec<Option<u32>> {
+    let mut groups: HashMap<(PathBuf, String), Vec<usize>> = HashMap::new();
+    for (ix, asset) in assets.iter().enumerate() {
+        if asset.missing || asset.is_virtual_copy() {
+            continue;
+        }
+        let (Some(parent), Some(stem)) = (asset.path.parent(), asset.path.file_stem()) else {
+            continue;
+        };
+        groups
+            .entry((parent.to_path_buf(), stem.to_string_lossy().to_lowercase()))
+            .or_default()
+            .push(ix);
+    }
+    let mut out = vec![None; assets.len()];
+    for members in groups.values().filter(|m| m.len() >= 2) {
+        let (raws, others): (Vec<usize>, Vec<usize>) = members
+            .iter()
+            .partition(|&&ix| crate::asset::is_raw_path(&assets[ix].path));
+        if let ([raw], [other, ..]) = (raws.as_slice(), others.as_slice()) {
+            out[*raw] = Some(*other as u32);
+            for &o in &others {
+                out[o] = Some(*raw as u32);
+            }
+        }
+    }
+    out
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CatalogCounts {
     pub total: usize,
@@ -809,6 +957,67 @@ impl CatalogCounts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn shot(names: &[&str]) -> Catalog {
+        let assets = names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| Asset::new(i as u64, PathBuf::from(format!("/p/{n}"))))
+            .collect();
+        Catalog::new(PathBuf::from("/p"), assets)
+    }
+
+    #[test]
+    fn a_raw_and_its_jpeg_are_a_pair_and_one_half_can_be_shown() {
+        let mut c = shot(&["A.RAF", "A.JPG", "B.RAF", "C.JPG"]);
+        // Both: everything shows.
+        assert_eq!(c.visible_indices(), &[0, 1, 2, 3]);
+        assert!(c.has_pairs());
+        assert_eq!((c.companion_of(0), c.companion_of(1)), (Some(1), Some(0)));
+        assert_eq!((c.companion_of(2), c.companion_of(3)), (None, None));
+        // RAW: the JPEG half of the pair hides; singles stay.
+        c.set_pair_view(PairView::Raw);
+        assert_eq!(c.visible_indices(), &[0, 2, 3]);
+        // JPEG: the RAW half hides.
+        c.set_pair_view(PairView::Jpeg);
+        assert_eq!(c.visible_indices(), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn stacked_pairs_show_the_raw_until_opened() {
+        let mut c = shot(&["A.RAF", "A.JPG", "B.RAF"]);
+        c.set_pair_view(PairView::Stack);
+        assert_eq!(c.visible_indices(), &[0, 2]);
+        assert_eq!(c.pair_tag(0), Some("RAW+JPG"));
+        assert!(c.is_pair_cover(0) && !c.is_pair_cover(2));
+        c.toggle_pair_open(0);
+        assert_eq!(c.visible_indices(), &[0, 1, 2]);
+        assert_eq!((c.pair_tag(0), c.pair_tag(1)), (Some("RAW"), Some("JPG")));
+        c.toggle_pair_open(0);
+        assert_eq!(c.visible_indices(), &[0, 2]);
+    }
+
+    #[test]
+    fn names_match_without_regard_to_case_but_not_across_folders() {
+        let mut c = Catalog::new(
+            PathBuf::from("/p"),
+            vec![
+                Asset::new(0, PathBuf::from("/p/img_1.cr3")),
+                Asset::new(1, PathBuf::from("/p/IMG_1.jpg")),
+                Asset::new(2, PathBuf::from("/q/img_1.cr3")),
+            ],
+        );
+        c.set_pair_view(PairView::Raw);
+        assert_eq!(c.companion_of(0), Some(1));
+        assert_eq!(c.companion_of(2), None);
+        assert_eq!(c.visible_indices(), &[0, 2]);
+    }
+
+    #[test]
+    fn two_raws_or_two_jpegs_with_a_name_are_not_a_pair() {
+        let c = shot(&["A.RAF", "A.ARW", "B.JPG", "B.png"]);
+        assert!(!c.has_pairs());
+    }
 
     #[test]
     fn virtual_copies_sit_after_their_original_and_stack_with_it() {

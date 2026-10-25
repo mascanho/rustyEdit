@@ -39,6 +39,18 @@ impl Workspace {
         );
         rows.push(heading("NOISE REDUCTION"));
         rows.extend(self.adjustment_sliders(&[Adjustment::NoiseLuma, Adjustment::NoiseColor], cx));
+        rows.push(heading("DEFRINGE"));
+        rows.extend(self.adjustment_sliders(
+            &[Adjustment::DefringePurple, Adjustment::DefringeGreen],
+            cx,
+        ));
+        rows.push(
+            div()
+                .text_size(sp(10.0))
+                .text_color(theme.text_faint)
+                .child("Removes the purple and green halos along high-contrast edges. Only edges are touched.")
+                .into_any_element(),
+        );
         rows
     }
 

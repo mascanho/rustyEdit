@@ -277,8 +277,18 @@ impl Workspace {
             }
         });
 
-        let mut changes = Vec::new();
+        // A RAW and its JPEG are one shot: they share flag, rating and label.
+        let mut applied = targets.clone();
         for &ix in &targets {
+            if let Some(other) = self.catalog.companion_of(ix) {
+                if !applied.contains(&other) {
+                    applied.push(other);
+                }
+            }
+        }
+
+        let mut changes = Vec::new();
+        for &ix in &applied {
             let before = self.catalog.assets[ix].state();
             match op {
                 CullOp::Flag(f) => self

@@ -564,9 +564,31 @@ impl Workspace {
             )
             .child(
                 div()
-                    .text_xs()
-                    .text_color(theme.text_muted)
-                    .child(file_name),
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.text_muted)
+                            .child(file_name),
+                    )
+                    .when(self.catalog.has_pairs(), |el| {
+                        el.child(div().flex().flex_row().gap_1().children(
+                            rustyedit_core::PairView::ALL.into_iter().map(|view| {
+                                rustyedit_ui::chrome_bottom_tab(
+                                    SharedString::from(format!("pair-view-{}", view.label())),
+                                    view.label(),
+                                    self.catalog.pair_view() == view,
+                                    &theme,
+                                    cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                                        this.apply_pair_view(view, cx);
+                                    }),
+                                )
+                            }),
+                        ))
+                    }),
             )
             .into_any_element()
     }

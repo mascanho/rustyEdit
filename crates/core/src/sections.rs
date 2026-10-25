@@ -174,6 +174,8 @@ impl DevelopSection {
                 to.sharpen_masking = from.sharpen_masking;
                 to.noise_luma = from.noise_luma;
                 to.noise_color = from.noise_color;
+                to.defringe_purple = from.defringe_purple;
+                to.defringe_green = from.defringe_green;
             }
             DevelopSection::Frames => to.frame = from.frame,
             DevelopSection::Lens => {

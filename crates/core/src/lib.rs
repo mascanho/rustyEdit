@@ -34,9 +34,9 @@ pub mod settings;
 mod snapshot;
 
 pub use albums::{Album, Albums};
-pub use asset::{AppliedPreset, Asset, AssetState, PhotoMeta};
+pub use asset::{is_raw_path, AppliedPreset, Asset, AssetState, PhotoMeta, RAW_EXTENSIONS};
 pub use culling::{CullInfo, CullMark};
-pub use catalog::{Catalog, CatalogCounts, FilterMode, RatingFilter, SortKey, SortOrder};
+pub use catalog::{Catalog, CatalogCounts, FilterMode, PairView, RatingFilter, SortKey, SortOrder};
 pub use catalog_def::CatalogDef;
 pub use collections::{default_keyword_sets, KeywordSet, SmartCollection, SmartCollections};
 pub use color_label::ColorLabel;

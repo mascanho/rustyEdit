@@ -212,30 +212,39 @@ pub fn find_spot_source(image: &RgbImage, target: (f32, f32), radius: f32) -> (f
     let t = (target.0 * w, target.1 * h);
     let fits = |(x, y): (f32, f32)| x - r >= 0.0 && y - r >= 0.0 && x + r <= w && y + r <= h;
 
+    // Two rings around a candidate (just outside the spot, and further
+    // out), so structure running through the spot (a branch, a horizon, a
+    // grain of texture) has to line up as well as the average colour.
     let ring = |centre: (f32, f32)| -> Vec<[f32; 3]> {
-        (0..24)
-            .map(|i| {
-                let a = i as f32 / 24.0 * std::f32::consts::TAU;
-                let rr = r * 1.3;
-                average(image, centre.0 + a.cos() * rr, centre.1 + a.sin() * rr)
+        [1.25f32, 1.8]
+            .into_iter()
+            .flat_map(|scale| {
+                (0..24).map(move |i| {
+                    let a = i as f32 / 24.0 * std::f32::consts::TAU;
+                    (a, r * scale)
+                })
             })
+            .map(|(a, rr)| average(image, centre.0 + a.cos() * rr, centre.1 + a.sin() * rr))
             .collect()
     };
     let target_ring = ring(t);
 
     let mut best: Option<((f32, f32), f32)> = None;
-    for distance in [2.2, 3.2] {
-        for i in 0..12 {
-            let a = i as f32 / 12.0 * std::f32::consts::TAU;
+    for distance in [2.2, 2.8, 3.6, 4.6, 6.0] {
+        for i in 0..24 {
+            let a = i as f32 / 24.0 * std::f32::consts::TAU;
             let candidate = (t.0 + a.cos() * r * distance, t.1 + a.sin() * r * distance);
             if !fits(candidate) {
                 continue;
             }
+            // Nearer sources are likelier to share the light and the
+            // subject, so a far one has to be clearly better.
             let score: f32 = ring(candidate)
                 .iter()
                 .zip(&target_ring)
                 .map(|(a, b)| (0..3).map(|c| (a[c] - b[c]).powi(2)).sum::<f32>())
-                .sum();
+                .sum::<f32>()
+                * (1.0 + 0.04 * distance);
             if best.is_none_or(|(_, s)| score < s) {
                 best = Some((candidate, score));
             }
@@ -306,6 +315,21 @@ mod tests {
         // Healed to the dark surroundings, not the light source.
         let centre = image.get_pixel(25, 50)[0];
         assert!(centre < 40, "centre is {centre}");
+    }
+
+    #[test]
+    fn auto_source_follows_the_structure_through_the_spot() {
+        // Horizontal bands: the source has to sit in the same band, i.e.
+        // level with the spot, whatever is above or below it.
+        let image = RgbImage::from_fn(400, 300, |_, y| {
+            let band = (y / 25) % 2;
+            image::Rgb([if band == 0 { 40 } else { 210 }; 3])
+        });
+        let (x, y) = find_spot_source(&image, (0.5, 0.5 + 12.0 / 300.0), 0.02);
+        let (dy, dx) = ((y - (0.5 + 12.0 / 300.0)) * 300.0, (x - 0.5) * 400.0);
+        // Same band: the source's centre is a whole number of band pairs
+        // (50 rows) away.
+        assert!((dy.rem_euclid(50.0) < 6.0 || dy.rem_euclid(50.0) > 44.0) && dx.abs() > 8.0, "dx {dx}, dy {dy}");
     }
 
     #[test]

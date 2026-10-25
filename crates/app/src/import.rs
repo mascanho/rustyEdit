@@ -323,6 +323,7 @@ impl Workspace {
         self.catalog = catalog;
         // Fresh catalog: re-apply the saved sort and rebuild the facet lists.
         self.catalog.set_sort(self.settings.library.sort);
+        self.catalog.set_pair_view(self.settings.library.pair_view);
         self.facets = crate::filters_panel::Facets::build(&self.catalog);
         self.thumbnail_cache = cache;
         self.mark_catalog_dirty(cx);

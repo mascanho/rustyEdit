@@ -41,6 +41,20 @@ impl PhotoMeta {
     }
 }
 
+/// File extensions of camera RAW formats, lower-case.
+pub const RAW_EXTENSIONS: &[&str] = &[
+    "3fr", "ari", "arw", "bay", "cr2", "cr3", "crw", "dcr", "dng", "erf", "fff", "iiq", "k25",
+    "kdc", "mef", "mos", "mrw", "nef", "nrw", "orf", "pef", "raf", "raw", "rw2", "rwl", "sr2",
+    "srf", "srw", "x3f",
+];
+
+/// Whether `path` names a camera RAW file (by its extension).
+pub fn is_raw_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| RAW_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
 fn upright() -> u8 {
     1
 }

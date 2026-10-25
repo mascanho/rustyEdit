@@ -25,6 +25,7 @@ mod camera;
 mod cms;
 mod color;
 mod crop;
+mod defringe;
 mod denoise;
 mod detail;
 mod develop_source;
@@ -283,6 +284,7 @@ fn apply_cpu(source: &DevelopSource, settings: &DevelopSettings) -> RgbImage {
     let mut buffer = rotated.to_rgb8();
 
     // Noise comes out first, before tone changes can amplify it.
+    defringe::defringe(&mut buffer, settings.defringe_purple, settings.defringe_green);
     denoise::reduce_noise(&mut buffer, settings.noise_luma, settings.noise_color);
 
     let (base, custom_sharpen) = split_sharpening(settings);
@@ -469,6 +471,29 @@ mod tests {
     }
 
     #[test]
+    fn defringe_clears_a_purple_halo_on_both_paths() {
+        let image = RgbImage::from_fn(96, 64, |x, _| match x {
+            0..=47 => image::Rgb([20, 20, 20]),
+            48..=49 => image::Rgb([190, 80, 210]),
+            _ => image::Rgb([235, 235, 235]),
+        });
+        let source = DevelopSource::from_working(DynamicImage::ImageRgb8(image));
+        let settings = with(|s| s.defringe_purple = 100.0);
+        let spread = |p: &image::Rgb<u8>| {
+            *p.0.iter().max().unwrap() as i32 - *p.0.iter().min().unwrap() as i32
+        };
+        let untouched = apply_cpu(&source, &DevelopSettings::default());
+        let cpu = apply_cpu(&source, &settings);
+        assert!(spread(untouched.get_pixel(48, 10)) > 100);
+        assert!(spread(cpu.get_pixel(48, 10)) < 25);
+        if gpu_available() {
+            assert_parity("purple halo", &source, &settings);
+            let gpu = working_rgb(&source, &settings).unwrap();
+            assert!(spread(gpu.get_pixel(48, 10)) < 25);
+        }
+    }
+
+    #[test]
     fn gpu_matches_cpu_stage_by_stage() {
         if !gpu_available() {
             return;
@@ -517,6 +542,21 @@ mod tests {
                 }),
             ),
             ("colour noise only", with(|s| s.noise_color = 90.0)),
+            (
+                "defringe",
+                with(|s| {
+                    s.defringe_purple = 80.0;
+                    s.defringe_green = 60.0;
+                }),
+            ),
+            (
+                "defringe with noise reduction",
+                with(|s| {
+                    s.defringe_purple = 100.0;
+                    s.defringe_green = 100.0;
+                    s.noise_luma = 40.0;
+                }),
+            ),
             (
                 "lens",
                 with(|s| {
@@ -735,7 +775,7 @@ mod tests {
         take!(
             exposure, contrast, highlights, shadows, whites, blacks, temperature, tint,
             vibrance, saturation, clarity, sharpening, sharpen_radius, sharpen_masking,
-            noise_luma, noise_color, lens_distortion, lens_vignetting, lens_ca, spots,
+            noise_luma, noise_color, defringe_purple, defringe_green, lens_distortion, lens_vignetting, lens_ca, spots,
             gradients, curves, parametric, mixer, grading, dehaze, vignette,
             vignette_midpoint, vignette_feather, grain, grain_size, crop,
             rotation_degrees, flip_horizontal, flip_vertical

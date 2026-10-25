@@ -50,6 +50,10 @@ pub struct DevelopSettings {
     pub noise_luma: f32,
     /// 0..=100: smoothing of colour noise.
     pub noise_color: f32,
+    /// 0..=100: removes purple fringes along high-contrast edges.
+    pub defringe_purple: f32,
+    /// 0..=100: removes green fringes along high-contrast edges.
+    pub defringe_green: f32,
 
     // Lens corrections
     /// -100..=100: positive straightens barrel distortion (bulging
@@ -123,6 +127,8 @@ impl Default for DevelopSettings {
             sharpen_masking: 0.0,
             noise_luma: 0.0,
             noise_color: 0.0,
+            defringe_purple: 0.0,
+            defringe_green: 0.0,
             lens_distortion: 0.0,
             lens_vignetting: 0.0,
             lens_ca: 0.0,
@@ -196,6 +202,8 @@ pub enum Adjustment {
     SharpenMasking,
     NoiseLuma,
     NoiseColor,
+    DefringePurple,
+    DefringeGreen,
     LensDistortion,
     LensVignetting,
     LensCa,
@@ -234,13 +242,15 @@ impl Adjustment {
         Adjustment::Saturation,
     ];
 
-    pub const DETAIL: [Adjustment; 6] = [
+    pub const DETAIL: [Adjustment; 8] = [
         Adjustment::Clarity,
         Adjustment::Sharpening,
         Adjustment::SharpenRadius,
         Adjustment::SharpenMasking,
         Adjustment::NoiseLuma,
         Adjustment::NoiseColor,
+        Adjustment::DefringePurple,
+        Adjustment::DefringeGreen,
     ];
 
     pub const LENS: [Adjustment; 3] = [
@@ -285,6 +295,8 @@ impl Adjustment {
             Adjustment::SharpenMasking => "Masking",
             Adjustment::NoiseLuma => "Luminance",
             Adjustment::NoiseColor => "Colour",
+            Adjustment::DefringePurple => "Purple",
+            Adjustment::DefringeGreen => "Green",
             Adjustment::LensDistortion => "Distortion",
             Adjustment::LensVignetting => "Vignetting",
             Adjustment::LensCa => "Chromatic aberration",
@@ -325,6 +337,8 @@ impl Adjustment {
             Adjustment::SharpenMasking => "Sharpening masking".to_string(),
             Adjustment::NoiseLuma => "Luminance noise reduction".to_string(),
             Adjustment::NoiseColor => "Colour noise reduction".to_string(),
+            Adjustment::DefringePurple => "Purple defringe".to_string(),
+            Adjustment::DefringeGreen => "Green defringe".to_string(),
             Adjustment::LensDistortion => "Lens distortion".to_string(),
             Adjustment::LensVignetting => "Lens vignetting".to_string(),
             Adjustment::LensCa => "Chromatic aberration".to_string(),
@@ -350,7 +364,9 @@ impl Adjustment {
             | Adjustment::SharpenRadius
             | Adjustment::SharpenMasking
             | Adjustment::NoiseLuma
-            | Adjustment::NoiseColor => (0.0, 100.0),
+            | Adjustment::NoiseColor
+            | Adjustment::DefringePurple
+            | Adjustment::DefringeGreen => (0.0, 100.0),
             _ => (-100.0, 100.0),
         }
     }
@@ -393,6 +409,8 @@ impl Adjustment {
             Adjustment::SharpenMasking => settings.sharpen_masking,
             Adjustment::NoiseLuma => settings.noise_luma,
             Adjustment::NoiseColor => settings.noise_color,
+            Adjustment::DefringePurple => settings.defringe_purple,
+            Adjustment::DefringeGreen => settings.defringe_green,
             Adjustment::LensDistortion => settings.lens_distortion,
             Adjustment::LensVignetting => settings.lens_vignetting,
             Adjustment::LensCa => settings.lens_ca,
@@ -439,6 +457,8 @@ impl Adjustment {
             Adjustment::SharpenMasking => settings.sharpen_masking = v,
             Adjustment::NoiseLuma => settings.noise_luma = v,
             Adjustment::NoiseColor => settings.noise_color = v,
+            Adjustment::DefringePurple => settings.defringe_purple = v,
+            Adjustment::DefringeGreen => settings.defringe_green = v,
             Adjustment::LensDistortion => settings.lens_distortion = v,
             Adjustment::LensVignetting => settings.lens_vignetting = v,
             Adjustment::LensCa => settings.lens_ca = v,
