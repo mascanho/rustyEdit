@@ -67,10 +67,11 @@ pub fn match_camera(
         }
     }
     if what.look {
+        let reference = LookStats::of_image(preview);
         let matched = match_look_with(
             source,
             &s,
-            &LookStats::of_image(preview),
+            &reference,
             MatchOptions {
                 // Corner darkening is the lens's business.
                 vignette: false,
@@ -84,14 +85,31 @@ pub fn match_camera(
         s.shadows = matched.shadows;
         s.whites = matched.whites;
         s.blacks = matched.blacks;
-        s.temperature = matched.temperature;
-        s.tint = matched.tint;
-        s.vibrance = matched.vibrance;
-        s.saturation = matched.saturation;
-        s.curves = matched.curves;
-        s.parametric = matched.parametric;
-        s.mixer = matched.mixer;
-        s.grading = matched.grading;
+        if reference.is_mono() {
+            // The camera's preview is black and white because of a picture
+            // style or film mode (in-camera B&W). The RAW file itself has
+            // all its colour, so take the tone but leave the colour alone:
+            // neutral white balance, no desaturation, no colour curves.
+            let neutral = DevelopSettings::default();
+            s.temperature = neutral.temperature;
+            s.tint = neutral.tint;
+            s.vibrance = neutral.vibrance;
+            s.saturation = neutral.saturation;
+            s.mixer = neutral.mixer;
+            s.grading = neutral.grading;
+            s.parametric = matched.parametric;
+            s.curves = neutral.curves;
+            s.curves.master = matched.curves.master;
+        } else {
+            s.temperature = matched.temperature;
+            s.tint = matched.tint;
+            s.vibrance = matched.vibrance;
+            s.saturation = matched.saturation;
+            s.curves = matched.curves;
+            s.parametric = matched.parametric;
+            s.mixer = matched.mixer;
+            s.grading = matched.grading;
+        }
     }
     if what.lens {
         if let Some(v) = fit_vignetting(&render, &s, preview) {
@@ -327,6 +345,41 @@ mod tests {
         let preview = DynamicImage::ImageRgb8(render(&corrected));
         let v = fit_vignetting(&render, &DevelopSettings::default(), &preview).expect("should fit");
         assert!((v - 40.0).abs() <= 5.0, "found {v}");
+    }
+
+    #[test]
+    fn a_black_and_white_preview_leaves_the_raws_colour_alone() {
+        // The "RAW" is colourful; the camera's preview of it is B&W (an
+        // in-camera monochrome style).
+        let img = scene(960, 640);
+        let source = DevelopSource::from_image(&DynamicImage::ImageRgb8(img.clone()), None);
+        let mono = DynamicImage::ImageRgb8(
+            DynamicImage::ImageRgb8(img).grayscale().to_rgb8(),
+        );
+        let start = DevelopSettings {
+            // Left over from an earlier match to a B&W look.
+            saturation: -100.0,
+            ..Default::default()
+        };
+        let matched = match_camera(&source, &start, &mono, CameraMatch { look: true, lens: false });
+        assert!(matched.saturation > -1.0, "desaturated: {}", matched.saturation);
+        assert_eq!(matched.mixer, DevelopSettings::default().mixer);
+        assert_eq!(matched.grading, DevelopSettings::default().grading);
+        assert_eq!(matched.vibrance, 0.0);
+        // The colour curves stay neutral (only the master may move).
+        assert!(matched.curves.red.is_identity() && matched.curves.blue.is_identity());
+    }
+
+    #[test]
+    fn only_a_truly_black_and_white_preview_counts_as_mono() {
+        let colour = DynamicImage::ImageRgb8(RgbImage::from_fn(300, 200, |x, _| {
+            Rgb([(x % 200) as u8, 90, (255 - x % 200) as u8])
+        }));
+        assert!(!LookStats::of_image(&colour).is_mono());
+        assert!(LookStats::of_image(&colour.grayscale()).is_mono());
+        // A gentle warm cast is still colour.
+        let warm = DynamicImage::ImageRgb8(scene(300, 200));
+        assert!(!LookStats::of_image(&warm).is_mono() || LookStats::of_image(&warm.grayscale()).is_mono());
     }
 
     #[test]

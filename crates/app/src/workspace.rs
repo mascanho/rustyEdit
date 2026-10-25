@@ -754,6 +754,12 @@ impl Workspace {
         if self.mode == Mode::Develop && self.put_down_photo_tool(cx) {
             return;
         }
+        // In the Library's loupe (or compare / survey), G goes back to the
+        // grid.
+        if self.mode == Mode::Library && self.library_view != LibraryView::Grid {
+            self.set_library_view(LibraryView::Grid, cx);
+            return;
+        }
         self.mode = Mode::Library;
         cx.notify();
     }

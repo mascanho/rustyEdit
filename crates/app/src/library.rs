@@ -113,10 +113,18 @@ impl Workspace {
             )
         });
 
+        // Importing rescans every folder of the catalog (photos already
+        // known are quick), so the count is the whole catalog's, not just
+        // the folder that was added: say so.
+        let folders = self.catalog_def.folders.len();
         let (title, detail) = match progress {
             Some((done, total)) => (
                 "Generating thumbnails".to_string(),
-                format!("{done} of {total} photos"),
+                format!(
+                    "{done} of {total} photos in {} ({folders} folder{})",
+                    self.catalog_def.name,
+                    if folders == 1 { "" } else { "s" }
+                ),
             ),
             None => (
                 "Scanning folder".to_string(),

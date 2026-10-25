@@ -295,6 +295,21 @@ impl Workspace {
             cx.stop_propagation();
             return;
         }
+        // Enter in the Library's grid opens the selected photo in the loupe.
+        if event.keystroke.key == "enter"
+            && self.mode == Mode::Library
+            && self.library_view == crate::workspace::LibraryView::Grid
+            && !self.cull_view
+            && !self.settings_open
+            && !self.catalog_menu_open
+            && self.text_draft.is_none()
+            && !event.keystroke.modifiers.modified()
+            && self.catalog.selected_asset().is_some()
+        {
+            self.set_library_view(crate::workspace::LibraryView::Loupe, cx);
+            cx.stop_propagation();
+            return;
+        }
         if event.keystroke.key == "space" && self.mode == Mode::Develop && self.text_draft.is_none()
         {
             if !self.develop_ui.zoom.space_held {

@@ -12,7 +12,7 @@ use crate::{
     workspace::{LibraryView, Mode, Workspace},
 };
 
-const OVERLAY_WIDTH: f32 = 264.0;
+const OVERLAY_WIDTH: f32 = 300.0;
 
 impl Workspace {
     pub fn toggle_info(
@@ -200,42 +200,134 @@ impl Workspace {
                     .into_any_element(),
             ),
             Some(metadata) => {
-                // The exposure facts stay pinned open: bare values with
-                // hairline dividers, no boxes.
-                if !metadata.headline.is_empty() {
+                // Who took it, with what, and when.
+                let dimensions = asset_dimensions(self, index);
+                if !metadata.camera.is_empty() || !metadata.lens.is_empty() || !metadata.taken.is_empty() {
+                    body.push(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_0p5()
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_row()
+                                    .items_baseline()
+                                    .justify_between()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .min_w(sp(0.0))
+                                            .truncate()
+                                            .text_size(sp(13.5))
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .text_color(theme.text)
+                                            .child(if metadata.camera.is_empty() {
+                                                "Unknown camera".to_string()
+                                            } else {
+                                                metadata.camera.clone()
+                                            }),
+                                    )
+                                    .children(dimensions.map(|text| {
+                                        div()
+                                            .flex_shrink_0()
+                                            .text_size(sp(10.0))
+                                            .text_color(theme.accent)
+                                            .child(text)
+                                    })),
+                            )
+                            .when(!metadata.lens.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .truncate()
+                                        .text_size(sp(11.0))
+                                        .text_color(theme.text_muted)
+                                        .child(metadata.lens.clone()),
+                                )
+                            })
+                            .when(!metadata.taken.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .text_size(sp(10.0))
+                                        .text_color(theme.text_faint)
+                                        .child(metadata.taken.clone()),
+                                )
+                            })
+                            .into_any_element(),
+                    );
+                }
+                // The exposure triangle and focal length, as four tiles
+                // that are always there (a dash for what the camera didn't
+                // record, as with a manual lens).
+                body.push(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .gap_1p5()
+                        .children(["Aperture", "Shutter", "ISO", "Focal"].map(|label| {
+                            let value = metadata
+                                .headline
+                                .iter()
+                                .find(|(l, _)| *l == label)
+                                .map(|(_, v)| v.clone());
+                            let known = value.is_some();
+                            div()
+                                .flex_1()
+                                .min_w(sp(0.0))
+                                .flex()
+                                .flex_col()
+                                .items_center()
+                                .gap_0p5()
+                                .py_1p5()
+                                .rounded_lg()
+                                .bg(theme.surface.opacity(0.65))
+                                .border_1()
+                                .border_color(theme.border_subtle)
+                                .child(
+                                    div()
+                                        .text_size(sp(14.0))
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .text_color(if known { theme.text } else { theme.text_faint })
+                                        .child(value.unwrap_or_else(|| "\u{2014}".to_string())),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(sp(8.0))
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .text_color(theme.accent.opacity(0.9))
+                                        .child(label.to_uppercase()),
+                                )
+                        }))
+                        .into_any_element(),
+                );
+                // The smaller facts, as tags.
+                if !metadata.chips.is_empty() {
                     body.push(
                         div()
                             .flex()
                             .flex_row()
-                            .pb_2()
-                            .border_b_1()
-                            .border_color(theme.border_subtle)
-                            .children(metadata.headline.iter().enumerate().map(
-                                |(i, (label, value))| {
-                                    div()
-                                        .flex_1()
-                                        .min_w(sp(0.0))
-                                        .flex()
-                                        .flex_col()
-                                        .items_center()
-                                        .gap_0p5()
-                                        .when(i > 0, |el| {
-                                            el.border_l_1().border_color(theme.border_subtle)
-                                        })
-                                        .child(
-                                            div()
-                                                .text_size(sp(12.5))
-                                                .text_color(theme.text)
-                                                .child(value.clone()),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_size(sp(8.0))
-                                                .text_color(theme.text_faint)
-                                                .child(label.to_uppercase()),
-                                        )
-                                },
-                            ))
+                            .flex_wrap()
+                            .gap_1()
+                            .children(metadata.chips.iter().map(|(label, value)| {
+                                div()
+                                    .flex()
+                                    .flex_row()
+                                    .items_center()
+                                    .gap_1()
+                                    .h(sp(18.0))
+                                    .px_1p5()
+                                    .rounded_full()
+                                    .bg(theme.surface.opacity(0.65))
+                                    .border_1()
+                                    .border_color(theme.border_subtle)
+                                    .text_size(sp(9.5))
+                                    .child(
+                                        div()
+                                            .text_color(theme.text_faint)
+                                            .child(label.to_string()),
+                                    )
+                                    .child(div().text_color(theme.text).child(value.clone()))
+                            }))
                             .into_any_element(),
                     );
                 }
@@ -243,7 +335,13 @@ impl Workspace {
                 for group in &metadata.groups {
                     let title = group.title;
                     let collapsed = self.info_collapsed.contains(title);
-                    let mut section = div().flex().flex_col().child(
+                    let mut section = div()
+                        .flex()
+                        .flex_col()
+                        .px_1p5()
+                        .rounded_lg()
+                        .bg(theme.surface.opacity(0.4))
+                        .child(
                         div()
                             .id(gpui::SharedString::from(format!("info-group-{title}")))
                             .flex()
@@ -330,7 +428,25 @@ impl Workspace {
         let theme = self.theme;
         self.catalog.selected_asset()?;
 
-        let body = self.info_body(self.catalog.selected, cx);
+        let mut body = self.info_body(self.catalog.selected, cx);
+        // The photo's histogram, as the camera-and-lens block ends.
+        let (histogram, _) = self.current_histogram();
+        if histogram.is_some() {
+            let strip = rustyedit_ui::histogram_view_with_height(
+                &theme,
+                rustyedit_ui::HistogramProps {
+                    histogram,
+                    channel: rustyedit_core::HistogramChannel::Rgb,
+                    log_scale: false,
+                    hover: None,
+                    zone: None,
+                    bounds: None,
+                },
+                46.0,
+            )
+            .into_any_element();
+            body.insert(body.len().min(1), strip);
+        }
 
         Some(
             div()
@@ -347,12 +463,25 @@ impl Workspace {
                 .flex_col()
                 .gap_2()
                 .rounded_xl()
-                .bg(theme.background.opacity(0.82))
+                .bg(theme.background.opacity(0.9))
                 .border_1()
-                .border_color(theme.border_subtle)
+                .border_color(theme.border)
                 .shadow_lg()
                 .children(body)
                 .into_any_element(),
         )
     }
+}
+
+/// The photo's size as "24 MP · 6000 × 4000", once it's known.
+fn asset_dimensions(workspace: &Workspace, index: usize) -> Option<String> {
+    let asset = workspace.catalog.assets.get(index)?;
+    (asset.width > 0 && asset.height > 0).then(|| {
+        format!(
+            "{:.0} MP \u{00B7} {} \u{00D7} {}",
+            asset.width as f64 * asset.height as f64 / 1e6,
+            asset.width,
+            asset.height
+        )
+    })
 }

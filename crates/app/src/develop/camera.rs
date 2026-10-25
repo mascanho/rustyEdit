@@ -220,12 +220,13 @@ impl Workspace {
                 );
                 this.mark_catalog_dirty(cx);
                 this.status_message = Some(match (done, automatic) {
-                    (0, true) => return,
+                    // Starting a RAW photo from the camera's look is quiet:
+                    // it happens on every first open.
+                    (_, true) => return,
                     (0, false) if count == 1 => {
                         "This RAW file has no usable camera preview to match.".into()
                     }
                     (0, false) => "None of these RAW files has a usable camera preview.".into(),
-                    (1, true) => "Started from the camera's look.".into(),
                     (1, false) => format!("{title} applied.").into(),
                     (n, _) => format!("{title} applied to {n} photos.").into(),
                 });

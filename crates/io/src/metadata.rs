@@ -9,7 +9,61 @@ use exif::{Exif, In, Tag, Value};
 pub struct Metadata {
     /// The key exposure facts as `(label, value)`, e.g. `("Aperture", "ƒ/1.8")`.
     pub headline: Vec<(&'static str, String)>,
+    /// Smaller facts to show as tags beside them: exposure compensation,
+    /// program, metering, white balance, flash.
+    pub chips: Vec<(&'static str, String)>,
+    /// The camera ("FUJIFILM X-T5"), the lens, and when it was taken
+    /// ("5 Apr 2017 \u{00B7} 02:44"), ready to show; empty when unknown.
+    pub camera: String,
+    pub lens: String,
+    pub taken: String,
     pub groups: Vec<MetaGroup>,
+}
+
+/// The facts both readers (the EXIF reader and the RAW decoder) can give,
+/// before they are put into words.
+#[derive(Debug, Default)]
+struct Facts {
+    camera: String,
+    lens: String,
+    aperture: Option<f64>,
+    shutter: Option<f64>,
+    iso: Option<u32>,
+    focal: Option<f64>,
+    compensation: Option<f64>,
+    program: Option<u32>,
+    metering: Option<u32>,
+    white_balance: Option<u32>,
+    flash: Option<u32>,
+    /// "2017:04:05 02:44:20".
+    taken: Option<String>,
+}
+
+impl Facts {
+    fn apply_to(self, meta: &mut Metadata) {
+        meta.headline = [
+            ("Aperture", self.aperture.map(|v| format!("\u{0192}/{}", trim_float(v)))),
+            ("Shutter", self.shutter.map(format_shutter)),
+            ("ISO", self.iso.map(|v| v.to_string())),
+            ("Focal", self.focal.map(|v| format!("{} mm", trim_float(v)))),
+        ]
+        .into_iter()
+        .filter_map(|(label, value)| value.map(|v| (label, v)))
+        .collect();
+        meta.chips = [
+            ("Exposure", self.compensation.map(format_ev)),
+            ("Mode", self.program.and_then(program_name).map(str::to_string)),
+            ("Metering", self.metering.and_then(metering_name).map(str::to_string)),
+            ("White balance", self.white_balance.and_then(white_balance_name).map(str::to_string)),
+            ("Flash", self.flash.map(|f| flash_text(f).to_string())),
+        ]
+        .into_iter()
+        .filter_map(|(label, value)| value.map(|v| (label, v)))
+        .collect();
+        meta.camera = self.camera;
+        meta.lens = self.lens;
+        meta.taken = self.taken.as_deref().and_then(taken_text).unwrap_or_default();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -139,28 +193,62 @@ pub fn read_metadata(path: &Path, dimensions: Option<(u32, u32)>) -> Metadata {
             .read_from_container(&mut BufReader::new(f))
             .ok()
     }) else {
+        // Containers the EXIF reader can't open (Canon CR3, Fujifilm RAF,
+        // ...): the RAW decoder reads the same facts.
+        if crate::decode::is_raw(path) {
+            if let Some(raw) = crate::decode::raw_metadata(path) {
+                raw_facts(&raw, &mut meta);
+            }
+        }
         return meta;
     };
 
-    // Exposure triangle, formatted by hand: the generic display is terse.
-    let aperture = rational(&exif, Tag::FNumber).map(|v| format!("\u{0192}/{}", trim_float(v)));
-    let shutter = rational(&exif, Tag::ExposureTime).map(format_shutter);
-    let iso = uint(&exif, Tag::PhotographicSensitivity).map(|v| v.to_string());
-    let focal = rational(&exif, Tag::FocalLength).map(|v| format!("{} mm", trim_float(v)));
-    meta.headline = [
-        ("Aperture", aperture),
-        ("Shutter", shutter),
-        ("ISO", iso),
-        ("Focal", focal),
-    ]
-    .into_iter()
-    .filter_map(|(label, value)| value.map(|v| (label, v)))
-    .collect();
+    // The exposure triangle and the rest of the headline facts.
+    let make = display(&exif, Tag::Make).unwrap_or_default();
+    let model = display(&exif, Tag::Model).unwrap_or_default();
+    let signed = |tag: Tag| match &exif.get_field(tag, In::PRIMARY)?.value {
+        Value::SRational(v) => v.first().filter(|r| r.denom != 0).map(|r| r.to_f64()),
+        _ => None,
+    };
+    Facts {
+        camera: camera_name(&make, &model),
+        lens: display(&exif, Tag::LensModel).unwrap_or_default(),
+        aperture: rational(&exif, Tag::FNumber),
+        shutter: rational(&exif, Tag::ExposureTime),
+        iso: uint(&exif, Tag::PhotographicSensitivity),
+        focal: rational(&exif, Tag::FocalLength),
+        compensation: signed(Tag::ExposureBiasValue),
+        program: uint(&exif, Tag::ExposureProgram),
+        metering: uint(&exif, Tag::MeteringMode),
+        white_balance: uint(&exif, Tag::WhiteBalance),
+        flash: uint(&exif, Tag::Flash),
+        taken: display(&exif, Tag::DateTimeOriginal),
+    }
+    .apply_to(&mut meta);
 
     for (title, fields) in EXIF_GROUPS {
         let rows: Vec<_> = fields
             .iter()
-            .filter_map(|(label, tag)| display(&exif, *tag).map(|v| (*label, v)))
+            .filter_map(|(label, tag)| {
+                let text = display(&exif, *tag)?;
+                // Some of the reader's wording is long-winded; say it plainly.
+                let text = match *tag {
+                    Tag::Flash => uint(&exif, Tag::Flash)
+                        .map(|f| flash_text(f).to_string())
+                        .unwrap_or(text),
+                    Tag::SensitivityType => uint(&exif, Tag::SensitivityType)
+                        .map(|c| sensitivity_type_name(c).to_string())
+                        .unwrap_or(text),
+                    Tag::Orientation if text.starts_with("row 0 at top and column 0 at left") => {
+                        "Normal".to_string()
+                    }
+                    Tag::DateTimeOriginal | Tag::DateTimeDigitized | Tag::DateTime => {
+                        datetime_text(&text)
+                    }
+                    _ => text,
+                };
+                Some((*label, text))
+            })
             .collect();
         if !rows.is_empty() {
             meta.groups.push(MetaGroup { title, rows });
@@ -187,11 +275,265 @@ pub fn read_metadata(path: &Path, dimensions: Option<(u32, u32)>) -> Metadata {
     meta
 }
 
+/// Make and model as one name, without repeating the make.
+fn camera_name(make: &str, model: &str) -> String {
+    let (make, model) = (make.trim(), model.trim());
+    if model.to_lowercase().starts_with(&make.to_lowercase()) {
+        model.to_string()
+    } else {
+        format!("{make} {model}").trim().to_string()
+    }
+}
+
+/// What a RAW decoder read (for files the EXIF reader can't open), put
+/// into `meta`: the same headline, tags and groups.
+fn raw_facts(raw: &rawler::decoders::RawMetadata, meta: &mut Metadata) {
+    let e = &raw.exif;
+    let ratio = |r: &rawler::formats::tiff::Rational| (r.d != 0).then(|| r.n as f64 / r.d as f64);
+    let signed = |r: &rawler::formats::tiff::SRational| (r.d != 0).then(|| r.n as f64 / r.d as f64);
+    let lens = raw
+        .lens
+        .as_ref()
+        .map(|lens| format!("{} {}", lens.lens_make, lens.lens_model).trim().to_string())
+        .or_else(|| e.lens_model.clone())
+        .unwrap_or_default();
+    let iso = e
+        .iso_speed_ratings
+        .map(u32::from)
+        .or(e.iso_speed)
+        .or(e.recommended_exposure_index);
+    let taken = e.date_time_original.clone().or_else(|| e.create_date.clone());
+    Facts {
+        camera: camera_name(&raw.make, &raw.model),
+        lens: lens.clone(),
+        aperture: e.fnumber.as_ref().and_then(ratio),
+        shutter: e.exposure_time.as_ref().and_then(ratio),
+        iso,
+        focal: e.focal_length.as_ref().and_then(ratio),
+        compensation: e.exposure_bias.as_ref().and_then(signed),
+        program: e.exposure_program.map(u32::from),
+        metering: e.metering_mode.map(u32::from),
+        white_balance: e.white_balance.map(u32::from),
+        flash: e.flash.map(u32::from),
+        taken: taken.clone(),
+    }
+    .apply_to(meta);
+
+    let mut camera = vec![("Make", raw.make.trim().to_string()), ("Model", raw.model.trim().to_string())];
+    if let Some(v) = &e.serial_number {
+        camera.push(("Serial", v.trim().to_string()));
+    }
+    if let Some(v) = &e.owner_name {
+        camera.push(("Owner", v.trim().to_string()));
+    }
+    let mut lens_rows = Vec::new();
+    if !lens.is_empty() {
+        lens_rows.push(("Lens", lens));
+    }
+    if let Some(v) = &e.lens_make {
+        lens_rows.push(("Make", v.trim().to_string()));
+    }
+    if let Some(v) = &e.lens_serial_number {
+        lens_rows.push(("Serial", v.trim().to_string()));
+    }
+    if let Some(v) = e.max_aperture_value.as_ref().and_then(ratio) {
+        // The EXIF value is in APEX stops: f-number = 2^(v / 2).
+        lens_rows.push(("Max aperture", format!("\u{0192}/{}", trim_float(2f64.powf(v / 2.0)))));
+    }
+    let mut exposure = Vec::new();
+    if let Some(v) = e.exposure_program.and_then(|p| program_name(p.into())) {
+        exposure.push(("Program", v.to_string()));
+    }
+    if let Some(v) = e.metering_mode.and_then(|p| metering_name(p.into())) {
+        exposure.push(("Metering", v.to_string()));
+    }
+    if let Some(v) = e.exposure_bias.as_ref().and_then(signed) {
+        exposure.push(("Exposure comp.", format_ev(v)));
+    }
+    if let Some(v) = e.sensitivity_type {
+        exposure.push(("ISO type", sensitivity_type_name(v.into()).to_string()));
+    }
+    if let Some(v) = e.exposure_mode.and_then(|m| match m {
+        0 => Some("Auto"),
+        1 => Some("Manual"),
+        2 => Some("Auto bracket"),
+        _ => None,
+    }) {
+        exposure.push(("Mode", v.to_string()));
+    }
+    let mut optics = Vec::new();
+    if let Some(v) = e.flash {
+        optics.push(("Flash", flash_text(v.into()).to_string()));
+    }
+    if let Some(v) = e.white_balance.and_then(|w| white_balance_name(w.into())) {
+        optics.push(("White balance", v.to_string()));
+    }
+    if let Some(v) = e.subject_distance.as_ref().and_then(ratio).filter(|d| *d > 0.0 && *d < 1e6) {
+        optics.push(("Subject distance", format!("{} m", trim_float(v))));
+    }
+    if let Some(v) = e.scene_capture_type.and_then(|s| match s {
+        0 => Some("Standard"),
+        1 => Some("Landscape"),
+        2 => Some("Portrait"),
+        3 => Some("Night"),
+        _ => None,
+    }) {
+        optics.push(("Scene type", v.to_string()));
+    }
+    let mut dates = Vec::new();
+    for (label, value) in [
+        ("Taken", &e.date_time_original),
+        ("Created", &e.create_date),
+        ("Modified", &e.modify_date),
+    ] {
+        if let Some(v) = value {
+            dates.push((label, datetime_text(v)));
+        }
+    }
+    if let Some(v) = e.image_number {
+        // Many cameras count their shots here.
+        optics.push(("Image number", v.to_string()));
+    }
+    let mut rights = Vec::new();
+    if let Some(v) = &e.artist {
+        rights.push(("Artist", v.trim().to_string()));
+    }
+    if let Some(v) = &e.copyright {
+        rights.push(("Copyright", v.trim().to_string()));
+    }
+    for (title, rows) in [
+        ("Camera", camera),
+        ("Lens", lens_rows),
+        ("Exposure", exposure),
+        ("Optics", optics),
+        ("Dates", dates),
+        ("Rights", rights),
+    ] {
+        let rows: Vec<_> = rows.into_iter().filter(|(_, v)| !v.is_empty()).collect();
+        if !rows.is_empty() {
+            meta.groups.push(MetaGroup { title, rows });
+        }
+    }
+}
+
+fn format_ev(v: f64) -> String {
+    if v.abs() < 0.05 {
+        "\u{00B1}0 EV".to_string()
+    } else {
+        format!("{}{} EV", if v > 0.0 { "+" } else { "\u{2212}" }, trim_float(v.abs()))
+    }
+}
+
+/// EXIF ExposureProgram.
+fn program_name(code: u32) -> Option<&'static str> {
+    Some(match code {
+        1 => "Manual",
+        2 => "Program",
+        3 => "Aperture priority",
+        4 => "Shutter priority",
+        5 => "Creative",
+        6 => "Action",
+        7 => "Portrait",
+        8 => "Landscape",
+        _ => return None,
+    })
+}
+
+/// EXIF MeteringMode.
+fn metering_name(code: u32) -> Option<&'static str> {
+    Some(match code {
+        1 => "Average",
+        2 => "Centre-weighted",
+        3 => "Spot",
+        4 => "Multi-spot",
+        5 => "Pattern",
+        6 => "Partial",
+        _ => return None,
+    })
+}
+
+/// EXIF WhiteBalance (auto or manual).
+fn white_balance_name(code: u32) -> Option<&'static str> {
+    match code {
+        0 => Some("Auto"),
+        1 => Some("Manual"),
+        _ => None,
+    }
+}
+
+/// EXIF Flash: bit 0 says whether it fired.
+fn flash_text(code: u32) -> &'static str {
+    if code & 1 == 1 {
+        "Fired"
+    } else {
+        "Off"
+    }
+}
+
+fn sensitivity_type_name(code: u32) -> &'static str {
+    match code {
+        1 => "Standard output",
+        2 => "Recommended exposure index",
+        3 => "ISO speed",
+        4 => "Standard output + recommended index",
+        5 => "Standard output + ISO speed",
+        6 => "Recommended index + ISO speed",
+        7 => "All three",
+        _ => "Unknown",
+    }
+}
+
+/// "2017:04:05 02:44:20" as "2017-04-05 02:44:20", the way file times read.
+fn datetime_text(text: &str) -> String {
+    let text = text.trim();
+    let mut out = String::with_capacity(text.len());
+    let mut colons = 0;
+    for c in text.chars() {
+        if c == ':' && colons < 2 && out.len() < 8 {
+            colons += 1;
+            out.push('-');
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// "2017:04:05 02:44:20" as "5 Apr 2017 \u{00B7} 02:44".
+fn taken_text(text: &str) -> Option<String> {
+    let digits: Vec<u32> = text
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .filter_map(|part| part.parse().ok())
+        .collect();
+    let [y, mo, d, h, mi] = digits.get(..5)? else {
+        return None;
+    };
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let month = MONTHS.get((*mo as usize).checked_sub(1)?)?;
+    (*y > 0).then(|| format!("{d} {month} {y} \u{00B7} {h:02}:{mi:02}"))
+}
+
 fn display(exif: &Exif, tag: Tag) -> Option<String> {
     let field = exif.get_field(tag, In::PRIMARY)?;
+    // Text fields can hold several strings, mostly empty (Fujifilm's lens
+    // name does); show the ones with something in them.
+    if let Value::Ascii(parts) = &field.value {
+        let text = parts
+            .iter()
+            .map(|p| String::from_utf8_lossy(p).trim_matches(|c: char| c == '\0' || c.is_whitespace()).to_string())
+            .filter(|p| !p.is_empty())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return (!text.is_empty() && text != "unknown").then_some(text);
+    }
     let text = field.display_value().with_unit(exif).to_string();
     let text = text.trim().trim_matches('"').trim().to_string();
-    (!text.is_empty() && text != "unknown").then_some(text)
+    // Stops from a lens that reports none come out as NaN.
+    let junk = text.is_empty() || text == "unknown" || text.contains("NaN") || text.contains("inf");
+    (!junk).then_some(text)
 }
 
 fn rational(exif: &Exif, tag: Tag) -> Option<f64> {
@@ -366,5 +708,75 @@ mod tests {
         assert_eq!(parse_exif_time("1970-01-02 00:00:01"), Some(86_401));
         assert_eq!(parse_exif_time("2017:04:05 03:24:20"), Some(1_491_362_660));
         assert_eq!(parse_exif_time("garbage"), None);
+    }
+}
+
+#[cfg(test)]
+mod facts_tests {
+    use super::*;
+
+    #[test]
+    fn facts_become_a_headline_and_tags() {
+        let mut meta = Metadata::default();
+        Facts {
+            camera: "FUJIFILM X-T5".into(),
+            lens: "XF35mmF1.4 R".into(),
+            aperture: Some(1.4),
+            shutter: Some(1.0 / 250.0),
+            iso: Some(640),
+            focal: Some(35.0),
+            compensation: Some(-0.7),
+            program: Some(3),
+            metering: Some(5),
+            white_balance: Some(0),
+            flash: Some(16),
+            taken: Some("2026:10:24 15:13:09".into()),
+        }
+        .apply_to(&mut meta);
+        let headline: Vec<_> = meta.headline.iter().map(|(_, v)| v.as_str()).collect();
+        assert_eq!(headline, ["\u{0192}/1.4", "1/250 s", "640", "35 mm"]);
+        let chip = |label: &str| meta.chips.iter().find(|(l, _)| *l == label).map(|(_, v)| v.as_str());
+        assert_eq!(chip("Exposure"), Some("\u{2212}0.7 EV"));
+        assert_eq!(chip("Mode"), Some("Aperture priority"));
+        assert_eq!(chip("Metering"), Some("Pattern"));
+        assert_eq!(chip("White balance"), Some("Auto"));
+        assert_eq!(chip("Flash"), Some("Off"));
+        assert_eq!(meta.camera, "FUJIFILM X-T5");
+        assert_eq!(meta.taken, "24 Oct 2026 \u{00B7} 15:13");
+    }
+
+    #[test]
+    fn unknown_facts_are_left_out() {
+        let mut meta = Metadata::default();
+        Facts {
+            aperture: Some(8.0),
+            program: Some(0),
+            metering: Some(255),
+            ..Default::default()
+        }
+        .apply_to(&mut meta);
+        assert_eq!(meta.headline.len(), 1);
+        assert!(meta.chips.is_empty(), "{:?}", meta.chips);
+        assert!(meta.taken.is_empty() && meta.camera.is_empty());
+    }
+
+    #[test]
+    fn exposure_compensation_reads_naturally() {
+        assert_eq!(format_ev(0.0), "\u{00B1}0 EV");
+        assert_eq!(format_ev(1.0), "+1 EV");
+        assert_eq!(format_ev(-1.3), "\u{2212}1.3 EV");
+    }
+
+    #[test]
+    fn dates_read_like_file_times() {
+        assert_eq!(datetime_text("2026:10:25 14:51:28"), "2026-10-25 14:51:28");
+        assert_eq!(datetime_text("2026-10-25 14:51:28"), "2026-10-25 14:51:28");
+    }
+
+    #[test]
+    fn the_make_is_not_repeated_in_the_camera_name() {
+        assert_eq!(camera_name("SONY", "ILCE-7M4"), "SONY ILCE-7M4");
+        assert_eq!(camera_name("FUJIFILM", "FUJIFILM X-T5"), "FUJIFILM X-T5");
+        assert_eq!(taken_text("garbage"), None);
     }
 }

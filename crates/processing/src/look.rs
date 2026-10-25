@@ -162,6 +162,11 @@ fn neutral_mask(px: &[Pixel]) -> Vec<bool> {
 }
 
 impl LookStats {
+    /// Whether the picture is black and white (no colour to speak of).
+    pub fn is_mono(&self) -> bool {
+        self.mono
+    }
+
     /// The look of a reference photo.
     pub fn of_image(image: &DynamicImage) -> Self {
         let small = if image.width().max(image.height()) > ANALYSIS_EDGE {
