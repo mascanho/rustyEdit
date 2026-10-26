@@ -265,6 +265,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> bool {
         if self.curve_drag_move(event.position, event.dragging(), cx)
+            || self.parametric_drag_move(event.position, event.dragging(), cx)
             || self.wheel_drag_move(event.position, event.dragging(), cx)
             || self.mixer_drag_move(event.position, event.dragging(), cx)
             || self.crop_drag_move(event.position, event.dragging(), cx)
@@ -288,6 +289,7 @@ impl Workspace {
         self.develop_ui.zoom.pan = None;
         self.develop_ui.navigator_dragging = false;
         self.develop_ui.curve_drag = None;
+        self.develop_ui.param_drag = None;
         self.develop_ui.wheel_drag = None;
         self.develop_ui.mixer_pad_drag = false;
         self.develop_ui.crop_drag = None;

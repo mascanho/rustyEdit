@@ -5,6 +5,7 @@
 mod actions;
 mod albums;
 mod catalogs;
+mod commands;
 mod compare;
 mod context_menu;
 mod cull;
@@ -65,7 +66,8 @@ use actions::{
 };
 use actions::{
     AutoTone, CreateVirtualCopy, MatchLook, PickBestOfBursts, PresetFromPhoto, RejectSoftPhotos, RejectBadExposures,
-    SyncSettings, ToggleCullView, ToolWhiteBalance, ToolCrop,
+    SyncSettings, ToggleCommandPalette, ToggleCullView, ToggleShortcuts, ToolRemove,
+    ToolWhiteBalance, ToolCrop,
     CycleGridStyle, GridLarger, GridSmaller, ToolLinearGradient, ToolRadialGradient,
     ToolSpotRemoval, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp,
     SelectDown, SelectFirst, SelectLast, SelectPageDown, SelectPageUp, SelectUp,
@@ -77,8 +79,8 @@ const KEY_CONTEXT: &str = "Workspace";
 fn main() {
     Application::new().run(|cx: &mut App| {
         cx.bind_keys([
-            KeyBinding::new("cmd-q", Quit, None),
-            KeyBinding::new("cmd-o", ImportFolder, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-q", Quit, None),
+            KeyBinding::new("secondary-o", ImportFolder, Some(KEY_CONTEXT)),
             KeyBinding::new("right", NextImage, Some(KEY_CONTEXT)),
             KeyBinding::new("left", PrevImage, Some(KEY_CONTEXT)),
             KeyBinding::new("up", SelectUp, Some(KEY_CONTEXT)),
@@ -122,35 +124,40 @@ fn main() {
             KeyBinding::new("shift-m", ToolRadialGradient, Some(KEY_CONTEXT)),
             KeyBinding::new("w", ToolWhiteBalance, Some(KEY_CONTEXT)),
             KeyBinding::new("r", ToolCrop, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-u", AutoTone, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-shift-s", SyncSettings, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-'", CreateVirtualCopy, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-u", AutoTone, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-shift-s", SyncSettings, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-'", CreateVirtualCopy, Some(KEY_CONTEXT)),
             KeyBinding::new("shift-f", ToggleCullView, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-k", ToggleCommandPalette, Some(KEY_CONTEXT)),
+            // "?" arrives as shift-/ on most layouts; bind every way it can.
+            KeyBinding::new("shift-/", ToggleShortcuts, Some(KEY_CONTEXT)),
+            KeyBinding::new("?", ToggleShortcuts, Some(KEY_CONTEXT)),
+            KeyBinding::new("shift-q", ToolRemove, Some(KEY_CONTEXT)),
             // "+" is shift-= on most layouts; bind every way it can arrive.
             KeyBinding::new("ctrl-=", GridLarger, Some(KEY_CONTEXT)),
             KeyBinding::new("ctrl-+", GridLarger, Some(KEY_CONTEXT)),
             KeyBinding::new("ctrl-shift-=", GridLarger, Some(KEY_CONTEXT)),
             KeyBinding::new("ctrl--", GridSmaller, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-f", FocusSearch, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-z", Undo, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-shift-z", Redo, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-a", SelectAll, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-f", FocusSearch, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-z", Undo, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-shift-z", Redo, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-a", SelectAll, Some(KEY_CONTEXT)),
             KeyBinding::new("c", ViewCompare, Some(KEY_CONTEXT)),
             KeyBinding::new("n", ViewSurvey, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-,", OpenSettings, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-shift-l", CycleLayout, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-g", StackSelected, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-shift-g", AutoStack, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-shift-u", Unstack, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-shift-k", ToggleStack, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-shift-d", FindDuplicates, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-,", OpenSettings, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-shift-l", CycleLayout, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-g", StackSelected, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-shift-g", AutoStack, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-shift-u", Unstack, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-shift-k", ToggleStack, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-shift-d", FindDuplicates, Some(KEY_CONTEXT)),
             KeyBinding::new("backspace", DeleteFromCatalog, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-backspace", DeleteFromDisk, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-backspace", DeleteFromDisk, Some(KEY_CONTEXT)),
             KeyBinding::new("f2", RenamePhoto, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-[", RotateLeft, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-]", RotateRight, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-shift-o", RevealInFinder, Some(KEY_CONTEXT)),
-            KeyBinding::new("cmd-shift-r", SyncFolders, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-[", RotateLeft, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-]", RotateRight, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-shift-o", RevealInFinder, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-shift-r", SyncFolders, Some(KEY_CONTEXT)),
             KeyBinding::new("escape", CloseSettings, Some("SettingsModal")),
         ]);
 
@@ -206,6 +213,13 @@ fn main() {
                     MenuItem::action("Restore Catalog from Backup…", RestoreCatalog),
                     MenuItem::action("Optimize Catalog", OptimizeCatalog),
                     MenuItem::action("Clear Thumbnail & Preview Cache", ClearCache),
+                ],
+            },
+            Menu {
+                name: "Help".into(),
+                items: vec![
+                    MenuItem::action("Command Palette…", ToggleCommandPalette),
+                    MenuItem::action("Keyboard Shortcuts", ToggleShortcuts),
                 ],
             },
         ]);

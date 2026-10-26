@@ -87,5 +87,8 @@ actions!(
         PickBestOfBursts,
         RejectSoftPhotos,
         RejectBadExposures,
+        ToggleCommandPalette,
+        ToggleShortcuts,
+        ToolRemove,
     ]
 );

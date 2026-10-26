@@ -5,7 +5,7 @@
 use rustyedit_ui::sp;
 use gpui::{
     canvas, div, point, prelude::*, px, AnyElement, Bounds, ClickEvent, Context, Hsla, MouseButton,
-    MouseDownEvent, PathBuilder, Pixels, Point, Window,
+    MouseDownEvent, MouseMoveEvent, PathBuilder, Pixels, Point, Window,
 };
 use rustyedit_core::{
     Adjustment, CurveChannel, CurveLook, CurvePreset, HistogramChannel, ParametricCurve, ToneCurve, ToneCurves,
@@ -17,6 +17,14 @@ use crate::workspace::Workspace;
 
 /// Largest the graph gets, so a wide panel doesn't make it huge.
 const MAX_SIDE: f32 = 260.0;
+/// A parametric band being dragged: which, and where the drag began.
+#[derive(Clone, Copy)]
+pub(crate) struct ParamDrag {
+    pub(crate) band: usize,
+    start_y: f32,
+    start_amount: f32,
+}
+
 /// Room the panel's padding takes from its width.
 const PANEL_PADDING: f32 = 28.0;
 const POINT_SIZE: f32 = 10.0;
@@ -33,13 +41,17 @@ impl Workspace {
 
         let mode_row = self.curve_mode_row(cx);
         if self.develop_ui.curve_parametric {
-            let mut rows = vec![mode_row, self.parametric_graph(develop.parametric, side)];
+            let mut rows = vec![mode_row, self.parametric_graph(develop.parametric, side, cx)];
             rows.extend(self.adjustment_sliders(&Adjustment::PARAMETRIC, cx));
             rows.push(
                 div()
                     .text_size(sp(9.5))
                     .text_color(self.theme.text_faint)
-                    .child("Lift or lower a band of tones. These apply before the point curve.")
+                    .child(if self.settings.develop.parametric_points {
+                        "Drag a point or the line up or down \u{00B7} double-click a point to reset it \u{00B7} applies before the point curve"
+                    } else {
+                        "Drag the line up or down in a band to lift or lower it \u{00B7} applies before the point curve"
+                    })
                     .into_any_element(),
             );
             return rows;
@@ -185,17 +197,39 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// A read-only plot of the parametric curve with its four bands, over
-    /// the photo's histogram like the point curve.
-    fn parametric_graph(&self, curve: ParametricCurve, side: f32) -> AnyElement {
+    /// The parametric curve over the photo's histogram. Dragging up or
+    /// down anywhere in one of the four bands (or on its point) lifts or
+    /// lowers that band, the same as its slider.
+    fn parametric_graph(
+        &self,
+        curve: ParametricCurve,
+        side: f32,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = self.theme;
         // The parametric curve shapes all channels together, so it's read
         // against the master (RGB) histogram.
         let (histogram, _) = self.current_histogram();
         let histogram_channel = histogram_channel(CurveChannel::Master);
+        let bounds = self.develop_ui.param_bounds.clone();
+        let active_band = self
+            .develop_ui
+            .param_drag
+            .map(|d| d.band)
+            .or(self.develop_ui.param_hover);
+        let show_points = self.settings.develop.parametric_points;
         let plot = canvas(
-            |_, _, _| {},
+            move |b, _, _| bounds.set(b),
             move |b, _, window, _| {
+                let (w, h) = (f32::from(b.size.width), f32::from(b.size.height));
+                // The band being worked on, lightly shaded.
+                if let Some(band) = active_band {
+                    let x0 = b.origin.x + px(w * band as f32 / 4.0);
+                    window.paint_quad(gpui::fill(
+                        Bounds::new(point(x0, b.origin.y), gpui::size(px(w / 4.0), px(h))),
+                        theme.accent.opacity(0.08),
+                    ));
+                }
                 if let Some(histogram) = &histogram {
                     rustyedit_ui::paint_histogram(
                         window,
@@ -209,7 +243,6 @@ impl Workspace {
                         &theme,
                     );
                 }
-                let (w, h) = (f32::from(b.size.width), f32::from(b.size.height));
                 // Band dividers at the quarter points.
                 for i in 1..4 {
                     let x = b.origin.x + px(w * i as f32 / 4.0);
@@ -240,7 +273,105 @@ impl Workspace {
         .absolute()
         .size_full();
 
+        let points = (0..4).filter(|_| show_points).map(|band| {
+            let (x, y) = curve.handle(band);
+            let active = active_band == Some(band);
+            let edited = curve.amount(band) != 0.0;
+            div()
+                .id(("param-point", band))
+                .absolute()
+                .left(px(x * side - POINT_SIZE / 2.0))
+                .top(px((1.0 - y) * side - POINT_SIZE / 2.0))
+                .size(px(POINT_SIZE))
+                .rounded_full()
+                .bg(if active || edited { theme.accent } else { theme.surface })
+                .border_2()
+                .border_color(theme.accent)
+                .cursor_ns_resize()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, event: &MouseDownEvent, _w, cx| {
+                        cx.stop_propagation();
+                        if event.click_count >= 2 {
+                            this.develop_ui.param_drag = None;
+                            this.edit_parametric(band, 0.0, cx);
+                        } else {
+                            this.start_parametric_drag(Some(band), event.position, cx);
+                        }
+                    }),
+                )
+        });
+
+        // The band names along the bottom, the active one brighter.
+        let labels = div()
+            .absolute()
+            .left_0()
+            .right_0()
+            .bottom(sp(2.0))
+            .flex()
+            .flex_row()
+            .children(["Shadows", "Darks", "Lights", "Highlights"].iter().enumerate().map(
+                |(band, name)| {
+                    div()
+                        .flex_1()
+                        .flex()
+                        .justify_center()
+                        .text_size(sp(9.0))
+                        .text_color(if active_band == Some(band) {
+                            theme.text_muted
+                        } else {
+                            theme.text_faint.opacity(0.7)
+                        })
+                        .child(*name)
+                },
+            ));
+
+        let toggle = div()
+            .id("param-points-toggle")
+            .absolute()
+            .top(sp(4.0))
+            .left(sp(4.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_1()
+            .px_1p5()
+            .h(sp(18.0))
+            .rounded_sm()
+            .cursor_pointer()
+            .bg(theme.background.opacity(0.8))
+            .border_1()
+            .border_color(theme.border_subtle)
+            .text_size(sp(9.5))
+            .text_color(if show_points { theme.text } else { theme.text_faint })
+            .hover(|el| el.text_color(theme.text).border_color(theme.border))
+            .child(
+                div()
+                    .size(sp(6.0))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(theme.accent)
+                    .when(show_points, |el| el.bg(theme.accent)),
+            )
+            .child("Points")
+            .tooltip(rustyedit_ui::tip(
+                if show_points {
+                    "Hide the points and drag the line instead"
+                } else {
+                    "Show a draggable point for each band"
+                },
+                &theme,
+            ))
+            .on_mouse_down(MouseButton::Left, |_, _w, cx| cx.stop_propagation())
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.update_settings(
+                    |s| s.develop.parametric_points = !s.develop.parametric_points,
+                    cx,
+                );
+            }));
+
         div()
+            .id("param-graph")
             .relative()
             .w(px(side))
             .h(px(side))
@@ -248,8 +379,102 @@ impl Workspace {
             .bg(theme.background)
             .border_1()
             .border_color(theme.border_subtle)
+            .cursor_ns_resize()
             .child(plot)
+            .child(labels)
+            .children(points)
+            .child(toggle)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, event: &MouseDownEvent, _w, cx| {
+                    this.start_parametric_drag(None, event.position, cx);
+                }),
+            )
+            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _w, cx| {
+                let band = this
+                    .parametric_position(event.position)
+                    .filter(|(x, y)| (0.0..=1.0).contains(x) && (0.0..=1.0).contains(y))
+                    .map(|(x, _)| ParametricCurve::band_at(x));
+                if this.develop_ui.param_hover != band {
+                    this.develop_ui.param_hover = band;
+                    cx.notify();
+                }
+            }))
+            .on_hover(cx.listener(|this, hovered: &bool, _w, cx| {
+                if !hovered && this.develop_ui.param_hover.take().is_some() {
+                    cx.notify();
+                }
+            }))
             .into_any_element()
+    }
+
+    /// Starts dragging `band` (or the band under the pointer, for a drag
+    /// on the line).
+    fn start_parametric_drag(
+        &mut self,
+        band: Option<usize>,
+        position: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((x, y)) = self.parametric_position(position) else {
+            return;
+        };
+        let Some(develop) = self.catalog.selected_asset().map(|a| a.develop) else {
+            return;
+        };
+        let band = band.unwrap_or_else(|| ParametricCurve::band_at(x));
+        self.develop_ui.param_drag = Some(ParamDrag {
+            band,
+            start_y: y,
+            start_amount: develop.parametric.amount(band),
+        });
+        cx.notify();
+    }
+
+    /// Follows a parametric drag; `true` while one is in progress. The
+    /// band moves by as much as the pointer does, wherever the drag began.
+    pub(super) fn parametric_drag_move(
+        &mut self,
+        position: Point<Pixels>,
+        dragging: bool,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(drag) = self.develop_ui.param_drag else {
+            return false;
+        };
+        if !dragging {
+            self.develop_ui.param_drag = None;
+            cx.notify();
+            return true;
+        }
+        if let Some((_, y)) = self.parametric_position(position) {
+            let amount =
+                drag.start_amount + (y - drag.start_y) * ParametricCurve::amount_per_output();
+            self.edit_parametric(drag.band, amount.round(), cx);
+        }
+        true
+    }
+
+    fn edit_parametric(&mut self, band: usize, amount: f32, cx: &mut Context<Self>) {
+        let label = Adjustment::PARAMETRIC[3 - band.min(3)].label();
+        self.edit_develop(
+            label,
+            |develop| develop.parametric.set_amount(band, amount),
+            |develop| (String::new(), format!("{:+.0}", develop.parametric.amount(band))),
+            cx,
+        );
+    }
+
+    /// A window position as graph coordinates (y up), not clamped.
+    fn parametric_position(&self, position: Point<Pixels>) -> Option<(f32, f32)> {
+        let b = self.develop_ui.param_bounds.get();
+        let (w, h) = (f32::from(b.size.width), f32::from(b.size.height));
+        if w <= 0.0 || h <= 0.0 {
+            return None;
+        }
+        let x = f32::from(position.x - b.origin.x) / w;
+        let y = 1.0 - f32::from(position.y - b.origin.y) / h;
+        Some((x, y))
     }
 
     /// Channel tabs, and a reset for the channel shown when it's edited.

@@ -40,6 +40,46 @@ impl ParametricCurve {
         y.clamp(0.0, 1.0)
     }
 
+    /// The band (0 shadows, 1 darks, 2 lights, 3 highlights) input `x`
+    /// falls in.
+    pub fn band_at(x: f32) -> usize {
+        ((x.clamp(0.0, 1.0) * 4.0) as usize).min(3)
+    }
+
+    /// Band `band`'s amount (-100..=100).
+    pub fn amount(&self, band: usize) -> f32 {
+        match band {
+            0 => self.shadows,
+            1 => self.darks,
+            2 => self.lights,
+            _ => self.highlights,
+        }
+    }
+
+    pub fn set_amount(&mut self, band: usize, value: f32) {
+        let value = value.clamp(-100.0, 100.0);
+        match band {
+            0 => self.shadows = value,
+            1 => self.darks = value,
+            2 => self.lights = value,
+            _ => self.highlights = value,
+        }
+    }
+
+    /// Where band `band`'s handle sits on the curve: its centre tone and
+    /// that tone's output. Only that band moves the curve there, so the
+    /// handle's height is its amount.
+    pub fn handle(&self, band: usize) -> (f32, f32) {
+        let x = CENTRES[band.min(3)];
+        (x, self.evaluate(x))
+    }
+
+    /// How far the output moves per unit of amount, so a drag of `dy`
+    /// (fractions of the graph) changes the amount by `dy * amount_per_output()`.
+    pub fn amount_per_output() -> f32 {
+        100.0 / REACH
+    }
+
     /// The curve as a 256-entry table, forced to rise so no slider can
     /// invert tones.
     pub fn lut(&self) -> [f32; 256] {
@@ -56,6 +96,22 @@ impl ParametricCurve {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_handle_sits_at_its_band_amount() {
+        let mut curve = ParametricCurve::default();
+        curve.set_amount(1, 50.0);
+        assert_eq!(curve.darks, 50.0);
+        let (x, y) = curve.handle(1);
+        assert!((y - x - 0.5 * REACH).abs() < 1e-5);
+        // Neighbouring bands are untouched at their own handles.
+        let (x0, y0) = curve.handle(0);
+        assert!((y0 - x0).abs() < 1e-5);
+        assert_eq!(ParametricCurve::band_at(0.3), 1);
+        assert_eq!(ParametricCurve::band_at(1.0), 3);
+        curve.set_amount(3, 400.0);
+        assert_eq!(curve.highlights, 100.0);
+    }
 
     #[test]
     fn neutral_is_the_diagonal() {

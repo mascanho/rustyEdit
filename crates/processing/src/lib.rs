@@ -59,7 +59,7 @@ pub use look::{match_look, preset_from_look, LookStats};
 pub use frame::{frame_bgra, frame_rgb16, frame_rgb8, framed_size};
 pub use watermark::apply_watermark;
 pub use develop_source::DevelopSource;
-pub use retouch::find_spot_source;
+pub use retouch::{find_spot_source, stroke_spots};
 pub use upright::{detect as detect_upright, Upright, UprightMode};
 
 use image::{imageops::FilterType, DynamicImage, RgbImage, RgbaImage};

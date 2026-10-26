@@ -33,6 +33,11 @@ pub(crate) struct RetouchUi {
     pub(crate) selected: Option<usize>,
     drag: Option<SpotDrag>,
     hover: Option<Point<Pixels>>,
+    /// Content-aware remove: painting a stroke over what should go, rather
+    /// than clicking single spots (the spots it makes are Heal spots).
+    pub(crate) remove: bool,
+    /// The stroke being painted, in window coordinates.
+    stroke: Option<Vec<Point<Pixels>>>,
 }
 
 impl Default for RetouchUi {
@@ -45,6 +50,8 @@ impl Default for RetouchUi {
             selected: None,
             drag: None,
             hover: None,
+            remove: false,
+            stroke: None,
         }
     }
 }
@@ -54,6 +61,7 @@ impl RetouchUi {
     pub(crate) fn reset_selection(&mut self) {
         self.selected = None;
         self.drag = None;
+        self.stroke = None;
     }
 }
 
@@ -134,11 +142,15 @@ impl Workspace {
             .flex_row()
             .gap_1()
             .child(self.tool_button(SpotKind::Heal, cx))
-            .child(self.tool_button(SpotKind::Clone, cx));
+            .child(self.tool_button(SpotKind::Clone, cx))
+            .child(self.remove_button(cx));
 
         let hint = match ui.tool {
+            Some(_) if ui.remove => {
+                "Paint over what should go; it's filled from around it \u{00B7} drag the circles to adjust"
+            }
             Some(_) => "Click a blemish to cover it \u{00B7} drag the circles to adjust",
-            None => "Pick Heal or Clone, then click the photo",
+            None => "Pick Heal or Clone and click the photo, or Remove and paint over an object",
         };
 
         // The sliders edit the selected spot, or the settings for new ones.
@@ -181,7 +193,7 @@ impl Workspace {
 
     fn tool_button(&self, kind: SpotKind, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
-        let active = self.develop_ui.retouch.tool == Some(kind);
+        let active = self.develop_ui.retouch.tool == Some(kind) && !self.develop_ui.retouch.remove;
         div()
             .id(SharedString::from(format!("retouch-tool-{}", kind.label())))
             .flex_1()
@@ -220,6 +232,39 @@ impl Workspace {
             ))
             .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                 this.toggle_photo_tool(kind.into(), cx);
+            }))
+            .into_any_element()
+    }
+
+    fn remove_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let active = self.develop_ui.retouch.remove && self.develop_ui.retouch.tool.is_some();
+        div()
+            .id("retouch-tool-remove")
+            .flex_1()
+            .flex()
+            .items_center()
+            .justify_center()
+            .h(sp(30.0))
+            .rounded_md()
+            .border_1()
+            .cursor_pointer()
+            .when(active, |el| el.bg(theme.accent_muted).border_color(theme.accent))
+            .when(!active, |el| {
+                el.border_color(theme.border_subtle)
+                    .hover(|el| el.bg(theme.surface_elevated))
+            })
+            .child(rustyedit_ui::icon(
+                rustyedit_ui::Icon::Remove,
+                16.0,
+                if active { theme.text } else { theme.text_muted },
+            ))
+            .tooltip(rustyedit_ui::tip(
+                "Content-aware remove: paint over an object (Shift+Q)",
+                &theme,
+            ))
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.toggle_photo_tool(super::tool_strip::PhotoTool::Remove, cx);
             }))
             .into_any_element()
     }
@@ -382,6 +427,10 @@ impl Workspace {
             .hover
             .filter(|p| rect.contains(p) && ui.drag.is_none())
             .map(|p| (p, ui.size * long_edge));
+        let stroke = ui
+            .stroke
+            .clone()
+            .map(|points| (points, ui.size * long_edge));
         let theme = self.theme;
 
         Some(
@@ -393,7 +442,12 @@ impl Workspace {
                 .child(
                     canvas(
                         |_, _, _| {},
-                        move |_, _, window, _| paint_marks(window, &marks, brush, &theme),
+                        move |_, _, window, _| {
+                            if let Some((points, radius)) = &stroke {
+                                paint_stroke(window, points, *radius, &theme);
+                            }
+                            paint_marks(window, &marks, brush, &theme)
+                        },
                     )
                     .size_full(),
                 )
@@ -455,7 +509,70 @@ impl Workspace {
                 return;
             }
         }
+        if self.develop_ui.retouch.remove {
+            self.develop_ui.retouch.selected = None;
+            self.develop_ui.retouch.stroke = Some(vec![position]);
+            cx.notify();
+            return;
+        }
         self.add_spot(self.pointer_on_photo(position, &develop), cx);
+    }
+
+    /// Mouse up after painting a remove stroke: covers it with Heal spots
+    /// copying from one matching area beside it, as one undo step.
+    pub(crate) fn finish_remove_stroke(&mut self, cx: &mut Context<Self>) {
+        let Some(points) = self.develop_ui.retouch.stroke.take() else {
+            return;
+        };
+        cx.notify();
+        let Some(develop) = self.catalog.selected_asset().map(|a| a.develop) else {
+            return;
+        };
+        let Some(image) = &self.source_image else {
+            self.status_message = Some("The photo is still loading".into());
+            return;
+        };
+        let path: Vec<(f32, f32)> = points
+            .iter()
+            .map(|&p| self.pointer_on_photo(p, &develop))
+            .collect();
+        let ui = &self.develop_ui.retouch;
+        let (radius, feather, opacity) = (ui.size, ui.feather.min(0.4), ui.opacity);
+        let placed = rustyedit_processing::stroke_spots(&image.to_rgb8(), &path, radius);
+        if placed.is_empty() {
+            return;
+        }
+        let room = MAX_SPOTS - develop.spots.len();
+        if placed.len() > room {
+            self.status_message = Some(
+                format!(
+                    "That stroke needs {} spots and {room} of {MAX_SPOTS} are left. \
+                     Try a shorter stroke or a bigger brush.",
+                    placed.len()
+                )
+                .into(),
+            );
+            return;
+        }
+        let count = placed.len();
+        self.edit_spots("Remove object", cx, |develop| {
+            for (target, source) in placed {
+                develop.spots.push(Spot {
+                    kind: SpotKind::Heal,
+                    target,
+                    source,
+                    // A little larger than the brush, so the circles
+                    // between the stroke's spots leave no gaps.
+                    radius: (radius * 1.1).min(MAX_SIZE),
+                    feather,
+                    opacity,
+                });
+            }
+        });
+        self.develop_ui.retouch.selected = None;
+        if count > 1 {
+            self.status_message = Some(format!("Removed with {count} heal spots").into());
+        }
     }
 
     /// Drops a new spot covering `target`, copying from the best-matching
@@ -498,6 +615,23 @@ impl Workspace {
         dragging: bool,
         cx: &mut Context<Self>,
     ) -> bool {
+        if let Some(points) = self.develop_ui.retouch.stroke.as_mut() {
+            if !dragging {
+                self.finish_remove_stroke(cx);
+                return true;
+            }
+            // Skip tiny moves: they add points but no coverage.
+            let far_enough = points.last().is_none_or(|last| {
+                let (dx, dy) = (f32::from(position.x - last.x), f32::from(position.y - last.y));
+                dx * dx + dy * dy >= 4.0
+            });
+            if far_enough {
+                points.push(position);
+            }
+            self.develop_ui.retouch.hover = Some(position);
+            cx.notify();
+            return true;
+        }
         let Some(drag) = self.develop_ui.retouch.drag else {
             return false;
         };
@@ -557,6 +691,36 @@ fn paint_marks(
     if let Some((centre, radius)) = brush {
         stroke_circle(window, centre, radius, 2.5, shadow, None);
         stroke_circle(window, centre, radius, 1.0, white.opacity(0.8), None);
+    }
+}
+
+/// The stroke being painted: a translucent band as wide as the brush.
+fn paint_stroke(window: &mut Window, points: &[Point<Pixels>], radius: f32, theme: &Theme) {
+    let Some(&first) = points.first() else {
+        return;
+    };
+    let colour = theme.accent.opacity(0.4);
+    if points.len() == 1 {
+        let ring: Vec<_> = (0..32)
+            .map(|i| {
+                let a = i as f32 / 32.0 * std::f32::consts::TAU;
+                point(first.x + px(a.cos() * radius), first.y + px(a.sin() * radius))
+            })
+            .collect();
+        let mut path = PathBuilder::fill();
+        path.add_polygon(&ring, true);
+        if let Ok(path) = path.build() {
+            window.paint_path(path, colour);
+        }
+        return;
+    }
+    let mut path = PathBuilder::stroke(px(radius * 2.0));
+    path.move_to(first);
+    for &p in &points[1..] {
+        path.line_to(p);
+    }
+    if let Ok(path) = path.build() {
+        window.paint_path(path, colour);
     }
 }
 

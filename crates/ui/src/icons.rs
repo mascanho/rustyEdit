@@ -81,6 +81,8 @@ pub enum Icon {
     /// Two pictures with an arrow between: match one photo's look to
     /// another's.
     MatchLook,
+    /// An eraser: content-aware remove.
+    Remove,
 }
 
 /// `icon` drawn `size` pixels square in `color`.
@@ -384,6 +386,12 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
             pen.line(&[(13.5, 2.5), (7.5, 8.5)]);
             pen.shape(&[(6.0, 7.5), (8.5, 10.0), (7.0, 11.5), (4.5, 9.0)]);
             pen.solid(&[(4.5, 9.2), (6.8, 11.5), (4.0, 13.8), (2.0, 13.8), (2.2, 11.6)]);
+        }
+        Icon::Remove => {
+            // An eraser lying diagonally, its tip rubbing out a line.
+            pen.shape(&[(9.5, 2.5), (14.0, 7.0), (8.0, 13.0), (3.5, 8.5)]);
+            pen.solid(&[(3.5, 8.5), (6.0, 6.0), (10.5, 10.5), (8.0, 13.0)]);
+            pen.line(&[(8.0, 14.2), (14.0, 14.2)]);
         }
         Icon::RangeMask => {
             pen.line(&[(2.0, 8.0), (14.0, 8.0)]);

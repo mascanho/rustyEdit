@@ -204,6 +204,7 @@ impl Workspace {
         if self.loupe_drag.take().is_some() || self.develop_ui.zoom.pan.is_some() {
             cx.notify();
         }
+        self.finish_remove_stroke(cx);
         self.end_develop_drag();
         self.end_histogram_drag();
         self.survey_pan = None;

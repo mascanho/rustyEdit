@@ -19,7 +19,9 @@ use super::grid_overlay::GridOverlay;
 use crate::before_after::BaMode;
 
 use crate::{
-    actions::{ToolLinearGradient, ToolRadialGradient, ToolSpotRemoval, ToolWhiteBalance},
+    actions::{
+        ToolLinearGradient, ToolRadialGradient, ToolRemove, ToolSpotRemoval, ToolWhiteBalance,
+    },
     workspace::{Mode, Workspace},
 };
 
@@ -28,6 +30,8 @@ use crate::{
 pub(crate) enum PhotoTool {
     Heal,
     Clone,
+    /// Content-aware remove: paint over an object to fill it in.
+    Remove,
     Linear,
     Radial,
     Brush,
@@ -44,6 +48,7 @@ impl PhotoTool {
         match self {
             PhotoTool::Heal => Icon::Heal,
             PhotoTool::Clone => Icon::Clone,
+            PhotoTool::Remove => Icon::Remove,
             PhotoTool::Linear => Icon::LinearGradient,
             PhotoTool::Radial => Icon::RadialGradient,
             PhotoTool::Brush => Icon::Brush,
@@ -58,6 +63,7 @@ impl PhotoTool {
         match self {
             PhotoTool::Heal => "Heal spots (Q)",
             PhotoTool::Clone => "Clone spots",
+            PhotoTool::Remove => "Content-aware remove: paint over an object (Shift+Q)",
             PhotoTool::Linear => "Linear gradient (M)",
             PhotoTool::Radial => "Radial gradient (Shift+M)",
             PhotoTool::Brush => "Brush mask: paint where to adjust (Alt erases)",
@@ -71,7 +77,7 @@ impl PhotoTool {
     /// The fold key of the section holding its settings.
     fn section_key(&self) -> &'static str {
         match self {
-            PhotoTool::Heal | PhotoTool::Clone => "develop-retouch",
+            PhotoTool::Heal | PhotoTool::Clone | PhotoTool::Remove => "develop-retouch",
             PhotoTool::Linear | PhotoTool::Radial | PhotoTool::Brush | PhotoTool::RangePicker => {
                 "develop-gradients"
             },
@@ -108,7 +114,13 @@ impl Workspace {
         let ui = &self.develop_ui;
         ui.retouch
             .tool
-            .map(PhotoTool::from)
+            .map(|kind| {
+                if ui.retouch.remove {
+                    PhotoTool::Remove
+                } else {
+                    PhotoTool::from(kind)
+                }
+            })
             .or(ui.gradients.tool.map(PhotoTool::from))
             .or(ui.gradients.range_pick.map(|_| PhotoTool::RangePicker))
             .or(ui.crop_tool.then_some(PhotoTool::Crop))
@@ -122,6 +134,7 @@ impl Workspace {
         let picking = self.active_photo_tool() != Some(tool);
         let ui = &mut self.develop_ui;
         ui.retouch.tool = None;
+        ui.retouch.remove = false;
         ui.gradients.tool = None;
         ui.gradients.range_pick = None;
         ui.crop_tool = false;
@@ -133,6 +146,10 @@ impl Workspace {
             match tool {
                 PhotoTool::Heal => ui.retouch.tool = Some(SpotKind::Heal),
                 PhotoTool::Clone => ui.retouch.tool = Some(SpotKind::Clone),
+                PhotoTool::Remove => {
+                    ui.retouch.tool = Some(SpotKind::Heal);
+                    ui.retouch.remove = true;
+                }
                 PhotoTool::Linear => ui.gradients.tool = Some(GradientKind::Linear),
                 PhotoTool::Radial => ui.gradients.tool = Some(GradientKind::Radial),
                 PhotoTool::Brush => ui.gradients.tool = Some(GradientKind::Brush),
@@ -178,6 +195,12 @@ impl Workspace {
         }
     }
 
+    pub fn tool_remove(&mut self, _: &ToolRemove, _w: &mut Window, cx: &mut Context<Self>) {
+        if self.mode == Mode::Develop {
+            self.toggle_photo_tool(PhotoTool::Remove, cx);
+        }
+    }
+
     pub fn tool_linear_gradient(
         &mut self,
         _: &ToolLinearGradient,
@@ -217,6 +240,7 @@ impl Workspace {
         let tools = [
             PhotoTool::Heal,
             PhotoTool::Clone,
+            PhotoTool::Remove,
             PhotoTool::Linear,
             PhotoTool::Radial,
             PhotoTool::Brush,

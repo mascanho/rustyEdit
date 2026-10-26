@@ -101,6 +101,11 @@ pub(crate) struct DevelopUi {
     pub(crate) curve_drag: Option<usize>,
     /// Where the curve graph was painted, for mapping the pointer onto it.
     pub(crate) curve_bounds: Rc<Cell<Bounds<Pixels>>>,
+    /// The parametric curve: the band being dragged, the band under the
+    /// pointer, and where the graph was painted.
+    pub(crate) param_drag: Option<curve_editor::ParamDrag>,
+    pub(crate) param_hover: Option<usize>,
+    pub(crate) param_bounds: Rc<Cell<Bounds<Pixels>>>,
     /// The colour wheel being dragged, and where each was painted.
     pub(crate) wheel_drag: Option<rustyedit_core::ToneZone>,
     pub(crate) wheel_bounds: [Rc<Cell<Bounds<Pixels>>>; 4],
@@ -153,6 +158,9 @@ impl DevelopUi {
             curve_parametric: false,
             curve_drag: None,
             curve_bounds: Rc::new(Cell::new(Bounds::default())),
+            param_drag: None,
+            param_hover: None,
+            param_bounds: Rc::new(Cell::new(Bounds::default())),
             wheel_drag: None,
             wheel_bounds: std::array::from_fn(|_| Rc::new(Cell::new(Bounds::default()))),
             grading_sliders: false,

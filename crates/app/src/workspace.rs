@@ -120,6 +120,8 @@ pub enum TextTarget {
     SettingText,
     /// Naming a new export preset.
     ExportPresetName,
+    /// The command palette's search.
+    CommandPalette,
 }
 
 /// What the Library module's center area shows: the selected photo large
@@ -198,6 +200,10 @@ pub struct Workspace {
     pub(crate) catalog_tree_toggled: std::collections::HashSet<String>,
     /// The text field currently being typed into, if any.
     pub(crate) text_draft: Option<(TextTarget, String)>,
+    /// The command palette, when open: which match is selected.
+    pub(crate) palette: Option<usize>,
+    /// Whether the keyboard shortcut sheet is showing.
+    pub(crate) shortcut_sheet: bool,
     /// Asset index the rename draft applies to (the selection may move while
     /// the filename is being typed).
     pub(crate) rename_target: Option<usize>,
@@ -434,6 +440,8 @@ impl Workspace {
             catalog_renaming: None,
             catalog_tree_toggled: Default::default(),
             text_draft: None,
+            palette: None,
+            shortcut_sheet: false,
             rename_target: None,
             pending_sync_report: false,
             resizing: None,
@@ -733,6 +741,11 @@ impl Workspace {
     pub fn go_library(&mut self, _: &GoLibrary, window: &mut Window, cx: &mut Context<Self>) {
         // Escape first leaves the cull view, then closes a dialog, then a
         // context menu.
+        if self.shortcut_sheet {
+            self.shortcut_sheet = false;
+            cx.notify();
+            return;
+        }
         if self.cull_view {
             self.leave_cull_view(window, cx);
             return;
@@ -1164,6 +1177,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::grid_larger))
             .on_action(cx.listener(Self::grid_smaller))
             .on_action(cx.listener(Self::tool_spot_removal))
+            .on_action(cx.listener(Self::tool_remove))
             .on_action(cx.listener(Self::tool_linear_gradient))
             .on_action(cx.listener(Self::tool_radial_gradient))
             .on_action(cx.listener(Self::tool_white_balance))
@@ -1198,6 +1212,8 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::import_folder_action))
             .on_action(cx.listener(Self::open_settings_action))
             .on_action(cx.listener(Self::cycle_layout))
+            .on_action(cx.listener(Self::toggle_command_palette))
+            .on_action(cx.listener(Self::toggle_shortcuts))
             .on_mouse_move(cx.listener(Self::on_resize_move))
             .on_mouse_up(gpui::MouseButton::Left, cx.listener(Self::on_resize_up))
             .relative()
@@ -1238,6 +1254,8 @@ impl Render for Workspace {
             })
             .when(self.cull_view, |el| el.child(self.render_cull_view(cx)))
             .children(self.render_toasts(cx))
+            .children(self.render_shortcut_sheet(cx))
+            .children(self.render_command_palette(cx))
             .child(drop_overlay(&theme))
     }
 }

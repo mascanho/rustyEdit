@@ -458,9 +458,15 @@ impl Workspace {
     pub(crate) fn on_text_key(
         &mut self,
         event: &KeyDownEvent,
-        _w: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.draft_for(TextTarget::CommandPalette).is_some()
+            && self.palette_key(event.keystroke.key.as_str(), window, cx)
+        {
+            cx.stop_propagation();
+            return;
+        }
         let Some((target, draft)) = self.text_draft.as_mut() else {
             return;
         };
@@ -497,6 +503,9 @@ impl Workspace {
                     draft.push_str(text);
                 }
             }
+        }
+        if target == TextTarget::CommandPalette {
+            self.palette_query_changed();
         }
         if target == TextTarget::Search {
             if let Some((_, text)) = &self.text_draft {
@@ -539,6 +548,8 @@ impl Workspace {
             | TextTarget::Copyright => self.commit_metadata_text(target, text, cx),
             // Search applies live as you type; Enter just ends editing.
             TextTarget::Search => {}
+            // The palette handles Enter itself (see `palette_key`).
+            TextTarget::CommandPalette => {}
         }
     }
 }

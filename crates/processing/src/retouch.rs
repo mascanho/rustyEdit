@@ -262,6 +262,135 @@ pub fn find_spot_source(image: &RgbImage, target: (f32, f32), radius: f32) -> (f
     ((x / w).clamp(0.0, 1.0), (y / h).clamp(0.0, 1.0))
 }
 
+/// Places the spots that remove a painted stroke: `path` (fractions of the
+/// photo, in painting order) is covered by overlapping circles of `radius`
+/// (fraction of the long edge), and every circle copies from the same
+/// offset, so texture running along the stroke stays continuous. The
+/// offset is the one whose surroundings best match the stroke's, among
+/// those whose sources stay inside the photo and clear of the stroke.
+///
+/// Returns `(target, source)` pairs; empty when `path` is.
+pub fn stroke_spots(
+    image: &RgbImage,
+    path: &[(f32, f32)],
+    radius: f32,
+) -> Vec<((f32, f32), (f32, f32))> {
+    let (w, h) = (image.width() as f32, image.height() as f32);
+    let r = (radius * w.max(h)).max(1.0);
+    let to_px = |(u, v): (f32, f32)| (u * w, v * h);
+    let targets = spaced_along(&path.iter().map(|&p| to_px(p)).collect::<Vec<_>>(), r);
+    if targets.is_empty() {
+        return Vec::new();
+    }
+
+    let ring = |centre: (f32, f32)| -> Vec<[f32; 3]> {
+        (0..16)
+            .map(|i| {
+                let a = i as f32 / 16.0 * std::f32::consts::TAU;
+                average(image, centre.0 + a.cos() * r * 1.3, centre.1 + a.sin() * r * 1.3)
+            })
+            .collect()
+    };
+    // Only the ring samples that fall outside the stroke describe what
+    // should be there; inside is the object being removed.
+    let clear_of_stroke = |p: (f32, f32), margin: f32| {
+        targets
+            .iter()
+            .all(|t| (t.0 - p.0).powi(2) + (t.1 - p.1).powi(2) > (r + margin).powi(2))
+    };
+    let target_rings: Vec<Vec<Option<[f32; 3]>>> = targets
+        .iter()
+        .map(|&t| {
+            ring(t)
+                .into_iter()
+                .enumerate()
+                .map(|(i, c)| {
+                    let a = i as f32 / 16.0 * std::f32::consts::TAU;
+                    let at = (t.0 + a.cos() * r * 1.3, t.1 + a.sin() * r * 1.3);
+                    clear_of_stroke(at, 0.0).then_some(c)
+                })
+                .collect()
+        })
+        .collect();
+
+    let fits = |(x, y): (f32, f32)| x - r >= 0.0 && y - r >= 0.0 && x + r <= w && y + r <= h;
+    let mut best: Option<((f32, f32), f32)> = None;
+    for distance in [2.2f32, 2.8, 3.6, 4.6, 6.0, 8.0, 11.0] {
+        for i in 0..24 {
+            let a = i as f32 / 24.0 * std::f32::consts::TAU;
+            let offset = (a.cos() * r * distance, a.sin() * r * distance);
+            let sources: Vec<_> = targets.iter().map(|t| (t.0 + offset.0, t.1 + offset.1)).collect();
+            // A source over the stroke would copy the object back in.
+            if !sources.iter().all(|&s| fits(s) && clear_of_stroke(s, r * 0.9)) {
+                continue;
+            }
+            let mut score = 0.0f32;
+            let mut samples = 0usize;
+            for (s, target_ring) in sources.iter().zip(&target_rings) {
+                for (a, b) in ring(*s).iter().zip(target_ring) {
+                    if let Some(b) = b {
+                        score += (0..3).map(|c| (a[c] - b[c]).powi(2)).sum::<f32>();
+                        samples += 1;
+                    }
+                }
+            }
+            let score = score / samples.max(1) as f32 * (1.0 + 0.04 * distance);
+            if best.is_none_or(|(_, s)| score < s) {
+                best = Some((offset, score));
+            }
+        }
+    }
+
+    let to_frac = |(x, y): (f32, f32)| ((x / w).clamp(0.0, 1.0), (y / h).clamp(0.0, 1.0));
+    targets
+        .iter()
+        .map(|&t| {
+            let target = to_frac(t);
+            let source = match best {
+                Some((offset, _)) => to_frac((t.0 + offset.0, t.1 + offset.1)),
+                // No shared offset fits (a stroke across most of the
+                // photo): each spot finds its own.
+                None => find_spot_source(image, target, radius),
+            };
+            (target, source)
+        })
+        .collect()
+}
+
+/// Points along `path` (pixels) 1.2 `radius` apart: circles of that radius
+/// still cover most of the stroke's width between them (and the app draws
+/// them a little larger). A click (one point) gives one.
+fn spaced_along(path: &[(f32, f32)], radius: f32) -> Vec<(f32, f32)> {
+    let Some(&first) = path.first() else {
+        return Vec::new();
+    };
+    let step = radius * 1.2;
+    let mut out = vec![first];
+    let mut last = first;
+    let mut carried = 0.0f32;
+    for pair in path.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let length = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+        if length <= f32::EPSILON {
+            continue;
+        }
+        let mut along = step - carried;
+        while along <= length {
+            let t = along / length;
+            last = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+            out.push(last);
+            along += step;
+        }
+        carried = length - (along - step);
+    }
+    // The stroke's end, unless the last circle already reaches it.
+    let end = *path.last().unwrap_or(&first);
+    if ((end.0 - last.0).powi(2) + (end.1 - last.1).powi(2)).sqrt() > radius * 0.35 {
+        out.push(end);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -338,5 +467,26 @@ mod tests {
         let (x, y) = find_spot_source(&image, (0.05, 0.5), 0.05);
         let r = 0.05 * 200.0;
         assert!(x * 200.0 - r >= 0.0 && y * 100.0 - r >= 0.0);
+    }
+
+    #[test]
+    fn a_stroke_is_covered_by_spots_copying_from_clear_of_it() {
+        // Grey photo with a dark horizontal wire across the middle.
+        let image = RgbImage::from_fn(200, 200, |_, y| {
+            image::Rgb([if (98..=102).contains(&y) { 10 } else { 150 }; 3])
+        });
+        let path = [(0.2, 0.5), (0.5, 0.5), (0.8, 0.5)];
+        let spots = stroke_spots(&image, &path, 0.02);
+        // 120 px long, 4 px radius: a circle every 4.8 px.
+        assert!((25..=27).contains(&spots.len()), "{}", spots.len());
+        let offset = (spots[0].1 .0 - spots[0].0 .0, spots[0].1 .1 - spots[0].0 .1);
+        for (target, source) in &spots {
+            // One shared offset, off the wire.
+            assert!((source.0 - target.0 - offset.0).abs() < 1e-3);
+            assert!((source.1 - target.1 - offset.1).abs() < 1e-3);
+            assert!((source.1 - 0.5).abs() > 0.03, "{source:?}");
+        }
+        assert!(stroke_spots(&image, &[], 0.02).is_empty());
+        assert_eq!(stroke_spots(&image, &[(0.5, 0.5)], 0.02).len(), 1);
     }
 }

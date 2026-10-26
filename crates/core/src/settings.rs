@@ -800,6 +800,9 @@ pub struct DevelopPreferences {
     /// A folder of Lensfun XML files to read lens profiles from, besides
     /// the places Lensfun installs itself.
     pub lens_db_folder: Option<std::path::PathBuf>,
+    /// The parametric tone curve shows a draggable point per band. The
+    /// line itself can be dragged either way.
+    pub parametric_points: bool,
 }
 
 impl Default for DevelopPreferences {
@@ -814,6 +817,7 @@ impl Default for DevelopPreferences {
             camera_lens_on_open: true,
             proof_profile: None,
             lens_db_folder: None,
+            parametric_points: true,
         }
     }
 }
@@ -1554,6 +1558,19 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                         },
                     },
                 ],
+            },
+            SettingsSection {
+                title: "Tone curve",
+                items: &[SettingItem {
+                    label: "Points on the parametric curve",
+                    description: "Show a point for each band (shadows, darks, lights, \
+                                  highlights) to drag. Without them, drag the line itself: \
+                                  up or down anywhere in a band moves that band.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.develop.parametric_points,
+                        set: |s, v| s.develop.parametric_points = v,
+                    },
+                }],
             },
             SettingsSection {
                 title: "Presets",
