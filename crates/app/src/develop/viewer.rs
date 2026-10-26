@@ -38,7 +38,8 @@ impl Workspace {
 
         let bounds = zoom.viewer_bounds.clone();
         let grab_fitted = zoom.space_held && zoom.scale.is_none();
-        div()
+        let comparing = self.ba_active();
+        let viewer = div()
             .id("develop-viewer")
             .relative()
             .when(grab_fitted, |el| {
@@ -57,7 +58,8 @@ impl Workspace {
             // drag. (Tool overlays that place things keep their own cursor.)
             .active(|style| style.cursor(rustyedit_ui::GRABBING_CURSOR))
             .flex_1()
-            .min_w(sp(0.0))
+            .w_full()
+            .min_h(sp(0.0))
             .overflow_hidden()
             .flex()
             .items_center()
@@ -91,8 +93,27 @@ impl Workspace {
                     .children(self.develop_split_overlay(cx)),
             )
             .child(self.render_zoom_badge(cx))
-            .children(self.ba_pill(true, cx))
-            .children(self.render_info_overlay(cx))
+            // A thin accent frame while a comparison is on, so the photo
+            // isn't mistaken for the edit.
+            .when(comparing, |el| {
+                el.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .border_2()
+                        .border_color(theme.accent.opacity(0.55)),
+                )
+            })
+            .children(self.render_info_overlay(cx));
+
+        // The bar under the photo: where you are and what it's showing.
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w(sp(0.0))
+            .child(viewer)
+            .child(self.render_develop_view_bar(cx))
             .into_any_element()
     }
 

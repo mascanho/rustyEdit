@@ -29,13 +29,6 @@ pub(crate) enum BaMode {
 }
 
 impl BaMode {
-    pub(crate) const ALL: [BaMode; 4] = [
-        BaMode::Off,
-        BaMode::Split,
-        BaMode::SideBySide,
-        BaMode::Before,
-    ];
-
     const ON: [BaMode; 3] = [BaMode::Split, BaMode::SideBySide, BaMode::Before];
 
     pub(crate) fn label(&self) -> &'static str {
@@ -142,7 +135,7 @@ impl Workspace {
     }
 
     /// Something to compare: edits, or a JPEG reference.
-    fn ba_can_compare(&self) -> bool {
+    pub(crate) fn ba_can_compare(&self) -> bool {
         self.ba_photo_edited() || self.ba_reference().is_some()
     }
 

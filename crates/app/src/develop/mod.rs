@@ -47,6 +47,7 @@ mod snapshots;
 mod source;
 mod tool_strip;
 mod upright;
+mod view_bar;
 mod tools;
 mod viewer;
 mod zoom;
@@ -91,7 +92,6 @@ pub(crate) struct DevelopUi {
     pub(crate) grid_overlay: grid_overlay::GridOverlay,
     pub(crate) grid_orientation: u8,
     pub(crate) grid_menu_open: bool,
-    pub(crate) ba_menu_open: bool,
     /// The tone curve channel being edited.
     pub(crate) curve_channel: CurveChannel,
     /// The Tone Curve section shows the parametric sliders instead of the
@@ -153,7 +153,6 @@ impl DevelopUi {
             grid_overlay: grid_overlay::GridOverlay::Off,
             grid_orientation: 0,
             grid_menu_open: false,
-            ba_menu_open: false,
             curve_channel: CurveChannel::default(),
             curve_parametric: false,
             curve_drag: None,
