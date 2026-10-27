@@ -31,6 +31,8 @@ pub(crate) struct PresetUi {
     pub(crate) sort_az: bool,
     /// The search & options pop-up is open.
     pub(crate) popup_open: bool,
+    /// Preset groups opened this session; every group starts collapsed.
+    pub(crate) expanded: std::collections::HashSet<String>,
     /// The Fujifilm recipe being entered, while its modal is open.
     pub(crate) recipe: Option<rustyedit_core::FujiRecipe>,
     pub(crate) recipe_scroll: gpui::ScrollHandle,
@@ -45,6 +47,7 @@ impl Default for PresetUi {
             renaming: None,
             sort_az: false,
             popup_open: false,
+            expanded: Default::default(),
             recipe: None,
             recipe_scroll: gpui::ScrollHandle::new(),
         }
@@ -525,8 +528,14 @@ impl Workspace {
         let mut uid = 0usize;
         for (title, rows) in groups {
             let count = rows.len();
+            let open = ui.expanded.contains(&title);
+            let has_active = rows
+                .iter()
+                .any(|(e, _)| applied.as_deref() == Some(e.preset().name.as_str()));
             let row_elements: Vec<AnyElement> = rows
                 .into_iter()
+                // A closed group builds no rows at all.
+                .filter(|_| open)
                 .map(|(entry, fav)| {
                     uid += 1;
                     // Ticked when it's the photo's preset (only one can
@@ -555,30 +564,75 @@ impl Workspace {
                     .overflow_hidden()
                     .border_1()
                     .border_color(theme.border)
-                    .child(
+                    .child({
+                        let key = title.clone();
                         div()
+                            .id(SharedString::from(format!("preset-group-{title}")))
                             .flex()
                             .flex_row()
                             .justify_between()
                             .items_center()
+                            .gap_1p5()
                             .px_2()
                             .py_1()
+                            .cursor_pointer()
                             .bg(theme.surface_elevated)
+                            .hover(|el| el.bg(theme.surface))
                             .child(
                                 div()
-                                    .text_size(sp(10.0))
-                                    .font_weight(gpui::FontWeight::BOLD)
-                                    .text_color(theme.text_muted)
-                                    .child(title.to_uppercase()),
+                                    .flex()
+                                    .flex_row()
+                                    .items_center()
+                                    .gap_1p5()
+                                    .min_w(sp(0.0))
+                                    .child(rustyedit_ui::icon(
+                                        if open {
+                                            rustyedit_ui::Icon::ChevronDown
+                                        } else {
+                                            rustyedit_ui::Icon::ChevronRight
+                                        },
+                                        10.0,
+                                        theme.text_faint,
+                                    ))
+                                    .child(
+                                        div()
+                                            .truncate()
+                                            .text_size(sp(10.0))
+                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .text_color(theme.text_muted)
+                                            .child(title.to_uppercase()),
+                                    ),
                             )
                             .child(
                                 div()
-                                    .text_size(sp(9.5))
-                                    .text_color(theme.text_faint)
-                                    .child(count.to_string()),
-                            ),
-                    )
-                    .child(
+                                    .flex()
+                                    .flex_row()
+                                    .items_center()
+                                    .gap_1p5()
+                                    .flex_shrink_0()
+                                    // The photo's preset is in here: marked so a
+                                    // closed group still says where it is.
+                                    .when(has_active, |el| {
+                                        el.child(
+                                            div().size(sp(6.0)).rounded_full().bg(theme.accent),
+                                        )
+                                    })
+                                    .child(
+                                        div()
+                                            .text_size(sp(9.5))
+                                            .text_color(theme.text_faint)
+                                            .child(count.to_string()),
+                                    ),
+                            )
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                                let expanded = &mut this.develop_ui.preset_ui.expanded;
+                                if !expanded.remove(&key) {
+                                    expanded.insert(key.clone());
+                                }
+                                cx.notify();
+                            }))
+                    })
+                    .when(open, |el| el.child(
                         div()
                             .flex()
                             .flex_col()
@@ -591,7 +645,7 @@ impl Workspace {
                                     })
                                     .child(row)
                             })),
-                    )
+                    ))
                     .into_any_element(),
             );
         }
@@ -767,6 +821,10 @@ impl Workspace {
 
         div()
             .id(SharedString::from(format!("preset-row-el-{uid}")))
+            // What the look is (film stocks say what the film is known for).
+            .when(!preset.notes.is_empty(), |el| {
+                el.tooltip(rustyedit_ui::tip(preset.notes.clone(), &theme))
+            })
             .group(group.clone())
             .relative()
             .flex()

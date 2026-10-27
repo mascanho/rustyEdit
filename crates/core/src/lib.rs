@@ -23,6 +23,7 @@ mod histogram;
 mod history;
 mod mixer;
 mod lens;
+mod film_stocks;
 mod parametric;
 mod presets;
 mod rail;

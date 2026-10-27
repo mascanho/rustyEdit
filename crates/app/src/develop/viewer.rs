@@ -190,7 +190,8 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let zoom = &self.develop_ui.zoom;
-        let Some((w, h)) = self.develop_image_size() else {
+        // Percentages are of the full-size photo.
+        let Some((w, h)) = self.develop_zoom_size() else {
             return div().into_any_element();
         };
         // Logical pixels: at 100% a Retina display shows one photo pixel per
@@ -233,7 +234,24 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(img(source).w(px(w)).h(px(h)).flex_shrink_0()),
+                    .child(
+                        div()
+                            .relative()
+                            .w(px(w))
+                            .h(px(h))
+                            .flex_shrink_0()
+                            .child(img(source).size_full())
+                            // The sharp render of what's in view, over the
+                            // enlarged preview.
+                            .children(self.detail_tile().map(|(tile, (l, t, rw, rh))| {
+                                img(ImageSource::Render(tile))
+                                    .absolute()
+                                    .left(px(l * w))
+                                    .top(px(t * h))
+                                    .w(px(rw * w))
+                                    .h(px(rh * h))
+                            })),
+                    ),
             )
             .into_any_element()
     }

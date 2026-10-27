@@ -2,7 +2,8 @@
 //! Library loupe and in Develop.
 //!
 //! "Before" is the photo with every adjustment, retouch spot and gradient
-//! removed but its crop, rotation and flips kept, so the two always line up.
+//! removed but its crop, rotation, flips and lens distortion correction kept,
+//! so the two always line up.
 //! Three views: a split with a draggable divider, the two side by side, and
 //! the before image alone. The `\` key switches the comparison on and off.
 

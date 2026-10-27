@@ -10,12 +10,13 @@ use crate::{ColorBand, DevelopSection, DevelopSettings, ToneCurve, ToneZone};
 
 /// Categories presets are filed under, in the order they are shown. Saved
 /// presets default to "Custom".
-pub const PRESET_CATEGORIES: [&str; 10] = [
+pub const PRESET_CATEGORIES: [&str; 11] = [
     "Basic",
     "B&W",
     "Portrait",
     "Landscape",
     "Film",
+    crate::film_stocks::FILM_STOCKS,
     "Cinematic",
     "Color Grade",
     "Curves",
@@ -309,14 +310,14 @@ impl DevelopSettings {
 }
 
 /// Tints one tonal zone of the colour grading.
-fn tint(s: &mut DevelopSettings, zone: ToneZone, hue: f32, saturation: f32) {
+pub(crate) fn tint(s: &mut DevelopSettings, zone: ToneZone, hue: f32, saturation: f32) {
     let grade = s.grading.zone_mut(zone);
     grade.hue = hue;
     grade.saturation = saturation;
 }
 
 /// Adds control points to a curve.
-fn plot(curve: &mut ToneCurve, points: &[(f32, f32)]) {
+pub(crate) fn plot(curve: &mut ToneCurve, points: &[(f32, f32)]) {
     for &(x, y) in points {
         if curve.insert(x, y).is_none() {
             // Already a point near there: move it instead.
@@ -327,8 +328,18 @@ fn plot(curve: &mut ToneCurve, points: &[(f32, f32)]) {
     }
 }
 
-/// The presets that ship with the app.
+/// The presets that ship with the app, film stocks included. Built once.
 pub fn builtin_presets() -> Vec<DevelopPreset> {
+    static ALL: std::sync::OnceLock<Vec<DevelopPreset>> = std::sync::OnceLock::new();
+    ALL.get_or_init(|| {
+        let mut all = general_presets();
+        all.extend(crate::film_stocks::film_stock_presets());
+        all
+    })
+    .clone()
+}
+
+fn general_presets() -> Vec<DevelopPreset> {
     let look = |category: &str, name: &str, edit: fn(&mut DevelopSettings)| {
         let mut settings = DevelopSettings::default();
         edit(&mut settings);

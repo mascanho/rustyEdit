@@ -158,7 +158,7 @@ impl DevelopZoom {
 impl Workspace {
     /// The scale at which the whole photo fits the viewer.
     pub(crate) fn develop_fit_scale(&self) -> Option<f32> {
-        let (w, h) = self.develop_image_size()?;
+        let (w, h) = self.develop_zoom_size()?;
         let (vw, vh) = self.develop_ui.zoom.viewer_size();
         if vw <= 0.0 || vh <= 0.0 {
             return None;
@@ -217,7 +217,7 @@ impl Workspace {
         let ((w, h), offset) = match zoom.scale {
             Some(_) => (zoom.zoomed_size.get(), zoom.scroll.offset()),
             None => {
-                let (iw, ih) = self.develop_image_size().unwrap_or((1.0, 1.0));
+                let (iw, ih) = self.develop_zoom_size().unwrap_or((1.0, 1.0));
                 let ratio = zoom.pixel_ratio.get();
                 ((iw * fit / ratio, ih * fit / ratio), Point::default())
             }

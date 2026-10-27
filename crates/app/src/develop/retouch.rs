@@ -38,7 +38,13 @@ pub(crate) struct RetouchUi {
     pub(crate) remove: bool,
     /// The stroke being painted, in window coordinates.
     stroke: Option<Vec<Point<Pixels>>>,
+    /// The working preview as plain RGB, for finding where spots copy
+    /// from: made once per photo instead of on every click. Keyed by the
+    /// photo and the preview's size.
+    spot_rgb: Option<(SpotRgbKey, std::sync::Arc<image::RgbImage>)>,
 }
+
+type SpotRgbKey = (Option<u64>, u32, u32);
 
 impl Default for RetouchUi {
     fn default() -> Self {
@@ -52,6 +58,7 @@ impl Default for RetouchUi {
             hover: None,
             remove: false,
             stroke: None,
+            spot_rgb: None,
         }
     }
 }
@@ -62,6 +69,7 @@ impl RetouchUi {
         self.selected = None;
         self.drag = None;
         self.stroke = None;
+        self.spot_rgb = None;
     }
 }
 
@@ -518,6 +526,21 @@ impl Workspace {
         self.add_spot(self.pointer_on_photo(position, &develop), cx);
     }
 
+    /// The working preview as RGB for source searches, cached per photo.
+    fn spot_search_image(&mut self) -> Option<std::sync::Arc<image::RgbImage>> {
+        let source = self.source_image.as_ref()?;
+        let key = (self.source_image_for, source.width(), source.height());
+        let cache = &mut self.develop_ui.retouch.spot_rgb;
+        match cache {
+            Some((cached, image)) if *cached == key => Some(image.clone()),
+            _ => {
+                let image = std::sync::Arc::new(source.to_rgb8());
+                *cache = Some((key, image.clone()));
+                Some(image)
+            }
+        }
+    }
+
     /// Mouse up after painting a remove stroke: covers it with Heal spots
     /// copying from one matching area beside it, as one undo step.
     pub(crate) fn finish_remove_stroke(&mut self, cx: &mut Context<Self>) {
@@ -528,7 +551,7 @@ impl Workspace {
         let Some(develop) = self.catalog.selected_asset().map(|a| a.develop) else {
             return;
         };
-        let Some(image) = &self.source_image else {
+        let Some(image) = self.spot_search_image() else {
             self.status_message = Some("The photo is still loading".into());
             return;
         };
@@ -538,7 +561,7 @@ impl Workspace {
             .collect();
         let ui = &self.develop_ui.retouch;
         let (radius, feather, opacity) = (ui.size, ui.feather.min(0.4), ui.opacity);
-        let placed = rustyedit_processing::stroke_spots(&image.to_rgb8(), &path, radius);
+        let placed = rustyedit_processing::stroke_spots(&image, &path, radius);
         if placed.is_empty() {
             return;
         }
@@ -583,8 +606,8 @@ impl Workspace {
         };
         let ui = &self.develop_ui.retouch;
         let (radius, feather, opacity) = (ui.size, ui.feather, ui.opacity);
-        let source = match &self.source_image {
-            Some(image) => rustyedit_processing::find_spot_source(&image.to_rgb8(), target, radius),
+        let source = match self.spot_search_image() {
+            Some(image) => rustyedit_processing::find_spot_source(&image, target, radius),
             None => ((target.0 + radius * 2.5).min(1.0), target.1),
         };
         let spot = Spot {

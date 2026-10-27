@@ -36,7 +36,7 @@ pub use histogram::{
     histogram_view, histogram_view_with_height, paint_histogram, HistogramPaint, HistogramProps,
     HISTOGRAM_HEIGHT,
 };
-pub use icon_rail::{icon_rail, RailButton, RAIL_WIDTH};
+pub use icon_rail::{icon_rail, icon_rail_with, RailButton, RAIL_BUTTON_SIZE, RAIL_WIDTH};
 pub use icons::{icon, Icon};
 pub use panel::{
     collapsible_panel, collapsible_panel_pinned, disclosure_section, disclosure_section_with,

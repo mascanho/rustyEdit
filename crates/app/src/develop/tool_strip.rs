@@ -9,10 +9,13 @@
 
 use rustyedit_ui::sp;
 use gpui::{
-    deferred, div, prelude::*, AnyElement, App, ClickEvent, Context, MouseDownEvent,
+    deferred, div, prelude::*, px, AnyElement, App, ClickEvent, Context, MouseDownEvent,
     SharedString, Window,
 };
-use rustyedit_core::{settings::LoupeBackground, GradientKind, SpotKind};
+use rustyedit_core::{
+    settings::{DockSide, LoupeBackground},
+    GradientKind, SpotKind,
+};
 use rustyedit_ui::Icon;
 
 use super::grid_overlay::GridOverlay;
@@ -268,35 +271,24 @@ impl Workspace {
             .border_1()
             .border_color(theme.border_subtle)
             .child(div().flex().flex_row().gap_0p5().children(tools))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_0p5()
-                    .child(div().w(sp(1.0)).h(sp(16.0)).mx_1().bg(theme.border))
-                    .child(self.grid_menu_button(cx))
-                    .child(self.view_menu_button(cx)),
-            )
             .into_any_element()
     }
 
-    /// The grid button with its dropdown of composition guides.
-    fn grid_menu_button(&self, cx: &mut Context<Self>) -> AnyElement {
+    /// The composition guides button for the rail beside the editing
+    /// panel, with its menu opening toward the photo. `dock` is the side
+    /// the panel (and so the rail) is on.
+    pub(crate) fn guides_rail_button(&self, dock: DockSide, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
         let ui = &self.develop_ui;
         let open = ui.grid_menu_open;
         let active = ui.grid_overlay != GridOverlay::Off;
 
         let button = div()
-            .id("tool-grid")
+            .id("rail-guides")
             .flex()
-            .flex_row()
             .items_center()
             .justify_center()
-            .gap_0p5()
-            .h(sp(28.0))
-            .px_1p5()
+            .size(px(rustyedit_ui::RAIL_BUTTON_SIZE))
             .rounded_md()
             .cursor_pointer()
             .when(open || active, |el| el.bg(theme.accent_muted))
@@ -312,12 +304,14 @@ impl Workspace {
                     theme.text_muted
                 },
             ))
-            .child(rustyedit_ui::icon(
-                Icon::ChevronDown,
-                10.0,
-                theme.text_faint,
+            .tooltip(rustyedit_ui::tip(
+                if active {
+                    format!("Composition guide: {}", ui.grid_overlay.label())
+                } else {
+                    "Composition guides".to_string()
+                },
+                &theme,
             ))
-            .tooltip(rustyedit_ui::tip("Composition guides", &theme))
             .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
                 this.develop_ui.grid_menu_open = !this.develop_ui.grid_menu_open;
                 this.develop_ui.view_menu_open = false;
@@ -362,8 +356,10 @@ impl Workspace {
         let menu = div()
             .id("grid-menu")
             .absolute()
-            .top(sp(30.0))
-            .right_0()
+            .top_0()
+            // Beside the rail, over the photo rather than the panel.
+            .when(dock == DockSide::Right, |el| el.right(px(rustyedit_ui::RAIL_BUTTON_SIZE + 6.0)))
+            .when(dock == DockSide::Left, |el| el.left(px(rustyedit_ui::RAIL_BUTTON_SIZE + 6.0)))
             .w(sp(200.0))
             .py_1()
             .bg(theme.surface_elevated)
@@ -413,21 +409,21 @@ impl Workspace {
     }
 
     /// The eye button with its dropdown of view options.
-    fn view_menu_button(&self, cx: &mut Context<Self>) -> AnyElement {
+    /// The eye button for the rail beside the editing panel (backgrounds,
+    /// clipping, soft proof, zoom, info), its menu opening toward the photo
+    /// like the guides'. `dock` is the side the panel is on.
+    pub(crate) fn view_rail_button(&self, dock: DockSide, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
         let open = self.develop_ui.view_menu_open;
         let ui = &self.histogram_ui;
         let proofing = self.develop_ui.proof.active();
 
         let button = div()
-            .id("tool-view")
+            .id("rail-view")
             .flex()
-            .flex_row()
             .items_center()
             .justify_center()
-            .gap_0p5()
-            .h(sp(28.0))
-            .px_1p5()
+            .size(px(rustyedit_ui::RAIL_BUTTON_SIZE))
             .rounded_md()
             .cursor_pointer()
             // Lit while a soft proof is showing, so it isn't mistaken for the
@@ -444,11 +440,6 @@ impl Workspace {
                 } else {
                     theme.text_muted
                 },
-            ))
-            .child(rustyedit_ui::icon(
-                Icon::ChevronDown,
-                10.0,
-                theme.text_faint,
             ))
             .tooltip(rustyedit_ui::tip(
                 if proofing {
@@ -510,8 +501,9 @@ impl Workspace {
         let menu = div()
             .id("view-menu")
             .absolute()
-            .top(sp(30.0))
-            .right_0()
+            .top_0()
+            .when(dock == DockSide::Right, |el| el.right(px(rustyedit_ui::RAIL_BUTTON_SIZE + 6.0)))
+            .when(dock == DockSide::Left, |el| el.left(px(rustyedit_ui::RAIL_BUTTON_SIZE + 6.0)))
             .w(sp(230.0))
             .max_h(sp(560.0))
             .overflow_y_scroll()

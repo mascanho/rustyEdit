@@ -72,7 +72,14 @@ impl Workspace {
                 })),
             })
             .collect();
-        rustyedit_ui::icon_rail(id, &self.theme, panel_side, buttons).into_any_element()
+        // The rail beside Develop's editing panel also holds the
+        // composition guides and the view options, which act on the photo.
+        let tail = if develop && side == self.develop_panel_side() {
+            vec![self.guides_rail_button(side, cx), self.view_rail_button(side, cx)]
+        } else {
+            Vec::new()
+        };
+        rustyedit_ui::icon_rail_with(id, &self.theme, panel_side, buttons, tail).into_any_element()
     }
 
     /// Orders a dock and its rail so the rail sits on the edge facing the

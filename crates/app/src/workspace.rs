@@ -1105,6 +1105,7 @@ impl Render for Workspace {
         // GPU memory before this frame paints.
         self.live_preview.release_retired(window);
         self.sync_frame_preview(cx);
+        self.sync_detail_view(cx);
         self.pixel_ratio.set(window.scale_factor());
         // Interface scale: fixed sizes (`sp`) and rem-based ones together.
         let scale = self.settings.appearance.ui_scale.clamp(90, 130) as f32 / 100.0;

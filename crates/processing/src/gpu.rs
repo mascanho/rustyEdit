@@ -431,6 +431,15 @@ pub(crate) fn render(
     gpu()?.render(source, settings, output)
 }
 
+/// Whether `source` fits the GPU, so a render of it (a detail view, say)
+/// is quick rather than a full CPU pass.
+pub(crate) fn fits(source: &DevelopSource) -> bool {
+    gpu().is_some_and(|g| {
+        let px = source.width() as u64 * source.height() as u64;
+        px > 0 && px * 16 <= g.max_buffer
+    })
+}
+
 /// Resizes an 8- or 16-bit image to `width` x `height` with a triangle
 /// filter on the GPU (like `image`'s `FilterType::Triangle`), to 8 bits.
 pub(crate) fn resize(source: &DynamicImage, width: u32, height: u32) -> Option<RgbImage> {

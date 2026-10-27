@@ -155,12 +155,76 @@ pub struct GridSettings {
     pub spacing: GridSpacing,
     /// Pick / reject / rotate buttons over a hovered card.
     pub hover_controls: bool,
-    /// Date, camera and size under the file name (Detailed style).
-    pub show_details: bool,
     /// Colour bar along the bottom edge of labelled cards.
     pub show_label_bar: bool,
     pub dim_rejected: bool,
     pub tooltips: bool,
+    /// Which pieces of information the cards show.
+    pub show: GridInfo,
+}
+
+/// Each piece of information a grid card can show, switched on or off.
+/// Where it appears depends on the card style: the top strip (Detailed,
+/// Compact), the lines under the photo (Detailed) or badges over it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GridInfo {
+    // The top strip, and Minimal's corner pill.
+    pub rating: bool,
+    pub flag: bool,
+    pub label_dot: bool,
+    pub keyword_count: bool,
+    pub edited_mark: bool,
+    // Under the photo.
+    pub name: bool,
+    /// The photo's title when it has one, else the file name; off always
+    /// shows the file name.
+    pub prefer_title: bool,
+    pub date: bool,
+    pub camera: bool,
+    pub dimensions: bool,
+    // Over the photo.
+    pub cull_marks: bool,
+    pub file_type: bool,
+    pub copy_name: bool,
+    pub stack_badge: bool,
+    pub pair_badge: bool,
+    pub delete_mark: bool,
+}
+
+impl Default for GridInfo {
+    fn default() -> Self {
+        Self {
+            rating: true,
+            flag: true,
+            label_dot: true,
+            keyword_count: true,
+            edited_mark: true,
+            name: true,
+            prefer_title: true,
+            date: true,
+            camera: true,
+            dimensions: true,
+            cull_marks: true,
+            file_type: true,
+            copy_name: true,
+            stack_badge: true,
+            pair_badge: true,
+            delete_mark: true,
+        }
+    }
+}
+
+impl GridInfo {
+    /// Anything shows in the top strip.
+    pub fn any_header(&self) -> bool {
+        self.rating || self.flag || self.label_dot || self.keyword_count || self.edited_mark
+    }
+
+    /// Any of the capture details shows.
+    pub fn any_details(&self) -> bool {
+        self.date || self.camera || self.dimensions
+    }
 }
 
 impl Default for GridSettings {
@@ -171,10 +235,10 @@ impl Default for GridSettings {
             crop_to_fill: false,
             spacing: GridSpacing::Normal,
             hover_controls: true,
-            show_details: true,
             show_label_bar: true,
             dim_rejected: true,
             tooltips: true,
+            show: GridInfo::default(),
         }
     }
 }
@@ -1295,7 +1359,150 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                 ],
             },
             SettingsSection {
-                title: "Details",
+                title: "Top strip",
+                items: &[
+                    SettingItem {
+                        label: "Rating",
+                        description: "The stars, which can be clicked to rate. Also in the Minimal style's corner badge.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.rating,
+                            set: |s, v| s.grid.show.rating = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Flag",
+                        description: "Picked or rejected. Also in the Minimal style's corner badge.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.flag,
+                            set: |s, v| s.grid.show.flag = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Colour label",
+                        description: "A dot in the label's colour. Also in the Minimal style's corner badge.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.label_dot,
+                            set: |s, v| s.grid.show.label_dot = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Keyword count",
+                        description: "How many keywords the photo has, as #3.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.keyword_count,
+                            set: |s, v| s.grid.show.keyword_count = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Edited mark",
+                        description: "A pencil on photos that have been edited.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.edited_mark,
+                            set: |s, v| s.grid.show.edited_mark = v,
+                        },
+                    },
+                ],
+            },
+            SettingsSection {
+                title: "Under the photo",
+                items: &[
+                    SettingItem {
+                        label: "Name",
+                        description: "The photo's name (Detailed style).",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.name,
+                            set: |s, v| s.grid.show.name = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Title instead of file name",
+                        description: "Show the photo's title as its name when it has one.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.prefer_title,
+                            set: |s, v| s.grid.show.prefer_title = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Capture date",
+                        description: "When the photo was taken (Detailed style).",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.date,
+                            set: |s, v| s.grid.show.date = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Camera",
+                        description: "The camera it was taken with (Detailed style).",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.camera,
+                            set: |s, v| s.grid.show.camera = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Pixel size",
+                        description: "Width and height in pixels (Detailed style).",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.dimensions,
+                            set: |s, v| s.grid.show.dimensions = v,
+                        },
+                    },
+                ],
+            },
+            SettingsSection {
+                title: "Over the photo",
+                items: &[
+                    SettingItem {
+                        label: "Culling marks",
+                        description: "BEST, SOFT, DARK and BRIGHT from smart culling.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.cull_marks,
+                            set: |s, v| s.grid.show.cull_marks = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "RAW / JPG tag",
+                        description: "Which file of a RAW + JPEG pair a card is.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.file_type,
+                            set: |s, v| s.grid.show.file_type = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Virtual copy name",
+                        description: "The name of a virtual copy.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.copy_name,
+                            set: |s, v| s.grid.show.copy_name = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Stack count",
+                        description: "The size of a stack, and its expand / collapse toggle (also in the right-click menu).",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.stack_badge,
+                            set: |s, v| s.grid.show.stack_badge = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "RAW + JPEG toggle",
+                        description: "Shows or hides the JPEG shot with a RAW (also in the right-click menu).",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.pair_badge,
+                            set: |s, v| s.grid.show.pair_badge = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Marked for deletion",
+                        description: "A red badge on photos marked to be deleted.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.grid.show.delete_mark,
+                            set: |s, v| s.grid.show.delete_mark = v,
+                        },
+                    },
+                ],
+            },
+            SettingsSection {
+                title: "Behaviour",
                 items: &[
                     SettingItem {
                         label: "Hover controls",
@@ -1306,17 +1513,8 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                         },
                     },
                     SettingItem {
-                        label: "Capture details",
-                        description: "Show date, camera and size under the name (Detailed style).",
-                        control: SettingControl::Toggle {
-                            get: |s| s.grid.show_details,
-                            set: |s, v| s.grid.show_details = v,
-                        },
-                    },
-                    SettingItem {
                         label: "Colour label bar",
-                        description:
-                            "Run a bar in the label's colour along the card's bottom edge.",
+                        description: "Run a bar in the label's colour along the card's bottom edge.",
                         control: SettingControl::Toggle {
                             get: |s| s.grid.show_label_bar,
                             set: |s, v| s.grid.show_label_bar = v,
@@ -1332,8 +1530,7 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                     },
                     SettingItem {
                         label: "Info button",
-                        description:
-                            "Show an \u{24D8} on each card; click it to see the photo's metadata.",
+                        description: "Show an \u{24D8} on each card; click it to see the photo's metadata.",
                         control: SettingControl::Toggle {
                             get: |s| s.grid.tooltips,
                             set: |s, v| s.grid.tooltips = v,

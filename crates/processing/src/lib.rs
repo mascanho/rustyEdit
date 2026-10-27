@@ -236,6 +236,13 @@ pub fn render_detail(
     to_display_bgra(&part, ClipWarnings::default())
 }
 
+/// Whether [`render_detail`] of `source` runs on the GPU (fast); when it
+/// doesn't, it renders the whole photo on the CPU, which is too slow to do
+/// while panning.
+pub fn detail_is_fast(source: &DevelopSource) -> bool {
+    gpu::fits(source)
+}
+
 /// Converts a working-space render into BGRA for the display, painting
 /// clipped pixels (judged on the working-space values) when asked.
 fn to_display_bgra(rgb: &RgbImage, clip: ClipWarnings) -> RgbaImage {

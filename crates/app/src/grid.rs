@@ -10,7 +10,7 @@ use gpui::{
     Context, Entity, ObjectFit, Window,
 };
 use rustyedit_core::{
-    settings::{DockSide, GridSettings, GridStyle},
+    settings::{DockSide, GridInfo, GridSettings, GridStyle},
     Asset, Flag,
 };
 use rustyedit_ui::sp;
@@ -93,10 +93,17 @@ impl Workspace {
             .max(48.0);
         self.grid_columns_cache.set(columns);
 
+        // Strips with nothing switched on in them take no room.
+        let show = grid.show;
+        let header = if show.any_header() { HEADER_HEIGHT } else { 0.0 };
+        let footer = match (show.name, show.any_details()) {
+            (true, true) => FOOTER_DETAILS_HEIGHT,
+            (false, false) => 0.0,
+            _ => FOOTER_NAME_HEIGHT,
+        };
         let (header, footer) = match grid.style {
-            GridStyle::Detailed if grid.show_details => (HEADER_HEIGHT, FOOTER_DETAILS_HEIGHT),
-            GridStyle::Detailed => (HEADER_HEIGHT, FOOTER_NAME_HEIGHT),
-            GridStyle::Compact => (HEADER_HEIGHT, 0.0),
+            GridStyle::Detailed => (header, footer),
+            GridStyle::Compact => (header, 0.0),
             GridStyle::Minimal | GridStyle::Bare => (0.0, 0.0),
         };
         let geometry = CardGeometry {
@@ -182,6 +189,7 @@ impl Workspace {
     ) -> AnyElement {
         let theme = self.theme;
         let grid = &self.settings.grid;
+        let show = grid.show;
         let style = grid.style;
         let asset = &self.catalog.assets[asset_ix];
         let is_selected = asset_ix == self.catalog.selected;
@@ -222,9 +230,9 @@ impl Workspace {
                 &theme,
             ))
             .when(style == GridStyle::Minimal, |el| {
-                el.children(minimal_badges(asset, &theme))
+                el.children(minimal_badges(asset, &show, &theme))
             })
-            .when(asset.marked_delete, |el| {
+            .when(asset.marked_delete && show.delete_mark, |el| {
                 el.child(
                     div()
                         .absolute()
@@ -244,22 +252,22 @@ impl Workspace {
             .when(grid.hover_controls, |el| {
                 el.child(card_controls(asset_ix, entity, &theme))
             })
-            .when(self.catalog.is_pair_cover(asset_ix), |el| {
+            .when(show.pair_badge && self.catalog.is_pair_cover(asset_ix), |el| {
                 el.child(pair_badge(
                     asset_ix,
                     self.catalog.is_pair_open(asset_ix),
-                    stack.is_some(),
+                    stack.is_some() && show.stack_badge,
                     entity,
                     &theme,
                 ))
             })
-            .when_some(stack, |el, (id, count, collapsed)| {
+            .when_some(stack.filter(|_| show.stack_badge), |el, (id, count, collapsed)| {
                 el.child(stack_badge(asset_ix, id, count, collapsed, entity, &theme))
             })
             .children(crate::cull::corner_badges(
-                asset.copy_name.clone(),
-                self.catalog.pair_tag(asset_ix),
-                mark,
+                asset.copy_name.clone().filter(|_| show.copy_name),
+                self.catalog.pair_tag(asset_ix).filter(|_| show.file_type),
+                if show.cull_marks { mark } else { Default::default() },
                 &theme,
             ));
 
@@ -293,7 +301,7 @@ impl Workspace {
             .cursor_pointer();
 
         card.when(geometry.header > 0.0, |el| {
-            el.child(card_header(asset, asset_ix, entity, &theme))
+            el.child(card_header(asset, asset_ix, &show, entity, &theme))
         })
         .child(thumb)
         .when(grid.tooltips, |el| {
@@ -392,6 +400,7 @@ fn thumb_placeholder(asset_ix: usize, theme: &Theme) -> AnyElement {
 fn card_header(
     asset: &Asset,
     asset_ix: usize,
+    show: &GridInfo,
     entity: &Entity<Workspace>,
     theme: &Theme,
 ) -> AnyElement {
@@ -408,19 +417,21 @@ fn card_header(
         .flex_shrink_0()
         .h(px(HEADER_HEIGHT))
         .px_2()
-        .child(div().flex_shrink_0().child(rustyedit_ui::rating_stars(
-            format!("grid-rating-{asset_ix}"),
-            asset.rating,
-            theme,
-            10.0,
-            Some(move |value: u8, _window: &mut Window, cx: &mut App| {
-                // Rate without the card click re-selecting.
-                cx.stop_propagation();
-                entity.update(cx, |this, cx| {
-                    this.act_on_card(asset_ix, cx, |this, cx| this.set_rating_value(value, cx));
-                });
-            }),
-        )))
+        .child(div().flex_shrink_0().when(show.rating, |el| {
+            el.child(rustyedit_ui::rating_stars(
+                format!("grid-rating-{asset_ix}"),
+                asset.rating,
+                theme,
+                10.0,
+                Some(move |value: u8, _window: &mut Window, cx: &mut App| {
+                    // Rate without the card click re-selecting.
+                    cx.stop_propagation();
+                    entity.update(cx, |this, cx| {
+                        this.act_on_card(asset_ix, cx, |this, cx| this.set_rating_value(value, cx));
+                    });
+                }),
+            ))
+        }))
         .child(
             div()
                 .flex()
@@ -428,23 +439,25 @@ fn card_header(
                 .flex_shrink_0()
                 .items_center()
                 .gap_1()
-                .when(keyword_count > 0, |el| {
+                .when(show.keyword_count && keyword_count > 0, |el| {
                     el.child(small(theme.text_muted).child(format!("#{keyword_count}")))
                 })
-                .when(!asset.history.is_empty(), |el| {
+                .when(show.edited_mark && !asset.history.is_empty(), |el| {
                     el.child(small(theme.accent).child("\u{270E}"))
                 })
-                .when_some(theme.color_label(asset.color_label), |el, color| {
-                    el.child(div().size(sp(8.0)).rounded_full().bg(color))
-                })
-                .child(rustyedit_ui::flag_badge(asset.flag, theme)),
+                .when_some(
+                    theme.color_label(asset.color_label).filter(|_| show.label_dot),
+                    |el, color| el.child(div().size(sp(8.0)).rounded_full().bg(color)),
+                )
+                .when(show.flag, |el| el.child(rustyedit_ui::flag_badge(asset.flag, theme))),
         )
         .into_any_element()
 }
 
 /// Name, and optionally the capture details, under the thumbnail.
 fn card_footer(asset: &Asset, grid: &GridSettings, theme: &Theme) -> AnyElement {
-    let name = if asset.title.trim().is_empty() {
+    let show = grid.show;
+    let name = if !show.prefer_title || asset.title.trim().is_empty() {
         asset.display_name()
     } else {
         asset.title.clone()
@@ -460,23 +473,25 @@ fn card_footer(asset: &Asset, grid: &GridSettings, theme: &Theme) -> AnyElement 
         .flex_1()
         .min_w(sp(0.0))
         .overflow_hidden()
-        .child(card_text_row(
-            div()
-                .h(sp(14.0))
-                .line_height(sp(14.0))
-                .text_size(sp(11.0))
-                .font_weight(gpui::FontWeight::MEDIUM)
-                .text_color(theme.text)
-                .child(name),
-        ))
-        .when(grid.show_details, |el| {
+        .when(show.name, |el| {
+            el.child(card_text_row(
+                div()
+                    .h(sp(14.0))
+                    .line_height(sp(14.0))
+                    .text_size(sp(11.0))
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(theme.text)
+                    .child(name),
+            ))
+        })
+        .when(show.any_details(), |el| {
             el.child(card_text_row(
                 div()
                     .h(sp(12.0))
                     .line_height(sp(12.0))
                     .text_size(sp(9.0))
                     .text_color(theme.text_faint)
-                    .child(card_facts(asset)),
+                    .child(card_facts(asset, &show)),
             ))
         })
         .into_any_element()
@@ -501,13 +516,14 @@ fn card_text_row(text: gpui::Div) -> gpui::Div {
 
 /// Minimal style: a small pill over the thumbnail's top-left corner with
 /// the flag, colour label and rating. Nothing when there's nothing to say.
-fn minimal_badges(asset: &Asset, theme: &Theme) -> Option<AnyElement> {
-    let label = theme.color_label(asset.color_label);
-    let rating = asset.rating.value();
-    if asset.flag == Flag::Unflagged && label.is_none() && rating == 0 {
+fn minimal_badges(asset: &Asset, show: &GridInfo, theme: &Theme) -> Option<AnyElement> {
+    let label = theme.color_label(asset.color_label).filter(|_| show.label_dot);
+    let rating = if show.rating { asset.rating.value() } else { 0 };
+    let flag = if show.flag { asset.flag } else { Flag::Unflagged };
+    if flag == Flag::Unflagged && label.is_none() && rating == 0 {
         return None;
     }
-    let flag = match asset.flag {
+    let flag = match flag {
         Flag::Unflagged => None,
         Flag::Picked => Some(("\u{2691}", theme.pick)),
         Flag::Rejected => Some(("\u{2715}", theme.reject)),
@@ -754,15 +770,15 @@ fn card_controls(asset_ix: usize, entity: &Entity<Workspace>, theme: &Theme) -> 
 }
 
 /// Capture date, camera and pixel size, for the Detailed footer.
-fn card_facts(asset: &Asset) -> String {
+fn card_facts(asset: &Asset, show: &GridInfo) -> String {
     let mut facts = Vec::new();
-    if let Some(date) = grid_capture_date(asset.meta.captured) {
+    if let Some(date) = grid_capture_date(asset.meta.captured).filter(|_| show.date) {
         facts.push(date);
     }
-    if !asset.meta.camera.trim().is_empty() {
+    if show.camera && !asset.meta.camera.trim().is_empty() {
         facts.push(asset.meta.camera.trim().to_string());
     }
-    if asset.width > 0 && asset.height > 0 {
+    if show.dimensions && asset.width > 0 && asset.height > 0 {
         facts.push(format!("{}×{}", asset.width, asset.height));
     }
     facts.join("  ·  ")

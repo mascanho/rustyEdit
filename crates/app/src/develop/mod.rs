@@ -31,6 +31,7 @@ mod crop_tool;
 mod curve_editor;
 mod frames;
 mod detail;
+mod detail_view;
 mod gradients;
 mod grid_overlay;
 mod history;

@@ -39,6 +39,8 @@ pub(crate) struct LivePreview {
     busy: bool,
     /// Adjustments changed while busy; render again when it finishes.
     pending: bool,
+    /// The sharp render of the visible part when zoomed in.
+    pub(crate) detail: super::detail_view::DetailView,
 }
 
 impl LivePreview {
@@ -59,6 +61,12 @@ impl LivePreview {
 
     fn retire(&mut self, image: Arc<RenderImage>) {
         self.retired.push((image, 0));
+    }
+
+    /// Hands an image the viewer no longer shows over to be freed safely
+    /// (see `release_retired`).
+    pub(crate) fn retire_image(&mut self, image: Arc<RenderImage>) {
+        self.retire(image);
     }
 
     /// Pixel size of the current frame.
@@ -94,6 +102,9 @@ impl LivePreview {
             self.retire(old);
         }
         self.before_key = None;
+        if let Some(old) = self.detail.take() {
+            self.retire(old);
+        }
         self.shown_frame = FrameSettings::default();
         self.shown_mask = None;
         self.shown_crop_full = false;
@@ -247,8 +258,12 @@ impl Workspace {
         let frame = self.frame_in_view();
         let mask = self.mask_in_view();
         let oriented = (asset.width.max(1) as f32, asset.height.max(1) as f32);
+        // Distortion correction reshapes the photo (it scales the edges),
+        // so the before keeps it like the crop: otherwise Before looks
+        // zoomed and the split's halves don't line up.
         let geometry = DevelopSettings {
             frame,
+            lens_distortion: settings.lens_distortion,
             crop: settings.crop,
             rotation_degrees: settings.rotation_degrees,
             flip_horizontal: settings.flip_horizontal,

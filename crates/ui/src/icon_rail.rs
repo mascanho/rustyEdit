@@ -32,7 +32,20 @@ pub fn icon_rail(
     side: PanelSide,
     buttons: Vec<RailButton>,
 ) -> impl IntoElement {
+    icon_rail_with(id, theme, side, buttons, Vec::new())
+}
+
+/// [`icon_rail`] with more controls (`tail`) under a divider below the
+/// tool buttons: things that act on the photo rather than open a panel.
+pub fn icon_rail_with(
+    id: impl Into<ElementId>,
+    theme: &Theme,
+    side: PanelSide,
+    buttons: Vec<RailButton>,
+    tail: Vec<gpui::AnyElement>,
+) -> impl IntoElement {
     let theme = *theme;
+    let has_tail = !tail.is_empty();
 
     div()
         .id(id)
@@ -73,4 +86,12 @@ pub fn icon_rail(
                 .tooltip(crate::tooltip::tip(button.tooltip, &theme))
                 .on_click(button.on_click)
         }))
+        .when(has_tail, |el| {
+            el.child(div().w(px(18.0)).h(px(1.0)).my_1().bg(theme.border))
+                .children(tail)
+        })
 }
+
+/// The size of a rail button, for controls built outside the rail that
+/// should match it.
+pub const RAIL_BUTTON_SIZE: f32 = BUTTON_SIZE;
