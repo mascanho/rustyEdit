@@ -863,8 +863,13 @@ fn mask_at(g: u32, x: f32, y: f32) -> f32 {
         let cy = aux[g + 2u] * height;
         let rx = max(aux[g + 5u] * long, 1.0);
         let ry = max(aux[g + 6u] * long, 1.0);
-        let ex = (x - cx) / rx;
-        let ey = (y - cy) / ry;
+        // The tilt is stored as cosine and sine where a linear keeps its end.
+        let tc = aux[g + 3u];
+        let ts = aux[g + 4u];
+        let ox = x - cx;
+        let oy = y - cy;
+        let ex = (ox * tc + oy * ts) / rx;
+        let ey = (-ox * ts + oy * tc) / ry;
         let d = sqrt(ex * ex + ey * ey);
         let inner = 1.0 - clamp(aux[g + 7u], 0.0, 1.0);
         if (d <= inner) {

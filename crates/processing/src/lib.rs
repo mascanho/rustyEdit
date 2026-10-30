@@ -688,6 +688,35 @@ mod tests {
                     });
                 }),
             ),
+            (
+                "tilted lens blur focus",
+                with(|s| {
+                    s.lens_blur.amount = 60.0;
+                    s.gradients.push(Gradient {
+                        kind: GradientKind::Radial,
+                        start: (0.45, 0.5),
+                        radius: (0.3, 0.1),
+                        angle: 35.0,
+                        feather: 0.4,
+                        lens_focus: true,
+                        ..Default::default()
+                    });
+                }),
+            ),
+            (
+                "tilted radial mask",
+                with(|s| {
+                    s.gradients.push(Gradient {
+                        kind: GradientKind::Radial,
+                        start: (0.5, 0.5),
+                        radius: (0.35, 0.1),
+                        angle: -50.0,
+                        feather: 0.3,
+                        adjust: LocalAdjust { exposure: 60.0, ..Default::default() },
+                        ..Default::default()
+                    });
+                }),
+            ),
             ("dehaze", with(|s| s.dehaze = 70.0)),
             ("haze", with(|s| s.dehaze = -50.0)),
             (

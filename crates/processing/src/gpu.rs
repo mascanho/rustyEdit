@@ -2196,8 +2196,9 @@ fn gradient_floats(g: &Gradient) -> [f32; GRADIENT_STRIDE] {
     out[1..10].copy_from_slice(&[
         g.start.0,
         g.start.1,
-        g.end.0,
-        g.end.1,
+        // A radial has no end: its tilt rides there as cosine and sine.
+        if g.kind == GradientKind::Radial { g.angle.to_radians().cos() } else { g.end.0 },
+        if g.kind == GradientKind::Radial { g.angle.to_radians().sin() } else { g.end.1 },
         g.radius.0,
         g.radius.1,
         g.feather,

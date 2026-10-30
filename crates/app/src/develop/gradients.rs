@@ -45,6 +45,47 @@ pub(crate) struct GradientUi {
     /// Where a press on empty photo started. A gradient is only added once
     /// the pointer is dragged from here, so a plain click changes nothing.
     pending: Option<Point<Pixels>>,
+    /// What the pointer is over on the photo, for the cursor.
+    hover: HoverKind,
+}
+
+/// What a press at the pointer would do to the selected or another mask.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum HoverKind {
+    #[default]
+    Nothing,
+    /// A handle or mask that would be moved.
+    Grab,
+    /// A radius handle, to resize along the line it sits on: 0 is left /
+    /// right, then each step is 45 degrees clockwise.
+    Resize(u8),
+}
+
+impl HoverKind {
+    /// `angle` is the oval's tilt on the display, in degrees.
+    fn of(handle: Handle, angle: f32) -> Self {
+        // Which way the handle's line runs, in 45 degree steps (a line
+        // looks the same turned half a circle).
+        let sector = |degrees: f32| ((degrees.rem_euclid(180.0) / 45.0).round() as u8) % 4;
+        match handle {
+            Handle::RadiusX => Self::Resize(sector(angle)),
+            Handle::RadiusY => Self::Resize(sector(angle + 90.0)),
+            Handle::Start | Handle::End | Handle::Move(_) | Handle::Rotate => Self::Grab,
+            Handle::Radius | Handle::Paint(..) => Self::Nothing,
+        }
+    }
+
+    fn cursor(self) -> gpui::CursorStyle {
+        use gpui::CursorStyle as C;
+        match self {
+            Self::Resize(0) => C::ResizeLeftRight,
+            Self::Resize(1) => C::ResizeUpLeftDownRight,
+            Self::Resize(2) => C::ResizeUpDown,
+            Self::Resize(_) => C::ResizeUpRightDownLeft,
+            Self::Grab => rustyedit_ui::GRAB_CURSOR,
+            Self::Nothing => C::Crosshair,
+        }
+    }
 }
 
 impl Default for GradientUi {
@@ -58,6 +99,7 @@ impl Default for GradientUi {
             selected: None,
             drag: None,
             pending: None,
+            hover: HoverKind::Nothing,
         }
     }
 }
@@ -69,6 +111,9 @@ impl GradientUi {
         self.pending = None;
     }
 }
+
+/// How far beyond a radial's edge its turn handle sits, in pixels.
+const ROTATE_HANDLE_GAP: f32 = 26.0;
 
 /// How far the pointer must move before a press becomes a new gradient.
 const ADD_DRAG_THRESHOLD: f32 = 4.0;
@@ -86,6 +131,8 @@ enum Handle {
     RadiusY,
     /// Radial, while drawing it: both radii, as a circle.
     Radius,
+    /// Radial: tilts the oval about its centre.
+    Rotate,
     /// Brush: painting; holds the last dab's place on the photo and
     /// whether the stroke erases.
     Paint((f32, f32), bool),
@@ -550,6 +597,33 @@ impl Workspace {
                         entity.update(cx, |this, cx| {
                             this.edit_gradient(index, "Gradient feather", cx, |g| {
                                 g.feather = (value / 100.0).clamp(0.0, 1.0)
+                            });
+                        });
+                    },
+                )
+                .into_any_element(),
+            );
+        }
+
+        if gradient.kind == GradientKind::Radial {
+            let entity = cx.entity();
+            rows.push(
+                rustyedit_ui::labeled_slider(
+                    SharedString::from(format!("gradient-{index}-angle")),
+                    "Tilt",
+                    gradient.angle,
+                    SliderSpec {
+                        min: -90.0,
+                        max: 90.0,
+                        default: 0.0,
+                        signed: true,
+                        track: SliderTrack::Accent,
+                    },
+                    &theme,
+                    move |value, _w, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.edit_gradient(index, "Gradient tilt", cx, |g| {
+                                g.angle = value.clamp(-90.0, 90.0)
                             });
                         });
                     },
@@ -1393,7 +1467,12 @@ impl Workspace {
                 .id("gradient-overlay")
                 .absolute()
                 .inset_0()
-                .cursor_crosshair()
+                .cursor(self.gradient_cursor())
+                .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _w, cx| {
+                    if this.develop_ui.gradients.drag.is_none() {
+                        this.gradient_hover(event.position, cx);
+                    }
+                }))
                 .child(
                     canvas(
                         |_, _, _| {},
@@ -1416,6 +1495,74 @@ impl Workspace {
         )
     }
 
+    /// The handle under `position`: the selected gradient's first, then
+    /// any gradient's, the newest on top.
+    fn gradient_handle_at(&self, position: Point<Pixels>) -> Option<(usize, Handle)> {
+        let (rect, develop) = self.gradient_space()?;
+        if !rect.contains(&position) {
+            return None;
+        }
+        let on_photo = display_point(position, rect);
+        let gradients = develop.gradients.as_slice();
+        if let Some(ix) = self.develop_ui.gradients.selected {
+            if let Some(g) = gradients.get(ix) {
+                let shape = Shape::new(&g.on_display(&develop), rect, true);
+                if let Some(handle) = shape.handle_at(position, on_photo) {
+                    return Some((ix, handle));
+                }
+            }
+        }
+        gradients.iter().enumerate().rev().find_map(|(ix, g)| {
+            let shape = Shape::new(&g.on_display(&develop), rect, false);
+            shape.handle_at(position, on_photo).map(|handle| (ix, handle))
+        })
+    }
+
+    /// The cursor over the mask overlay: a closed hand while carrying,
+    /// resize arrows on a radius handle, an open hand over something that
+    /// can be picked up, else the crosshair.
+    fn gradient_cursor(&self) -> gpui::CursorStyle {
+        use gpui::CursorStyle as C;
+        let ui = &self.develop_ui.gradients;
+        if ui.tool == Some(GradientKind::Brush) {
+            return C::Crosshair;
+        }
+        let kind = match ui.drag {
+            Some(drag) => match HoverKind::of(drag.handle, self.display_tilt(drag.index)) {
+                HoverKind::Grab => return rustyedit_ui::GRABBING_CURSOR,
+                other => other,
+            },
+            None => ui.hover,
+        };
+        kind.cursor()
+    }
+
+    /// Gradient `index`'s tilt as shown on the photo, in degrees.
+    fn display_tilt(&self, index: usize) -> f32 {
+        self.gradient_space()
+            .and_then(|(_, develop)| {
+                develop
+                    .gradients
+                    .as_slice()
+                    .get(index)
+                    .map(|g| g.on_display(&develop).angle)
+            })
+            .unwrap_or(0.0)
+    }
+
+    /// Tracks what the pointer is over, redrawing only when that changes.
+    fn gradient_hover(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let kind = self
+            .gradient_handle_at(position)
+            .map_or(HoverKind::Nothing, |(ix, handle)| {
+                HoverKind::of(handle, self.display_tilt(ix))
+            });
+        if kind != self.develop_ui.gradients.hover {
+            self.develop_ui.gradients.hover = kind;
+            cx.notify();
+        }
+    }
+
     /// Grabs a handle of the selected gradient under the pointer, selects a
     /// gradient clicked inside, or adds a new one.
     fn gradient_pointer_down(
@@ -1434,28 +1581,12 @@ impl Workspace {
             self.begin_brush_stroke(position, rect, &develop, erase, cx);
             return;
         }
-        let on_photo = display_point(position, rect);
-        let gradients = develop.gradients.as_slice();
-
-        if let Some(ix) = self.develop_ui.gradients.selected {
-            if let Some(g) = gradients.get(ix) {
-                let shape = Shape::new(&g.on_display(&develop), rect, true);
-                if let Some(handle) = shape.handle_at(position, on_photo) {
-                    self.develop_ui.gradients.drag = Some(GradientDrag { index: ix, handle });
-                    cx.notify();
-                    return;
-                }
-            }
-        }
-        for (ix, g) in gradients.iter().enumerate().rev() {
-            let shape = Shape::new(&g.on_display(&develop), rect, false);
-            if let Some(handle) = shape.handle_at(position, on_photo) {
-                let ui = &mut self.develop_ui.gradients;
-                ui.selected = Some(ix);
-                ui.drag = Some(GradientDrag { index: ix, handle });
-                cx.notify();
-                return;
-            }
+        if let Some((ix, handle)) = self.gradient_handle_at(position) {
+            let ui = &mut self.develop_ui.gradients;
+            ui.selected = Some(ix);
+            ui.drag = Some(GradientDrag { index: ix, handle });
+            cx.notify();
+            return;
         }
         // Wait for a drag before adding anything.
         self.develop_ui.gradients.pending = Some(position);
@@ -1613,13 +1744,38 @@ impl Workspace {
                 let radius = ((dx * dx + dy * dy).sqrt() / long_edge).clamp(0.01, 1.5);
                 g.radius = (radius, radius);
             }
+            Handle::Rotate => {
+                let centre = to_display(g.start, &develop);
+                let dx = (at.0 - centre.0) * f32::from(rect.size.width);
+                let dy = (at.1 - centre.1) * f32::from(rect.size.height);
+                if dx.hypot(dy) > 2.0 {
+                    // The handle sits off the oval's top, a quarter turn
+                    // behind its x axis. Ovals look the same turned half
+                    // a circle, so the tilt is kept within a quarter.
+                    let mut shown = (dy.atan2(dx).to_degrees() + 90.0 + 90.0).rem_euclid(180.0) - 90.0;
+                    if shown.abs() < 2.5 {
+                        shown = 0.0;
+                    }
+                    // Back to the original photo, where a mirror reverses it.
+                    g.angle = if develop.flip_horizontal != develop.flip_vertical {
+                        -shown
+                    } else {
+                        shown
+                    };
+                }
+            }
             Handle::RadiusX | Handle::RadiusY => {
                 let centre = to_display(g.start, &develop);
                 let horizontal = matches!(drag.handle, Handle::RadiusX);
+                // How far along the oval's own axis the pointer is.
+                let tilt = g.on_display(&develop).angle.to_radians();
+                let (sin, cos) = tilt.sin_cos();
+                let dx = (at.0 - centre.0) * f32::from(rect.size.width);
+                let dy = (at.1 - centre.1) * f32::from(rect.size.height);
                 let distance = if horizontal {
-                    (at.0 - centre.0).abs() * f32::from(rect.size.width)
+                    (dx * cos + dy * sin).abs()
                 } else {
-                    (at.1 - centre.1).abs() * f32::from(rect.size.height)
+                    (-dx * sin + dy * cos).abs()
                 };
                 let radius = (distance / long_edge).clamp(0.01, 1.5);
                 // Radii are kept on the original photo, whose axes swap
@@ -1654,6 +1810,8 @@ struct Shape {
     start: Point<Pixels>,
     end: Point<Pixels>,
     radius: (f32, f32),
+    /// Radial: the oval's tilt, radians clockwise on screen.
+    angle: f32,
     feather: f32,
     selected: bool,
     /// Brush dabs on screen: centre, radius and whether it erases.
@@ -1671,6 +1829,7 @@ impl Shape {
             start: at(g.start),
             end: at(g.end),
             radius: (g.radius.0 * long, g.radius.1 * long),
+            angle: g.angle.to_radians(),
             feather: g.feather,
             selected,
             dabs: g
@@ -1688,17 +1847,22 @@ impl Shape {
                 (self.end, Handle::End),
                 (midpoint(self.start, self.end), Handle::Move((0.0, 0.0))),
             ],
-            GradientKind::Radial => vec![
-                (self.start, Handle::Move((0.0, 0.0))),
-                (
-                    self.start + point(px(self.radius.0), sp(0.0)),
-                    Handle::RadiusX,
-                ),
-                (
-                    self.start + point(sp(0.0), px(self.radius.1)),
-                    Handle::RadiusY,
-                ),
-            ],
+            GradientKind::Radial => {
+                let (sin, cos) = self.angle.sin_cos();
+                // The oval's own axes on screen.
+                let along = |d: f32| point(px(cos * d), px(sin * d));
+                let across = |d: f32| point(px(-sin * d), px(cos * d));
+                vec![
+                    (self.start, Handle::Move((0.0, 0.0))),
+                    (self.start + along(self.radius.0), Handle::RadiusX),
+                    (self.start + across(self.radius.1), Handle::RadiusY),
+                    // Off the top, clear of the oval, to turn it by.
+                    (
+                        self.start - across(self.radius.1 + ROTATE_HANDLE_GAP),
+                        Handle::Rotate,
+                    ),
+                ]
+            }
         }
     }
 
@@ -1725,8 +1889,13 @@ impl Shape {
     }
 
     fn contains(&self, position: Point<Pixels>) -> bool {
-        let dx = f32::from(position.x - self.start.x) / self.radius.0.max(1.0);
-        let dy = f32::from(position.y - self.start.y) / self.radius.1.max(1.0);
+        let (sin, cos) = self.angle.sin_cos();
+        let (ox, oy) = (
+            f32::from(position.x - self.start.x),
+            f32::from(position.y - self.start.y),
+        );
+        let dx = (ox * cos + oy * sin) / self.radius.0.max(1.0);
+        let dy = (-ox * sin + oy * cos) / self.radius.1.max(1.0);
         dx * dx + dy * dy <= 1.0
     }
 
@@ -1763,7 +1932,7 @@ impl Shape {
                 if self.selected {
                     for &(centre, radius, erase) in &self.dabs {
                         let mut path = PathBuilder::fill();
-                        path.add_polygon(&ellipse(centre, (radius, radius)), true);
+                        path.add_polygon(&ellipse(centre, (radius, radius), 0.0), true);
                         if let Ok(path) = path.build() {
                             let wash = if erase {
                                 gpui::black().opacity(0.0)
@@ -1776,11 +1945,22 @@ impl Shape {
                 }
             }
             GradientKind::Radial => {
-                both(ellipse(self.start, self.radius), true, 1.25, false);
+                both(ellipse(self.start, self.radius, self.angle), true, 1.25, false);
                 let inner = 1.0 - self.feather.clamp(0.0, 1.0);
                 if inner > 0.02 {
                     let r = (self.radius.0 * inner, self.radius.1 * inner);
-                    both(ellipse(self.start, r), true, 1.0, true);
+                    both(ellipse(self.start, r, self.angle), true, 1.0, true);
+                }
+                if self.selected {
+                    // A stalk to the turn handle.
+                    let (sin, cos) = self.angle.sin_cos();
+                    let top = self.start - point(px(-sin * self.radius.1), px(cos * self.radius.1));
+                    let handle = self.start
+                        - point(
+                            px(-sin * (self.radius.1 + ROTATE_HANDLE_GAP)),
+                            px(cos * (self.radius.1 + ROTATE_HANDLE_GAP)),
+                        );
+                    both(vec![top, handle], false, 1.0, false);
                 }
             }
         }
@@ -1788,7 +1968,7 @@ impl Shape {
             for (p, _) in self.handles() {
                 stroke(
                     window,
-                    &ellipse(p, (HANDLE_SIZE, HANDLE_SIZE)),
+                    &ellipse(p, (HANDLE_SIZE, HANDLE_SIZE), 0.0),
                     true,
                     3.0,
                     shadow,
@@ -1796,7 +1976,7 @@ impl Shape {
                 );
                 stroke(
                     window,
-                    &ellipse(p, (HANDLE_SIZE, HANDLE_SIZE)),
+                    &ellipse(p, (HANDLE_SIZE, HANDLE_SIZE), 0.0),
                     true,
                     1.5,
                     colour,
@@ -1811,12 +1991,15 @@ fn midpoint(a: Point<Pixels>, b: Point<Pixels>) -> Point<Pixels> {
     point((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)
 }
 
-fn ellipse(centre: Point<Pixels>, (rx, ry): (f32, f32)) -> Vec<Point<Pixels>> {
+/// An ellipse's outline, tilted `angle` radians clockwise.
+fn ellipse(centre: Point<Pixels>, (rx, ry): (f32, f32), angle: f32) -> Vec<Point<Pixels>> {
     const STEPS: usize = 72;
+    let (sin, cos) = angle.sin_cos();
     (0..STEPS)
         .map(|i| {
             let a = i as f32 / STEPS as f32 * std::f32::consts::TAU;
-            centre + point(px(a.cos() * rx), px(a.sin() * ry))
+            let (x, y) = (a.cos() * rx, a.sin() * ry);
+            centre + point(px(x * cos - y * sin), px(x * sin + y * cos))
         })
         .collect()
 }

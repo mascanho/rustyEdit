@@ -406,6 +406,19 @@ impl Workspace {
         to_source((x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)), develop)
     }
 
+    /// A closed hand while a spot is carried, an open one over a spot that
+    /// can be picked up, else the crosshair.
+    fn retouch_cursor(&self) -> gpui::CursorStyle {
+        let ui = &self.develop_ui.retouch;
+        if ui.drag.is_some() {
+            return rustyedit_ui::GRABBING_CURSOR;
+        }
+        match ui.hover {
+            Some(at) if self.spot_hit(at).is_some() => rustyedit_ui::GRAB_CURSOR,
+            _ => gpui::CursorStyle::Crosshair,
+        }
+    }
+
     /// The overlay drawing the spots and taking clicks, while a tool is
     /// picked and Space isn't held (Space pans instead).
     pub(super) fn render_retouch_overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -455,7 +468,7 @@ impl Workspace {
                 .id("retouch-overlay")
                 .absolute()
                 .inset_0()
-                .cursor_crosshair()
+                .cursor(self.retouch_cursor())
                 .child(
                     canvas(
                         |_, _, _| {},
@@ -483,16 +496,13 @@ impl Workspace {
         )
     }
 
-    /// Picks up a spot's circle under the pointer, or drops a new spot.
-    fn retouch_pointer_down(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
-        let Some(develop) = self.catalog.selected_asset().map(|a| a.develop) else {
-            return;
-        };
-        let Some(rect) = self.retouch_photo_rect() else {
-            return;
-        };
+    /// The spot and part (its source or target circle) under `position`,
+    /// the newest first so the spot drawn on top is the one picked.
+    fn spot_hit(&self, position: Point<Pixels>) -> Option<(usize, SpotPart)> {
+        let develop = self.catalog.selected_asset().map(|a| a.develop)?;
+        let rect = self.retouch_photo_rect()?;
         if !rect.contains(&position) {
-            return;
+            return None;
         }
         let long_edge = f32::from(rect.size.width.max(rect.size.height));
         let screen = |p: (f32, f32)| {
@@ -517,27 +527,39 @@ impl Workspace {
             (cx_ - px_).powi(2) + (cy_ - py_).powi(2) <= r * r
         };
 
-        // Newest first, so the spot drawn on top is the one picked.
         let spots = develop.spots.as_slice();
         for (ix, spot) in spots.iter().enumerate().rev() {
             let r = (spot.radius * long_edge).max(6.0);
             let end = spot.end.unwrap_or(spot.target);
             let offset = (spot.source.0 - spot.target.0, spot.source.1 - spot.target.1);
             let source_end = (end.0 + offset.0, end.1 + offset.1);
-            let part = if within(screen(spot.source), screen(source_end), r) {
-                Some(SpotPart::Source)
-            } else if within(screen(spot.target), screen(end), r) {
-                Some(SpotPart::Target)
-            } else {
-                None
-            };
-            if let Some(part) = part {
-                let ui = &mut self.develop_ui.retouch;
-                ui.selected = Some(ix);
-                ui.drag = Some(SpotDrag { index: ix, part });
-                cx.notify();
-                return;
+            if within(screen(spot.source), screen(source_end), r) {
+                return Some((ix, SpotPart::Source));
             }
+            if within(screen(spot.target), screen(end), r) {
+                return Some((ix, SpotPart::Target));
+            }
+        }
+        None
+    }
+
+    /// Picks up a spot's circle under the pointer, or drops a new spot.
+    fn retouch_pointer_down(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let Some(develop) = self.catalog.selected_asset().map(|a| a.develop) else {
+            return;
+        };
+        let Some(rect) = self.retouch_photo_rect() else {
+            return;
+        };
+        if !rect.contains(&position) {
+            return;
+        }
+        if let Some((ix, part)) = self.spot_hit(position) {
+            let ui = &mut self.develop_ui.retouch;
+            ui.selected = Some(ix);
+            ui.drag = Some(SpotDrag { index: ix, part });
+            cx.notify();
+            return;
         }
         if self.develop_ui.retouch.remove {
             self.develop_ui.retouch.selected = None;

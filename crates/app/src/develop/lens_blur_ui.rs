@@ -71,6 +71,30 @@ impl Workspace {
         }
         rows.push(labelled("Focus", chips(focus), &theme));
 
+        // Tilting the focus oval tilts the blur with it. Tilting the centre
+        // oval makes it a layer first, so the angle has somewhere to live.
+        let focus_layer = focus_ix.and_then(|i| develop.gradients.as_slice().get(i));
+        if focus_layer.is_none_or(|g| g.kind == GradientKind::Radial) {
+            let entity = cx.entity();
+            rows.push(rustyedit_ui::labeled_slider(
+                "lens-focus-tilt",
+                "Tilt",
+                focus_layer.map_or(0.0, |g| g.angle),
+                rustyedit_ui::SliderSpec {
+                    min: -90.0,
+                    max: 90.0,
+                    default: 0.0,
+                    signed: true,
+                    track: rustyedit_ui::SliderTrack::Accent,
+                },
+                &theme,
+                move |value, _w, cx| {
+                    entity.update(cx, |this, cx| this.tilt_lens_focus(value, cx));
+                },
+            )
+            .into_any_element());
+        }
+
         let showing = self.develop_ui.gradients.show_mask
             && focus_ix.is_some()
             && self.develop_ui.gradients.selected == focus_ix;
@@ -145,6 +169,29 @@ impl Workspace {
             label,
             |d| edit(&mut d.lens_blur),
             |d| (String::new(), d.lens_blur.shape.label().to_string()),
+            cx,
+        );
+    }
+
+    /// Tilts the focus oval to `degrees`, making the centre oval a mask
+    /// layer first if the focus is still the plain default.
+    fn tilt_lens_focus(&mut self, degrees: f32, cx: &mut Context<Self>) {
+        let degrees = degrees.clamp(-90.0, 90.0);
+        self.edit_develop(
+            "Lens blur tilt",
+            |d| {
+                let ix = d.gradients.as_slice().iter().position(|g| g.lens_focus);
+                let ix = ix.or_else(|| {
+                    d.gradients.push(rustyedit_core::Gradient {
+                        lens_focus: true,
+                        ..LensBlur::centre_focus()
+                    })
+                });
+                if let Some(g) = ix.and_then(|i| d.gradients.get_mut(i)) {
+                    g.angle = degrees;
+                }
+            },
+            |_| (String::new(), format!("{degrees:.0}\u{00B0}")),
             cx,
         );
     }

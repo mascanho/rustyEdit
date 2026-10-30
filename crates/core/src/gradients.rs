@@ -259,6 +259,9 @@ pub struct Gradient {
     /// Radial: the ellipse's horizontal and vertical radii, as fractions
     /// of the long edge (on the original photo).
     pub radius: (f32, f32),
+    /// Radial: degrees the ellipse is tilted clockwise on the original
+    /// photo (-90..=90). 0 keeps its radii horizontal and vertical.
+    pub angle: f32,
     /// Radial: 0..=1, how much of the radius fades out.
     pub feather: f32,
     /// Apply outside the mask instead of inside it.
@@ -292,6 +295,7 @@ impl Default for Gradient {
             start: (0.0, 0.0),
             end: (0.0, 0.0),
             radius: (0.0, 0.0),
+            angle: 0.0,
             feather: 0.0,
             invert: false,
             adjust: LocalAdjust::default(),
@@ -323,6 +327,13 @@ impl Gradient {
                 (self.radius.1, self.radius.0)
             } else {
                 self.radius
+            },
+            // A quarter turn swaps the radii instead of turning the angle;
+            // a single mirror reverses the tilt.
+            angle: if settings.flip_horizontal != settings.flip_vertical {
+                -self.angle
+            } else {
+                self.angle
             },
             dabs: {
                 let mut dabs = self.dabs;
@@ -436,7 +447,12 @@ impl Gradient {
                 let (cx, cy) = (self.start.0 * width, self.start.1 * height);
                 let rx = (self.radius.0 * long).max(1.0);
                 let ry = (self.radius.1 * long).max(1.0);
-                let d = (((x - cx) / rx).powi(2) + ((y - cy) / ry).powi(2)).sqrt();
+                let (sin, cos) = self.angle.to_radians().sin_cos();
+                let (dx, dy) = (x - cx, y - cy);
+                // Along and across the tilted ellipse's axes.
+                let u = (dx * cos + dy * sin) / rx;
+                let v = (-dx * sin + dy * cos) / ry;
+                let d = (u * u + v * v).sqrt();
                 let inner = 1.0 - self.feather.clamp(0.0, 1.0);
                 if d <= inner {
                     1.0
@@ -669,6 +685,35 @@ mod tests {
             ..Default::default()
         };
         assert!((g.mask_at(50.0, 50.0, 100.0, 100.0) - 0.4).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_tilted_oval_follows_its_angle() {
+        let flat = Gradient {
+            kind: GradientKind::Radial,
+            start: (0.5, 0.5),
+            radius: (0.4, 0.1),
+            feather: 0.0,
+            ..Default::default()
+        };
+        let tilted = Gradient { angle: 45.0, ..flat };
+        // A point to the right is inside the flat oval, outside the tilted.
+        assert_eq!(flat.mask_at(80.0, 50.0, 100.0, 100.0), 1.0);
+        assert_eq!(tilted.mask_at(80.0, 50.0, 100.0, 100.0), 0.0);
+        // Down-right along the tilted axis is inside it, outside the flat.
+        assert_eq!(tilted.mask_at(75.0, 75.0, 100.0, 100.0), 1.0);
+        assert_eq!(flat.mask_at(75.0, 75.0, 100.0, 100.0), 0.0);
+    }
+
+    #[test]
+    fn a_mirror_reverses_the_tilt_and_a_quarter_turn_keeps_it() {
+        let g = Gradient { kind: GradientKind::Radial, angle: 30.0, ..Default::default() };
+        let mirrored = DevelopSettings { flip_horizontal: true, ..Default::default() };
+        let both = DevelopSettings { flip_horizontal: true, flip_vertical: true, ..Default::default() };
+        let turned = DevelopSettings { rotation_degrees: 90.0, ..Default::default() };
+        assert_eq!(g.on_display(&mirrored).angle, -30.0);
+        assert_eq!(g.on_display(&both).angle, 30.0);
+        assert_eq!(g.on_display(&turned).angle, 30.0);
     }
 
     #[test]
