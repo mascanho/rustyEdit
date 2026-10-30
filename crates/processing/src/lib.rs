@@ -704,6 +704,31 @@ mod tests {
                 }),
             ),
             (
+                "painted focus on an oval",
+                with(|s| {
+                    s.lens_blur.amount = 55.0;
+                    let mut oval = Gradient {
+                        kind: GradientKind::Radial,
+                        start: (0.4, 0.5),
+                        radius: (0.15, 0.2),
+                        angle: 20.0,
+                        feather: 0.5,
+                        lens_focus: true,
+                        ..Default::default()
+                    };
+                    for i in 0..6 {
+                        oval.add_dab(rustyedit_core::Dab {
+                            x: 0.6 + i as f32 * 0.03,
+                            y: 0.35 + i as f32 * 0.05,
+                            radius: 0.07,
+                            erase: false,
+                        });
+                    }
+                    oval.add_dab(rustyedit_core::Dab { x: 0.4, y: 0.5, radius: 0.05, erase: true });
+                    s.gradients.push(oval);
+                }),
+            ),
+            (
                 "tilted radial mask",
                 with(|s| {
                     s.gradients.push(Gradient {

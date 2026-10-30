@@ -47,6 +47,10 @@ pub(crate) struct GradientUi {
     pending: Option<Point<Pixels>>,
     /// What the pointer is over on the photo, for the cursor.
     hover: HoverKind,
+    /// Painting on the selected gradient's own mask (an oval or a linear)
+    /// rather than moving its handles: strokes add to its shape, Alt
+    /// erases from it.
+    pub(crate) paint_layer: bool,
 }
 
 /// What a press at the pointer would do to the selected or another mask.
@@ -100,6 +104,7 @@ impl Default for GradientUi {
             drag: None,
             pending: None,
             hover: HoverKind::Nothing,
+            paint_layer: false,
         }
     }
 }
@@ -582,6 +587,34 @@ impl Workspace {
 
         if gradient.kind == GradientKind::Brush {
             rows.extend(self.brush_controls(index, gradient, cx));
+        }
+        // An oval or a linear can also be painted on, to reshape it.
+        if matches!(gradient.kind, GradientKind::Radial | GradientKind::Linear) {
+            let painting = self.develop_ui.gradients.paint_layer
+                && self.develop_ui.gradients.selected == Some(index);
+            rows.push(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_2()
+                    .child(super::auto::small_button(
+                        "gradient-paint-layer",
+                        rustyedit_ui::Icon::Brush,
+                        if painting { "Done painting" } else { "Paint on this mask" },
+                        "Brush onto this mask to add to its shape; hold Alt to erase from it. Enter finishes.",
+                        painting,
+                        true,
+                        &theme,
+                        cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                            this.toggle_layer_paint(index, cx)
+                        }),
+                    ))
+                    .into_any_element(),
+            );
+            if painting || gradient.dab_count() > 0 {
+                rows.extend(self.brush_controls(index, gradient, cx));
+            }
         }
         if matches!(gradient.kind, GradientKind::Radial | GradientKind::Brush) {
             let entity = cx.entity();
@@ -1245,6 +1278,31 @@ impl Workspace {
 
     /// Starts a brush stroke at `position`: on the selected brush layer, or
     /// on a new one.
+    /// Starts or stops painting on gradient `index`'s own mask, picking
+    /// the tool that shows the layer first.
+    pub(crate) fn toggle_layer_paint(&mut self, index: usize, cx: &mut Context<Self>) {
+        use super::tool_strip::PhotoTool;
+        let was_painting = self.develop_ui.gradients.paint_layer
+            && self.develop_ui.gradients.selected == Some(index);
+        let kind = self
+            .catalog
+            .selected_asset()
+            .and_then(|a| a.develop.gradients.as_slice().get(index).map(|g| g.kind));
+        let tool = match kind {
+            Some(GradientKind::Linear) => PhotoTool::Linear,
+            Some(GradientKind::Radial) => PhotoTool::Radial,
+            Some(GradientKind::Brush) => PhotoTool::Brush,
+            _ => return,
+        };
+        if self.active_photo_tool() != Some(tool) {
+            self.toggle_photo_tool(tool, cx);
+        }
+        let ui = &mut self.develop_ui.gradients;
+        ui.selected = Some(index);
+        ui.paint_layer = !was_painting;
+        cx.notify();
+    }
+
     fn begin_brush_stroke(
         &mut self,
         position: Point<Pixels>,
@@ -1253,16 +1311,16 @@ impl Workspace {
         erase: bool,
         cx: &mut Context<Self>,
     ) {
+        let painting_layer = self.develop_ui.gradients.paint_layer;
         let selected_brush = self
             .develop_ui
             .gradients
             .selected
             .filter(|&ix| {
-                develop
-                    .gradients
-                    .as_slice()
-                    .get(ix)
-                    .is_some_and(|g| g.kind == GradientKind::Brush)
+                develop.gradients.as_slice().get(ix).is_some_and(|g| {
+                    g.kind == GradientKind::Brush
+                        || (painting_layer && g.kind != GradientKind::Range)
+                })
             });
         let index = match selected_brush {
             Some(ix) => ix,
@@ -1529,7 +1587,7 @@ impl Workspace {
     fn gradient_cursor(&self) -> gpui::CursorStyle {
         use gpui::CursorStyle as C;
         let ui = &self.develop_ui.gradients;
-        if ui.tool == Some(GradientKind::Brush) {
+        if ui.tool == Some(GradientKind::Brush) || ui.paint_layer {
             return C::Crosshair;
         }
         let kind = match ui.drag {
@@ -1557,6 +1615,9 @@ impl Workspace {
 
     /// Tracks what the pointer is over, redrawing only when that changes.
     fn gradient_hover(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        if self.develop_ui.gradients.paint_layer {
+            return;
+        }
         let kind = self
             .gradient_handle_at(position)
             .map_or(HoverKind::Nothing, |(ix, handle)| {
@@ -1582,7 +1643,9 @@ impl Workspace {
         if !rect.contains(&position) {
             return;
         }
-        if self.develop_ui.gradients.tool == Some(GradientKind::Brush) {
+        if self.develop_ui.gradients.tool == Some(GradientKind::Brush)
+            || self.develop_ui.gradients.paint_layer
+        {
             self.begin_brush_stroke(position, rect, &develop, erase, cx);
             return;
         }
@@ -1962,24 +2025,7 @@ impl Shape {
                 both(line(self.end), false, 1.25, false);
                 both(vec![self.start, self.end], false, 1.0, false);
             }
-            GradientKind::Range => {}
-            GradientKind::Brush => {
-                // What's been painted, as a soft wash.
-                if self.selected {
-                    for &(centre, radius, erase) in &self.dabs {
-                        let mut path = PathBuilder::fill();
-                        path.add_polygon(&ellipse(centre, (radius, radius), 0.0), true);
-                        if let Ok(path) = path.build() {
-                            let wash = if erase {
-                                gpui::black().opacity(0.0)
-                            } else {
-                                theme.accent.opacity(0.10)
-                            };
-                            window.paint_path(path, wash);
-                        }
-                    }
-                }
-            }
+            GradientKind::Range | GradientKind::Brush => {}
             GradientKind::Radial => {
                 both(ellipse(self.start, self.radius, self.angle), true, 1.25, false);
                 let inner = 1.0 - self.feather.clamp(0.0, 1.0);
@@ -1997,6 +2043,19 @@ impl Shape {
                             px(cos * (self.radius.1 + ROTATE_HANDLE_GAP)),
                         );
                     both(vec![top, handle], false, 1.0, false);
+                }
+            }
+        }
+        // What's been painted, as a soft wash.
+        if self.selected && self.kind != GradientKind::Range {
+            for &(centre, radius, erase) in &self.dabs {
+                if erase {
+                    continue;
+                }
+                let mut path = PathBuilder::fill();
+                path.add_polygon(&ellipse(centre, (radius, radius), 0.0), true);
+                if let Ok(path) = path.build() {
+                    window.paint_path(path, theme.accent.opacity(0.10));
                 }
             }
         }

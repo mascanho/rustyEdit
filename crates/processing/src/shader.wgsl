@@ -823,32 +823,8 @@ fn mask_at(g: u32, x: f32, y: f32) -> f32 {
         // Range: everywhere (the ranges narrow it).
         strength = 1.0;
     } else if (aux[g] > 1.5) {
-        // Brush: the union of the dabs, erasers taking it away.
-        let long = max(width, height);
-        let inner = 1.0 - clamp(aux[g + 7u], 0.0, 1.0);
-        let count = u32(aux[g + 31u]);
+        // Brush: only strokes, painted below.
         strength = 0.0;
-        for (var n = 0u; n < count; n++) {
-            let at = g + DAB_FLOATS + n * 4u;
-            let r = max(aux[at + 2u] * long, 1.0);
-            let ex = x - aux[at] * width;
-            let ey = y - aux[at + 1u] * height;
-            let d = sqrt(ex * ex + ey * ey) / r;
-            var f: f32;
-            if (d <= inner) {
-                f = 1.0;
-            } else if (d >= 1.0) {
-                f = 0.0;
-            } else {
-                let t = (d - inner) / max(1.0 - inner, 1e-3);
-                f = 1.0 - t * t * (3.0 - 2.0 * t);
-            }
-            if (aux[at + 3u] > 0.5) {
-                strength = strength * (1.0 - f);
-            } else {
-                strength = strength + f - strength * f;
-            }
-        }
     } else if (aux[g] < 0.5) {
         let ax = aux[g + 1u] * width;
         let ay = aux[g + 2u] * height;
@@ -879,6 +855,37 @@ fn mask_at(g: u32, x: f32, y: f32) -> f32 {
         } else {
             let t = (d - inner) / max(1.0 - inner, 1e-3);
             strength = 1.0 - t * t * (3.0 - 2.0 * t);
+        }
+    }
+    // Gradient::paint_over: strokes add to the shape, erasers take away.
+    if (aux[g] < 2.5) {
+        let long = max(width, height);
+        // A brush layer's strokes are as soft as its feather; a gradient's
+        // have a fixed half-soft edge.
+        var feather = 0.5;
+        if (aux[g] > 1.5) { feather = clamp(aux[g + 7u], 0.0, 1.0); }
+        let inner = 1.0 - feather;
+        let count = u32(aux[g + 31u]);
+        for (var n = 0u; n < count; n++) {
+            let at = g + DAB_FLOATS + n * 4u;
+            let r = max(aux[at + 2u] * long, 1.0);
+            let ex = x - aux[at] * width;
+            let ey = y - aux[at + 1u] * height;
+            let d = sqrt(ex * ex + ey * ey) / r;
+            var f: f32;
+            if (d <= inner) {
+                f = 1.0;
+            } else if (d >= 1.0) {
+                f = 0.0;
+            } else {
+                let t = (d - inner) / max(1.0 - inner, 1e-3);
+                f = 1.0 - t * t * (3.0 - 2.0 * t);
+            }
+            if (aux[at + 3u] > 0.5) {
+                strength = strength * (1.0 - f);
+            } else {
+                strength = strength + f - strength * f;
+            }
         }
     }
     if (aux[g + 8u] > 0.5) {

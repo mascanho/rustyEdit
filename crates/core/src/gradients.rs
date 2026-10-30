@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{grading::ColorGrading, retouch::to_display, DevelopSettings};
 
+/// How soft the edge of a stroke painted on a linear or radial gradient is.
+pub const STROKE_FEATHER: f32 = 0.5;
 /// Most gradients a photo can have.
 pub const MAX_GRADIENTS: usize = 8;
 /// Most dabs a brush layer holds; a stroke is a run of overlapping dabs.
@@ -462,36 +464,51 @@ impl Gradient {
                     1.0 - smoothstep((d - inner) / (1.0 - inner).max(1e-3))
                 }
             }
-            GradientKind::Brush => {
-                let long = width.max(height);
-                let mut strength = 0.0f32;
-                for dab in self.dabs() {
-                    let r = (dab.radius * long).max(1.0);
-                    let d = ((x - dab.x * width).powi(2) + (y - dab.y * height).powi(2)).sqrt() / r;
-                    let inner = 1.0 - self.feather.clamp(0.0, 1.0);
-                    let f = if d <= inner {
-                        1.0
-                    } else if d >= 1.0 {
-                        0.0
-                    } else {
-                        1.0 - smoothstep((d - inner) / (1.0 - inner).max(1e-3))
-                    };
-                    strength = if dab.erase {
-                        strength * (1.0 - f)
-                    } else {
-                        strength + f - strength * f
-                    };
-                }
-                strength
-            }
+            GradientKind::Brush => 0.0,
             GradientKind::Range => 1.0,
         };
+        // Painted strokes add to a gradient's shape (or erase from it); a
+        // brush layer is only strokes.
+        let strength = self.paint_over(strength, x, y, width, height);
         let strength = if self.invert {
             1.0 - strength
         } else {
             strength
         };
         strength * (self.opacity / 100.0).clamp(0.0, 1.0)
+    }
+
+    /// `strength` with the layer's strokes painted over it. The strokes of
+    /// a brush layer are as soft as its feather; on a gradient they have a
+    /// fixed half-soft edge, since the feather belongs to the gradient.
+    fn paint_over(&self, mut strength: f32, x: f32, y: f32, width: f32, height: f32) -> f32 {
+        if self.kind == GradientKind::Range {
+            return strength;
+        }
+        let long = width.max(height);
+        let feather = if self.kind == GradientKind::Brush {
+            self.feather.clamp(0.0, 1.0)
+        } else {
+            STROKE_FEATHER
+        };
+        let inner = 1.0 - feather;
+        for dab in self.dabs() {
+            let r = (dab.radius * long).max(1.0);
+            let d = ((x - dab.x * width).powi(2) + (y - dab.y * height).powi(2)).sqrt() / r;
+            let f = if d <= inner {
+                1.0
+            } else if d >= 1.0 {
+                0.0
+            } else {
+                1.0 - smoothstep((d - inner) / (1.0 - inner).max(1e-3))
+            };
+            strength = if dab.erase {
+                strength * (1.0 - f)
+            } else {
+                strength + f - strength * f
+            };
+        }
+        strength
     }
 
     /// Whether this layer changes the picture at all.
@@ -685,6 +702,27 @@ mod tests {
             ..Default::default()
         };
         assert!((g.mask_at(50.0, 50.0, 100.0, 100.0) - 0.4).abs() < 1e-4);
+    }
+
+    #[test]
+    fn strokes_add_to_and_erase_from_a_gradient() {
+        let oval = Gradient {
+            kind: GradientKind::Radial,
+            start: (0.3, 0.5),
+            radius: (0.1, 0.1),
+            feather: 0.0,
+            ..Default::default()
+        };
+        // Painted on, the strokes extend the oval...
+        let mut painted = oval;
+        painted.add_dab(Dab { x: 0.7, y: 0.5, radius: 0.08, erase: false });
+        assert_eq!(oval.mask_at(70.0, 50.0, 100.0, 100.0), 0.0);
+        assert_eq!(painted.mask_at(70.0, 50.0, 100.0, 100.0), 1.0);
+        assert_eq!(painted.mask_at(30.0, 50.0, 100.0, 100.0), 1.0);
+        // ...and an eraser takes a bite out of it.
+        painted.add_dab(Dab { x: 0.3, y: 0.5, radius: 0.04, erase: true });
+        assert_eq!(painted.mask_at(30.0, 50.0, 100.0, 100.0), 0.0);
+        assert_eq!(painted.mask_at(38.0, 50.0, 100.0, 100.0), 1.0);
     }
 
     #[test]

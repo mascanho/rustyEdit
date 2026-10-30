@@ -95,6 +95,7 @@ impl Workspace {
             .into_any_element());
         }
 
+        let showing_edit = focus_ix.is_some() && self.develop_ui.gradients.selected == focus_ix;
         let showing = self.develop_ui.gradients.show_mask
             && focus_ix.is_some()
             && self.develop_ui.gradients.selected == focus_ix;
@@ -114,6 +115,16 @@ impl Workspace {
                     true,
                     &theme,
                     cx.listener(|this, _: &ClickEvent, _w, cx| this.edit_lens_focus(false, cx)),
+                ))
+                .child(small_button(
+                    "lens-paint-focus",
+                    Icon::Brush,
+                    "Paint",
+                    "Brush onto the focus to add to it, Alt to erase from it (Enter when done)",
+                    self.develop_ui.gradients.paint_layer && showing_edit,
+                    true,
+                    &theme,
+                    cx.listener(|this, _: &ClickEvent, _w, cx| this.paint_lens_focus(cx)),
                 ))
                 .child(small_button(
                     "lens-show-focus",
@@ -215,6 +226,19 @@ impl Workspace {
             },
             cx,
         );
+    }
+
+    /// Paints on the focus: shows the focus layer (making one from the
+    /// centre oval first) and turns painting on, or off if it already is.
+    fn paint_lens_focus(&mut self, cx: &mut Context<Self>) {
+        let was = self.develop_ui.gradients.paint_layer;
+        self.edit_lens_focus(true, cx);
+        let ui = &mut self.develop_ui.gradients;
+        ui.paint_layer = !was;
+        // Painting is easier to follow with the focus painted red.
+        ui.show_mask = ui.paint_layer || ui.show_mask;
+        self.refresh_live_preview(cx);
+        cx.notify();
     }
 
     /// Selects the focus layer to edit on the photo (making one from the
