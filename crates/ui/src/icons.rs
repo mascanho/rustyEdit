@@ -100,6 +100,10 @@ pub enum Icon {
     /// A circled minus: remove (from the catalog).
     RemoveCircle,
     ChevronUp,
+    /// Two chevrons pointing in at each other: fold everything up.
+    CollapseAll,
+    /// Two chevrons pointing away from each other: open everything.
+    ExpandAll,
     /// A star outline (not a favourite), and filled (a favourite).
     Star,
     StarFilled,
@@ -215,6 +219,14 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
         Icon::ChevronRight => pen.line(&[(6.0, 3.5), (10.5, 8.0), (6.0, 12.5)]),
         Icon::ChevronDown => pen.line(&[(3.5, 6.0), (8.0, 10.5), (12.5, 6.0)]),
         Icon::ChevronUp => pen.line(&[(3.5, 10.0), (8.0, 5.5), (12.5, 10.0)]),
+        Icon::CollapseAll => {
+            pen.line(&[(3.5, 2.5), (8.0, 7.0), (12.5, 2.5)]);
+            pen.line(&[(3.5, 13.5), (8.0, 9.0), (12.5, 13.5)]);
+        }
+        Icon::ExpandAll => {
+            pen.line(&[(3.5, 7.0), (8.0, 2.5), (12.5, 7.0)]);
+            pen.line(&[(3.5, 9.0), (8.0, 13.5), (12.5, 9.0)]);
+        }
         Icon::Star => pen.shape(&[(8.0, 2.1), (9.53, 6.3), (13.99, 6.45), (10.47, 9.2), (11.7, 13.5), (8.0, 11.0), (4.3, 13.5), (5.53, 9.2), (2.01, 6.45), (6.47, 6.3)]),
         Icon::StarFilled => pen.solid(&[(8.0, 2.1), (9.53, 6.3), (13.99, 6.45), (10.47, 9.2), (11.7, 13.5), (8.0, 11.0), (4.3, 13.5), (5.53, 9.2), (2.01, 6.45), (6.47, 6.3)]),
         Icon::ChevronLeft => pen.line(&[(10.0, 3.5), (5.5, 8.0), (10.0, 12.5)]),

@@ -111,6 +111,26 @@ impl From<GradientKind> for PhotoTool {
     }
 }
 
+/// The fold-state key of an editing section (see `section_contents`).
+fn section_fold_key(section: rustyedit_core::DevelopSection) -> &'static str {
+    use rustyedit_core::DevelopSection as S;
+    match section {
+        S::Crop => "develop-crop",
+        S::Retouch => "develop-retouch",
+        S::Gradients => "develop-gradients",
+        S::Basic => "develop-basic",
+        S::ToneCurve => "develop-curve",
+        S::Color => "develop-color",
+        S::ColorMixer => "develop-mixer",
+        S::ColorGrading => "develop-grading",
+        S::Detail => "develop-detail",
+        S::Lens => "develop-lens",
+        S::Frames => "develop-frames",
+        S::LensBlur => "develop-lens-blur",
+        S::Effects => "develop-effects",
+    }
+}
+
 impl Workspace {
     pub(crate) fn active_photo_tool(&self) -> Option<PhotoTool> {
         let ui = &self.develop_ui;
@@ -167,6 +187,60 @@ impl Workspace {
             self.collapsed_sections.remove(tool.section_key());
         }
         cx.notify();
+    }
+
+    /// Whether any editing section is open.
+    fn any_section_open(&self) -> bool {
+        self.develop_section_order()
+            .into_iter()
+            .any(|section| !self.collapsed_sections.contains(section_fold_key(section)))
+    }
+
+    /// Folds every editing section up, or, when they all are, opens them
+    /// all.
+    pub(crate) fn fold_all_sections(&mut self, cx: &mut Context<Self>) {
+        let keys: Vec<&'static str> = self
+            .develop_section_order()
+            .into_iter()
+            .map(section_fold_key)
+            .collect();
+        if self.any_section_open() {
+            self.collapsed_sections.extend(keys);
+        } else {
+            for key in keys {
+                self.collapsed_sections.remove(key);
+            }
+        }
+        cx.notify();
+    }
+
+    /// Enter: sets the mask or retouch work in hand. Puts the tool down
+    /// and hides its handles and any painted-over focus view; the edits
+    /// stay. Returns whether there was a tool to put down.
+    pub(crate) fn finish_overlay_tool(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(tool) = self.active_photo_tool().filter(|t| {
+            matches!(
+                t,
+                PhotoTool::Heal
+                    | PhotoTool::Clone
+                    | PhotoTool::Remove
+                    | PhotoTool::Linear
+                    | PhotoTool::Radial
+                    | PhotoTool::Brush
+            )
+        }) else {
+            return false;
+        };
+        self.toggle_photo_tool(tool, cx);
+        let gradients_shown = self.develop_ui.gradients.show_mask;
+        self.develop_ui.gradients.selected = None;
+        self.develop_ui.gradients.show_mask = false;
+        self.develop_ui.retouch.selected = None;
+        if gradients_shown {
+            self.refresh_live_preview(cx);
+        }
+        cx.notify();
+        true
     }
 
     /// Esc: puts down the active photo tool. Returns whether there was one
@@ -281,6 +355,20 @@ impl Workspace {
             .border_1()
             .border_color(theme.border_subtle)
             .child(div().flex().flex_row().gap_0p5().children(tools))
+            .child({
+                let any_open = self.any_section_open();
+                self.strip_button(
+                    "tool-fold-sections".into(),
+                    if any_open { Icon::CollapseAll } else { Icon::ExpandAll },
+                    if any_open {
+                        "Collapse every section"
+                    } else {
+                        "Expand every section"
+                    },
+                    false,
+                    cx.listener(|this, _: &ClickEvent, _w, cx| this.fold_all_sections(cx)),
+                )
+            })
             .into_any_element()
     }
 

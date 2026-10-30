@@ -295,6 +295,17 @@ impl Workspace {
             cx.stop_propagation();
             return;
         }
+        // Enter sets the masks or spots being worked on and hides their
+        // handles.
+        if event.keystroke.key == "enter"
+            && self.mode == Mode::Develop
+            && self.text_draft.is_none()
+            && !event.keystroke.modifiers.modified()
+            && self.finish_overlay_tool(cx)
+        {
+            cx.stop_propagation();
+            return;
+        }
         // Enter in the Library's grid opens the selected photo in the loupe.
         if event.keystroke.key == "enter"
             && self.mode == Mode::Library

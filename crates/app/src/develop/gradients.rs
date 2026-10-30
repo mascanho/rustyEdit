@@ -70,7 +70,7 @@ impl HoverKind {
         match handle {
             Handle::RadiusX => Self::Resize(sector(angle)),
             Handle::RadiusY => Self::Resize(sector(angle + 90.0)),
-            Handle::Start | Handle::End | Handle::Move(_) | Handle::Rotate => Self::Grab,
+            Handle::Start | Handle::End | Handle::Move(_) | Handle::Rotate(_) => Self::Grab,
             Handle::Radius | Handle::Paint(..) => Self::Nothing,
         }
     }
@@ -112,6 +112,9 @@ impl GradientUi {
     }
 }
 
+/// How far outside a selected radial's edge a press still turns it, in pixels.
+const ROTATE_ZONE: f32 = 36.0;
+
 /// How far beyond a radial's edge its turn handle sits, in pixels.
 const ROTATE_HANDLE_GAP: f32 = 26.0;
 
@@ -131,8 +134,10 @@ enum Handle {
     RadiusY,
     /// Radial, while drawing it: both radii, as a circle.
     Radius,
-    /// Radial: tilts the oval about its centre.
-    Rotate,
+    /// Radial: tilts the oval about its centre. Holds the oval's tilt
+    /// minus the pointer's direction when it was grabbed, so a grab
+    /// anywhere turns it from where it is instead of jumping.
+    Rotate(f32),
     /// Brush: painting; holds the last dab's place on the photo and
     /// whether the stroke erases.
     Paint((f32, f32), bool),
@@ -1744,15 +1749,14 @@ impl Workspace {
                 let radius = ((dx * dx + dy * dy).sqrt() / long_edge).clamp(0.01, 1.5);
                 g.radius = (radius, radius);
             }
-            Handle::Rotate => {
+            Handle::Rotate(offset) => {
                 let centre = to_display(g.start, &develop);
                 let dx = (at.0 - centre.0) * f32::from(rect.size.width);
                 let dy = (at.1 - centre.1) * f32::from(rect.size.height);
                 if dx.hypot(dy) > 2.0 {
-                    // The handle sits off the oval's top, a quarter turn
-                    // behind its x axis. Ovals look the same turned half
-                    // a circle, so the tilt is kept within a quarter.
-                    let mut shown = (dy.atan2(dx).to_degrees() + 90.0 + 90.0).rem_euclid(180.0) - 90.0;
+                    // Ovals look the same turned half a circle, so the
+                    // tilt is kept within a quarter either way.
+                    let mut shown = (dy.atan2(dx).to_degrees() + offset + 90.0).rem_euclid(180.0) - 90.0;
                     if shown.abs() < 2.5 {
                         shown = 0.0;
                     }
@@ -1859,7 +1863,7 @@ impl Shape {
                     // Off the top, clear of the oval, to turn it by.
                     (
                         self.start - across(self.radius.1 + ROTATE_HANDLE_GAP),
-                        Handle::Rotate,
+                        Handle::Rotate(0.0),
                     ),
                 ]
             }
@@ -1881,11 +1885,43 @@ impl Shape {
             .or_else(|| {
                 (self.kind == GradientKind::Radial && self.contains(position))
                     .then_some(Handle::Move((0.0, 0.0)))
+            })
+            // Just outside the selected oval, anywhere around it, turns it.
+            .or_else(|| {
+                (self.kind == GradientKind::Radial
+                    && self.selected
+                    && self.outside_distance(position) <= ROTATE_ZONE)
+                    .then_some(Handle::Rotate(0.0))
             })?;
         Some(match handle {
             Handle::Move(_) => Handle::Move(on_photo),
+            Handle::Rotate(_) => Handle::Rotate(self.angle.to_degrees() - self.pointer_direction(position)),
             other => other,
         })
+    }
+
+    /// The pointer's direction from the centre, in degrees clockwise from
+    /// the right.
+    fn pointer_direction(&self, position: Point<Pixels>) -> f32 {
+        f32::from(position.y - self.start.y)
+            .atan2(f32::from(position.x - self.start.x))
+            .to_degrees()
+    }
+
+    /// Roughly how many pixels `position` is beyond the oval's edge;
+    /// infinite when it is inside.
+    fn outside_distance(&self, position: Point<Pixels>) -> f32 {
+        if self.contains(position) {
+            return f32::INFINITY;
+        }
+        let (sin, cos) = self.angle.sin_cos();
+        let (ox, oy) = (
+            f32::from(position.x - self.start.x),
+            f32::from(position.y - self.start.y),
+        );
+        let u = (ox * cos + oy * sin) / self.radius.0.max(1.0);
+        let v = (-ox * sin + oy * cos) / self.radius.1.max(1.0);
+        (u.hypot(v) - 1.0) * (self.radius.0 + self.radius.1) / 2.0
     }
 
     fn contains(&self, position: Point<Pixels>) -> bool {
