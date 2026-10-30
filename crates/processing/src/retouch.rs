@@ -17,8 +17,12 @@ const RING_SAMPLES: usize = 32;
 
 /// Applies every spot in order, so later spots can build on earlier ones.
 pub(crate) fn apply_spots(image: &mut RgbImage, spots: &Spots) {
+    let (w, h) = (image.width() as f32, image.height() as f32);
     for spot in spots.as_slice() {
-        apply_spot(image, spot);
+        // A stroke is applied as circles along it.
+        for circle in spot.circles(w, h) {
+            apply_spot(image, &circle);
+        }
     }
 }
 
@@ -270,6 +274,88 @@ pub fn find_spot_source(image: &RgbImage, target: (f32, f32), radius: f32) -> (f
 /// those whose sources stay inside the photo and clear of the stroke.
 ///
 /// Returns `(target, source)` pairs; empty when `path` is.
+/// How a remove stroke is filled: as a few straight segments sharing one
+/// source offset (stored as stroke spots), or, when no shared offset fits,
+/// as separate circles each with its own source.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StrokeFill {
+    /// A polyline (fractions of the photo) and the offset every point
+    /// copies from.
+    Segments {
+        points: Vec<(f32, f32)>,
+        offset: (f32, f32),
+    },
+    /// (target, source) circles.
+    Circles(Vec<((f32, f32), (f32, f32))>),
+}
+
+/// Plans the fill for a painted stroke (see [`stroke_spots`]), its path
+/// simplified so it takes at most `max_items` spots where it can: the
+/// line is straightened until it fits, never further than the brush
+/// radius from what was painted.
+pub fn plan_stroke(
+    image: &RgbImage,
+    path: &[(f32, f32)],
+    radius: f32,
+    max_items: usize,
+) -> StrokeFill {
+    let circles = stroke_spots(image, path, radius);
+    let Some(&(t0, s0)) = circles.first() else {
+        return StrokeFill::Circles(Vec::new());
+    };
+    let offset = (s0.0 - t0.0, s0.1 - t0.1);
+    let shared = circles.iter().all(|(t, s)| {
+        ((s.0 - t.0) - offset.0).abs() < 1e-4 && ((s.1 - t.1) - offset.1).abs() < 1e-4
+    });
+    if !shared || circles.len() == 1 {
+        return StrokeFill::Circles(circles);
+    }
+    let (w, h) = (image.width() as f32, image.height() as f32);
+    let r = (radius * w.max(h)).max(1.0);
+    let px: Vec<(f32, f32)> = path.iter().map(|&(u, v)| (u * w, v * h)).collect();
+    let mut tolerance = r * 0.25;
+    let mut points = simplify(&px, tolerance);
+    while points.len().saturating_sub(1) > max_items.max(1) && tolerance < r {
+        tolerance *= 1.5;
+        points = simplify(&px, tolerance.min(r));
+    }
+    StrokeFill::Segments {
+        points: points.into_iter().map(|(x, y)| (x / w, y / h)).collect(),
+        offset,
+    }
+}
+
+/// Douglas-Peucker: the fewest points that keep the line within `epsilon`
+/// pixels of `points`.
+fn simplify(points: &[(f32, f32)], epsilon: f32) -> Vec<(f32, f32)> {
+    if points.len() <= 2 {
+        return points.to_vec();
+    }
+    let (a, b) = (points[0], points[points.len() - 1]);
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let length = (dx * dx + dy * dy).sqrt();
+    let distance = |p: (f32, f32)| {
+        if length < 1e-3 {
+            ((p.0 - a.0).powi(2) + (p.1 - a.1).powi(2)).sqrt()
+        } else {
+            ((p.0 - a.0) * dy - (p.1 - a.1) * dx).abs() / length
+        }
+    };
+    let (index, farthest) = points[1..points.len() - 1]
+        .iter()
+        .enumerate()
+        .map(|(i, &p)| (i + 1, distance(p)))
+        .fold((0, 0.0f32), |best, x| if x.1 > best.1 { x } else { best });
+    if farthest <= epsilon {
+        return vec![a, b];
+    }
+    let mut left = simplify(&points[..=index], epsilon);
+    let right = simplify(&points[index..], epsilon);
+    left.pop();
+    left.extend(right);
+    left
+}
+
 pub fn stroke_spots(
     image: &RgbImage,
     path: &[(f32, f32)],
@@ -403,6 +489,7 @@ mod tests {
             radius: 0.1,
             feather: 0.0,
             opacity: 1.0,
+            end: None,
         }
     }
 
@@ -488,5 +575,37 @@ mod tests {
         }
         assert!(stroke_spots(&image, &[], 0.02).is_empty());
         assert_eq!(stroke_spots(&image, &[(0.5, 0.5)], 0.02).len(), 1);
+    }
+
+    #[test]
+    fn a_straight_stroke_is_one_segment_that_covers_like_the_circles() {
+        let image = RgbImage::from_fn(200, 200, |_, y| {
+            image::Rgb([if (98..=102).contains(&y) { 10 } else { 150 }; 3])
+        });
+        // Painted slightly wobbly, but straight within the brush.
+        let path: Vec<(f32, f32)> = (0..=30)
+            .map(|i| (0.2 + i as f32 * 0.02, 0.5 + if i % 2 == 0 { 0.001 } else { -0.001 }))
+            .collect();
+        match plan_stroke(&image, &path, 0.02, 32) {
+            StrokeFill::Segments { points, .. } => assert_eq!(points.len(), 2, "{points:?}"),
+            other => panic!("{other:?}"),
+        }
+        // Applied, the stroke spot removes the wire.
+        let StrokeFill::Segments { points, offset } = plan_stroke(&image, &path, 0.02, 32) else {
+            unreachable!()
+        };
+        let mut spots = Spots::default();
+        spots.push(Spot {
+            kind: SpotKind::Heal,
+            target: points[0],
+            source: (points[0].0 + offset.0, points[0].1 + offset.1),
+            end: Some(points[1]),
+            radius: 0.022,
+            feather: 0.3,
+            opacity: 1.0,
+        });
+        let mut healed = image.clone();
+        apply_spots(&mut healed, &spots);
+        assert!(healed.get_pixel(100, 100)[0] > 120, "{:?}", healed.get_pixel(100, 100));
     }
 }

@@ -77,8 +77,12 @@ impl Workspace {
     /// plain photo (no comparison, crop canvas, clipping warnings, soft
     /// proof or preset preview, which only the full preview draws).
     fn detail_allowed(&self) -> bool {
-        self.mode == Mode::Develop
-            && self.develop_ui.zoom.scale.is_some()
+        let zoomed = match self.mode {
+            Mode::Develop => self.develop_ui.zoom.scale.is_some(),
+            Mode::Library => self.loupe_zoom.is_some() && self.loupe_shows_edits(),
+            Mode::Export => false,
+        };
+        zoomed
             && !self.ba_active()
             && !self.crop_in_view()
             && !self.histogram_ui.show_shadow_clipping
@@ -102,10 +106,7 @@ impl Workspace {
         if self.source_image_for != Some(asset.id) {
             return None;
         }
-        let zoom = &self.develop_ui.zoom;
-        let region = zoom.visible_region()?;
-        let (w, h) = zoom.zoomed_size.get();
-        let ratio = zoom.pixel_ratio.get();
+        let (region, (w, h), ratio) = self.detail_viewport()?;
         let (preview_w, _) = self.develop_image_size()?;
         let (full_w, full_h) = self.develop_zoom_size()?;
         // Screen pixels the region covers, and photo pixels it holds.
@@ -123,6 +124,42 @@ impl Workspace {
             region,
             size,
         })
+    }
+
+    /// Whether the Library loupe shows the selected photo with its edits
+    /// (rendered) rather than its file.
+    pub(crate) fn loupe_shows_edits(&self) -> bool {
+        self.mode == Mode::Library
+            && self.library_view == crate::workspace::LibraryView::Loupe
+            && self.catalog.selected_asset().is_some_and(|a| {
+                a.develop.is_edited() && self.source_image_for == Some(a.id)
+            })
+            && self.live_preview.image().is_some()
+    }
+
+    /// What's in view of the zoomed photo (fractions), the photo's size on
+    /// screen (logical pixels) and the display's pixel ratio.
+    fn detail_viewport(&self) -> Option<(Region, (f32, f32), f32)> {
+        match self.mode {
+            Mode::Develop => {
+                let zoom = &self.develop_ui.zoom;
+                Some((zoom.visible_region()?, zoom.zoomed_size.get(), zoom.pixel_ratio.get()))
+            }
+            Mode::Library => {
+                let (w, h) = self.loupe_zoomed_size.get();
+                let view = self.loupe_scroll.bounds().size;
+                let (vw, vh) = (f32::from(view.width), f32::from(view.height));
+                if w <= 0.0 || h <= 0.0 || vw <= 0.0 || vh <= 0.0 {
+                    return None;
+                }
+                let offset = self.loupe_scroll.offset();
+                let (fw, fh) = ((vw / w).min(1.0), (vh / h).min(1.0));
+                let left = (-f32::from(offset.x) / w).clamp(0.0, 1.0 - fw);
+                let top = (-f32::from(offset.y) / h).clamp(0.0, 1.0 - fh);
+                Some(((left, top, fw, fh), (w, h), self.pixel_ratio.get()))
+            }
+            Mode::Export => None,
+        }
     }
 
     /// The finished render to lay over the zoomed photo: only one of this

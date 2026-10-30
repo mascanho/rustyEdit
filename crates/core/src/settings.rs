@@ -41,6 +41,13 @@ pub struct AppearanceSettings {
     pub notifications: bool,
     /// Size of text and controls, as a percentage (100 = standard).
     pub ui_scale: u16,
+    /// Background work (imports, exports, preview updates, culling
+    /// measurements) shows its progress in the status bar.
+    pub activity_indicator: bool,
+    /// ⌘K / Ctrl+K opens the command palette.
+    pub command_palette: bool,
+    /// ? shows the keyboard shortcut sheet.
+    pub shortcut_sheet: bool,
 }
 
 impl Default for AppearanceSettings {
@@ -51,6 +58,9 @@ impl Default for AppearanceSettings {
             contrast: 50,
             notifications: true,
             ui_scale: 100,
+            activity_indicator: true,
+            command_palette: true,
+            shortcut_sheet: true,
         }
     }
 }
@@ -564,6 +574,9 @@ pub struct LayoutSettings {
     pub inspector_width: u32,
     /// Height of the filmstrip's picture area; the frames scale with it.
     pub filmstrip_height: u32,
+    /// The Before / After bar under the photo (Develop and the Library
+    /// loupe), switched by its button in the right-hand rail.
+    pub compare_bar: bool,
 }
 
 impl Default for LayoutSettings {
@@ -574,6 +587,7 @@ impl Default for LayoutSettings {
             navigator_width: 280,
             inspector_width: 300,
             filmstrip_height: 80,
+            compare_bar: false,
         }
     }
 }
@@ -867,6 +881,10 @@ pub struct DevelopPreferences {
     /// The parametric tone curve shows a draggable point per band. The
     /// line itself can be dragged either way.
     pub parametric_points: bool,
+    /// The content-aware remove tool (paint over an object to fill it in).
+    pub remove_tool: bool,
+    /// The Lens Blur section in the editing panel.
+    pub lens_blur_section: bool,
 }
 
 impl Default for DevelopPreferences {
@@ -882,6 +900,8 @@ impl Default for DevelopPreferences {
             proof_profile: None,
             lens_db_folder: None,
             parametric_points: true,
+            remove_tool: true,
+            lens_blur_section: true,
         }
     }
 }
@@ -1028,16 +1048,45 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
             },
             SettingsSection {
                 title: "Notifications",
-                items: &[SettingItem {
-                    label: "Pop-up notifications",
-                    description: "Show confirmations and problems in the corner of the window \
-                                  for a few seconds, with Undo where it applies. They always \
-                                  appear in the status bar too.",
-                    control: SettingControl::Toggle {
-                        get: |s| s.appearance.notifications,
-                        set: |s, v| s.appearance.notifications = v,
+                items: &[
+                    SettingItem {
+                        label: "Pop-up notifications",
+                        description: "Show confirmations and problems in the corner of the window \
+                                      for a few seconds, with Undo where it applies. They always \
+                                      appear in the status bar too.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.appearance.notifications,
+                            set: |s, v| s.appearance.notifications = v,
+                        },
                     },
-                }],
+                    SettingItem {
+                        label: "Command palette",
+                        description: "Press \u{2318}K (Ctrl+K on Windows and Linux) to find and \
+                                      run any command by typing its name.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.appearance.command_palette,
+                            set: |s, v| s.appearance.command_palette = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Keyboard shortcut sheet",
+                        description: "Press ? to see every keyboard shortcut, grouped.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.appearance.shortcut_sheet,
+                            set: |s, v| s.appearance.shortcut_sheet = v,
+                        },
+                    },
+                    SettingItem {
+                        label: "Background activity",
+                        description: "Show what's running in the background (imports, exports, \
+                                      preview updates, culling measurements) with its progress \
+                                      in the status bar. Click it to see every job.",
+                        control: SettingControl::Toggle {
+                            get: |s| s.appearance.activity_indicator,
+                            set: |s, v| s.appearance.activity_indicator = v,
+                        },
+                    },
+                ],
             },
             SettingsSection {
                 title: "Contrast",
@@ -1544,6 +1593,19 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
         title: "Layout",
         sections: &[
             SettingsSection {
+                title: "Before / After",
+                items: &[SettingItem {
+                    label: "Before / After bar",
+                    description: "Show the bar under the photo in Develop and the Library loupe, \
+                                  with the comparison views. Also switched by its button in the \
+                                  right-hand rail. It shows anyway while a comparison is on.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.layout.compare_bar,
+                        set: |s, v| s.layout.compare_bar = v,
+                    },
+                }],
+            },
+            SettingsSection {
                 title: "Panels",
                 items: &[SettingItem {
                     label: "Arrangement",
@@ -1755,6 +1817,32 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                         },
                     },
                 ],
+            },
+            SettingsSection {
+                title: "Retouch",
+                items: &[SettingItem {
+                    label: "Content-aware remove",
+                    description: "The Remove tool (Shift+Q): paint over an object and it's \
+                                  filled in from around it. Off hides it from the tool strip \
+                                  and the Retouch section.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.develop.remove_tool,
+                        set: |s, v| s.develop.remove_tool = v,
+                    },
+                }],
+            },
+            SettingsSection {
+                title: "Effects",
+                items: &[SettingItem {
+                    label: "Lens Blur",
+                    description: "A shallow-depth-of-field look: the focus stays sharp, the rest \
+                                  blurs like a fast lens with bokeh. Off hides the section; photos \
+                                  already blurred keep their blur.",
+                    control: SettingControl::Toggle {
+                        get: |s| s.develop.lens_blur_section,
+                        set: |s, v| s.develop.lens_blur_section = v,
+                    },
+                }],
             },
             SettingsSection {
                 title: "Tone curve",

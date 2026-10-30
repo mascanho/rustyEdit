@@ -8,7 +8,7 @@
 //! - **Keywords**: the keyword panel.
 
 use gpui::{div, prelude::*, AnyElement, ClickEvent, Context};
-use rustyedit_core::{Adjustment, Asset, Flag};
+use rustyedit_core::{Asset, Flag};
 use rustyedit_ui::{sp, Icon};
 
 use crate::workspace::Workspace;
@@ -251,8 +251,8 @@ impl Workspace {
             self.quick_cull_section(asset, cx),
             self.tab_heading(Icon::Adjust, "Quick develop"),
         ];
-        out.extend(self.adjustment_sliders(&Adjustment::BASIC, cx));
-        out.extend(self.adjustment_sliders(&Adjustment::COLOR, cx));
+        // Steps that act on every selected photo (see `quick_develop.rs`).
+        out.extend(self.quick_develop_section(cx));
         out.push(
             div()
                 .flex()

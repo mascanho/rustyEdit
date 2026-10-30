@@ -118,10 +118,22 @@ struct Params {
     persp_y: f32,
     /// Vignette roundness, 0..=1.
     vig_round: f32,
-    _pad: f32,
+    /// Lens blur (lens_blur.rs): the largest radius in pixels, Boost and
+    /// Falloff (0..=1), the bokeh shape, inverted, and the focus mask's
+    /// table in `aux`.
+    lb_radius: f32,
+    lb_boost: f32,
+    lb_falloff: f32,
+    lb_shape: u32,
+    lb_invert: u32,
+    lb_focus: u32,
+    /// The sample table (lens_blur.rs `sample_table`) in `aux`.
+    lb_table: u32,
+    _pad3: f32,
+    _pad4: f32,
 }
 
-const _: () = assert!(std::mem::size_of::<Params>() == 304);
+const _: () = assert!(std::mem::size_of::<Params>() == 336);
 
 /// `resize_filter` values.
 const TRIANGLE: u32 = 0;
@@ -182,11 +194,14 @@ enum Kernel {
     OutRgb16,
     OutBgra,
     Histogram,
+    LensCoc,
+    LensBlur,
+    LensBright,
     /// Not a kernel: copies `src` to `dst` (`Pass::dst_bytes` of them).
     Copy,
 }
 
-const ENTRY_POINTS: [&str; 21] = [
+const ENTRY_POINTS: [&str; 24] = [
     "load",
     "demosaic",
     "spot_ring",
@@ -208,6 +223,9 @@ const ENTRY_POINTS: [&str; 21] = [
     "out_rgb16",
     "out_bgra",
     "histogram",
+    "lens_coc",
+    "lens_blur",
+    "lens_bright",
 ];
 
 impl Kernel {
@@ -221,7 +239,9 @@ impl Kernel {
             | Kernel::ResizeV
             | Kernel::ResizeH
             | Kernel::SpotRing
-            | Kernel::SpotApply => (true, false, false),
+            | Kernel::SpotApply
+            | Kernel::LensCoc
+            | Kernel::LensBlur => (true, false, false),
             Kernel::Histogram => (false, false, true),
             _ => (false, false, false),
         }
@@ -1520,7 +1540,9 @@ fn plan_spots(plan: &mut Planner, prepared: Prepared, spots: &Spots, w: u32, h: 
     });
     let (fw, fh) = (w as f32, h as f32);
     let mut cur = Buf::SpotA;
-    for spot in spots.as_slice() {
+    // Strokes are applied as circles along them, as on the CPU.
+    let circles: Vec<_> = spots.as_slice().iter().flat_map(|s| s.circles(fw, fh)).collect();
+    for spot in &circles {
         let target = (spot.target.0 * fw, spot.target.1 * fh);
         let source = (spot.source.0 * fw, spot.source.1 * fh);
         let r = (spot.radius * fw.max(fh)).max(1.0);
@@ -1770,6 +1792,7 @@ fn plan_develop(plan: &mut Planner, s: &DevelopSettings, raw: bool) {
     }
 
     plan_finishing(plan, s);
+    plan_lens_blur(plan, s);
 }
 
 fn custom_sharpen_sigma(s: &DevelopSettings) -> f32 {
@@ -1806,7 +1829,87 @@ fn margin(s: &DevelopSettings, raw: bool, full: (u32, u32)) -> u32 {
         let (wide, narrow) = local_sigmas(full.0, full.1, s.gradients.any_blur());
         m += blur_radius(wide) + blur_radius(narrow);
     }
+    // Lens blur gathers from up to its largest radius away.
+    let lens = s.lens_blur.max_radius(full.0, full.1);
+    if lens >= 0.5 {
+        // The gather, and the two blurs before it (colours, then lights
+        // picked out of the blurred colours).
+        m += lens.ceil() as u32
+            + blur_radius(crate::lens_blur::surround_sigma(lens))
+            + blur_radius(crate::lens_blur::pre_blur_sigma(lens))
+            + 2;
+    }
     m
+}
+
+/// lens_blur.rs: the CoC of each pixel into `tmp`, then the gather.
+fn plan_lens_blur(plan: &mut Planner, s: &DevelopSettings) {
+    let lens = s.lens_blur;
+    let radius = lens.max_radius(plan.full_w, plan.full_h);
+    if radius < 0.5 || plan.full_w < 2 || plan.full_h < 2 {
+        return;
+    }
+    let focus = crate::lens_blur::focus_layer(s);
+    let mut params = plan.params();
+    params.lb_radius = radius;
+    params.lb_boost = (lens.boost / 100.0).clamp(0.0, 1.0);
+    params.lb_falloff = (lens.falloff / 100.0).clamp(0.0, 1.0);
+    params.lb_shape = lens.shape.index();
+    params.lb_invert = lens.invert as u32;
+    params.lb_focus = plan.aux(&gradient_floats(&focus));
+    let table: Vec<f32> = crate::lens_blur::sample_table(lens.shape).concat();
+    params.lb_table = plan.aux(&table);
+    // The softened copy samples are drawn from, and the points of light
+    // picked out of it and softened the same (lens_blur.rs).
+    let sigma = crate::lens_blur::pre_blur_sigma(radius);
+    let groups = plan.groups();
+    let image = plan.cur;
+    let lights = plan.next();
+    // Points of light: what stands out from a wide blur (in BlurB for
+    // now). Without Boost there are none to look for.
+    if params.lb_boost > 0.0 {
+        plan.blur(crate::lens_blur::surround_sigma(radius), Buf::BlurB);
+        plan.push(Pass {
+            kernel: Kernel::LensBright,
+            params,
+            src: image,
+            dst: lights,
+            img_a: Buf::BlurB,
+            img_b: Buf::NoInput,
+            groups,
+            dst_bytes: plan.pixels() * HALF_PX,
+            tmp_bytes: 0,
+        });
+        plan.cur = lights;
+        plan.blur(sigma, Buf::BlurB);
+        plan.cur = image;
+    }
+    plan.blur(sigma, Buf::BlurA);
+    let tmp_bytes = plan.pixels() * 16;
+    plan.push(Pass {
+        kernel: Kernel::LensCoc,
+        params,
+        src: plan.cur,
+        dst: Buf::NoOutput,
+        img_a: Buf::NoInput,
+        img_b: Buf::NoInput,
+        groups,
+        dst_bytes: 0,
+        tmp_bytes,
+    });
+    let dst = plan.next();
+    plan.push(Pass {
+        kernel: Kernel::LensBlur,
+        params,
+        src: Buf::NoInput,
+        dst,
+        img_a: Buf::BlurA,
+        img_b: if params.lb_boost > 0.0 { Buf::BlurB } else { Buf::NoInput },
+        groups,
+        dst_bytes: plan.pixels() * HALF_PX,
+        tmp_bytes,
+    });
+    plan.cur = dst;
 }
 
 /// finishing/mod.rs `before_crop`.

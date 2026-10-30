@@ -59,7 +59,8 @@ pub(crate) fn commands() -> Vec<Command> {
         cmd!("General", "Settings\u{2026}", OpenSettings, "preferences options"),
         cmd!("General", "Next layout", CycleLayout, "panels arrangement"),
         cmd!("General", "Quit", Quit, "exit close"),
-        cmd!("View", "Library", GoLibrary, "grid loupe browse"),
+        cmd!("View", "Library", GoLibrary, "grid browse"),
+        cmd!("View", "Loupe / grid", ToggleLoupe, "single photo view large"),
         cmd!("View", "Develop", GoDevelop, "edit adjust"),
         cmd!("View", "Export", GoExport, "save output"),
         cmd!("View", "Full-screen cull", ToggleCullView, "review pick reject"),
@@ -264,6 +265,10 @@ impl Workspace {
     ) {
         if self.palette.is_some() {
             self.close_command_palette(cx);
+        } else if !self.settings.appearance.command_palette {
+            self.status_message =
+                Some("The command palette is off. Turn it on in Settings \u{25B8} Appearance.".into());
+            cx.notify();
         } else {
             self.shortcut_sheet = false;
             self.palette = Some(0);
@@ -280,7 +285,13 @@ impl Workspace {
     }
 
     pub fn toggle_shortcuts(&mut self, _: &ToggleShortcuts, _w: &mut Window, cx: &mut Context<Self>) {
-        self.shortcut_sheet = !self.shortcut_sheet;
+        if !self.shortcut_sheet && !self.settings.appearance.shortcut_sheet {
+            self.status_message = Some(
+                "The shortcut sheet is off. Turn it on in Settings \u{25B8} Appearance.".into(),
+            );
+        } else {
+            self.shortcut_sheet = !self.shortcut_sheet;
+        }
         cx.notify();
     }
 

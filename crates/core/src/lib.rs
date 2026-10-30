@@ -23,6 +23,7 @@ mod histogram;
 mod history;
 mod mixer;
 mod lens;
+mod lens_blur;
 mod film_stocks;
 mod parametric;
 mod presets;
@@ -68,6 +69,7 @@ pub use fuji_recipe::{
     DynamicRange, FilmSimulation, FujiRecipe, GrainEffect, MonoFilter, Strength, WhiteBalance,
 };
 pub use lens::{lens_profile, LensCorrection, LensProfile};
+pub use lens_blur::{BokehShape, LensBlur, MAX_BLUR as MAX_LENS_BLUR};
 pub use parametric::ParametricCurve;
 pub use presets::{builtin_presets, DevelopPreset, Presets, PRESET_CATEGORIES};
 pub use rail::RailTool;

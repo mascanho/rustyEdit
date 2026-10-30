@@ -281,6 +281,8 @@ pub struct Gradient {
     pub hue: f32,
     pub hue_width: f32,
     pub hue_feather: f32,
+    /// This layer's mask is where Lens Blur keeps the photo in focus.
+    pub lens_focus: bool,
 }
 
 impl Default for Gradient {
@@ -303,6 +305,7 @@ impl Default for Gradient {
             hue: 0.0,
             hue_width: 30.0,
             hue_feather: 0.5,
+            lens_focus: false,
         }
     }
 }

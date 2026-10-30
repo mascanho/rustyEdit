@@ -198,6 +198,13 @@ impl Workspace {
     }
 
     pub fn tool_remove(&mut self, _: &ToolRemove, _w: &mut Window, cx: &mut Context<Self>) {
+        if !self.settings.develop.remove_tool {
+            self.status_message = Some(
+                "Content-aware remove is off. Turn it on in Settings \u{25B8} Develop.".into(),
+            );
+            cx.notify();
+            return;
+        }
         if self.mode == Mode::Develop {
             self.toggle_photo_tool(PhotoTool::Remove, cx);
         }
@@ -249,6 +256,9 @@ impl Workspace {
             PhotoTool::Crop,
             PhotoTool::WhiteBalance,
         ]
+        .into_iter()
+        // The remove tool can be switched off in Settings.
+        .filter(|tool| *tool != PhotoTool::Remove || self.settings.develop.remove_tool)
         .map(|tool| {
             self.strip_button(
                 SharedString::from(format!("tool-{tool:?}")),

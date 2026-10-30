@@ -11,7 +11,7 @@ use gpui::{
 use rustyedit_core::{
     builtin_presets, DevelopPreset, DevelopSection, DevelopSettings, PRESET_CATEGORIES,
 };
-use rustyedit_ui::{SliderSpec, SliderTrack, Theme};
+use rustyedit_ui::{Icon, SliderSpec, SliderTrack, Theme};
 
 use super::{tools::name_field, HistoryNote};
 use crate::workspace::{TextTarget, Workspace};
@@ -695,24 +695,35 @@ impl Workspace {
 
         let action =
             |id: String,
-             glyph: &'static str,
+             glyph: Icon,
              tip: &'static str,
              danger: bool,
              on_click: Box<dyn Fn(&mut Workspace, &mut Window, &mut Context<Workspace>)>,
              cx: &mut Context<Self>|
              -> AnyElement {
-                let theme = theme;
                 let entity = cx.entity();
                 div()
                     .id(SharedString::from(id))
                     .flex_shrink_0()
-                    .px_1()
-                    .text_size(sp(10.5))
-                    .text_color(theme.text_faint)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(sp(18.0))
+                    .rounded_sm()
                     .cursor_pointer()
-                    .hover(|el| el.text_color(if danger { theme.danger } else { theme.text }))
+                    .hover(|el| {
+                        el.bg(if danger {
+                            theme.danger.opacity(0.18)
+                        } else {
+                            theme.surface_elevated
+                        })
+                    })
                     .tooltip(rustyedit_ui::tip(tip, &theme))
-                    .child(glyph)
+                    .child(rustyedit_ui::icon(
+                        glyph,
+                        11.0,
+                        if danger { theme.danger.opacity(0.85) } else { theme.text_muted },
+                    ))
                     .on_click(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
                         cx.stop_propagation();
                         entity.update(cx, |this, cx| on_click(this, window, cx));
@@ -726,18 +737,15 @@ impl Workspace {
                 .id(SharedString::from(format!("preset-star-{uid}")))
                 .flex_shrink_0()
                 .px_0p5()
-                .text_size(sp(11.0))
-                .text_color(if favorite {
-                    theme.star
-                } else {
-                    theme.text_faint
-                })
                 .when(!favorite, |el| {
                     el.invisible().group_hover(group.clone(), |s| s.visible())
                 })
                 .cursor_pointer()
-                .hover(|el| el.text_color(theme.star))
-                .child(if favorite { "\u{2605}" } else { "\u{2606}" })
+                .child(rustyedit_ui::icon(
+                    if favorite { Icon::StarFilled } else { Icon::Star },
+                    12.0,
+                    if favorite { theme.star } else { theme.text_faint },
+                ))
                 .on_click(move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
                     cx.stop_propagation();
                     let entry = fav_entry.clone();
@@ -751,7 +759,7 @@ impl Workspace {
             let n = self.develop_ui.presets.user.len();
             actions.push(action(
                 format!("preset-up-{uid}"),
-                "\u{25B2}",
+                Icon::ChevronUp,
                 "Move up",
                 false,
                 Box::new(move |this, _, cx| this.move_preset(ix, -1, cx)),
@@ -759,7 +767,7 @@ impl Workspace {
             ));
             actions.push(action(
                 format!("preset-down-{uid}"),
-                "\u{25BC}",
+                Icon::ChevronDown,
                 "Move down",
                 false,
                 Box::new(move |this, _, cx| this.move_preset(ix, 1, cx)),
@@ -768,7 +776,7 @@ impl Workspace {
             let _ = n;
             actions.push(action(
                 format!("preset-update-{uid}"),
-                "\u{21BB}",
+                Icon::Sync,
                 "Update with the current photo's look",
                 false,
                 Box::new(move |this, _, cx| this.update_preset_from_photo(ix, cx)),
@@ -776,7 +784,7 @@ impl Workspace {
             ));
             actions.push(action(
                 format!("preset-cat-{uid}"),
-                "\u{25EB}",
+                Icon::Tag,
                 "Move to the next category",
                 false,
                 Box::new(move |this, _, cx| {
@@ -788,7 +796,7 @@ impl Workspace {
             ));
             actions.push(action(
                 format!("preset-dup-{uid}"),
-                "\u{29C9}",
+                Icon::Duplicates,
                 "Duplicate",
                 false,
                 Box::new(move |this, _, cx| {
@@ -800,7 +808,7 @@ impl Workspace {
             ));
             actions.push(action(
                 format!("preset-rename-{uid}"),
-                "\u{270E}",
+                Icon::Edit,
                 "Rename",
                 false,
                 Box::new(move |this, window, cx| {
@@ -811,7 +819,7 @@ impl Workspace {
             ));
             actions.push(action(
                 format!("preset-del-{uid}"),
-                "\u{2715}",
+                Icon::Trash,
                 "Delete",
                 true,
                 Box::new(move |this, _, cx| this.delete_preset(ix, cx)),
@@ -888,9 +896,7 @@ impl Workspace {
                 el.child(
                     div()
                         .flex_shrink_0()
-                        .text_size(sp(10.0))
-                        .text_color(theme.accent)
-                        .child("\u{2713}"),
+                        .child(rustyedit_ui::icon(Icon::Check, 11.0, theme.accent)),
                 )
             })
             .on_hover({

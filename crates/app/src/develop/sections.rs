@@ -57,6 +57,10 @@ impl Workspace {
         DevelopSection::arrange(&self.settings.develop.section_order)
             .into_iter()
             .filter(|section| *section != DevelopSection::Frames)
+            // Lens Blur can be switched off in Settings.
+            .filter(|section| {
+                *section != DevelopSection::LensBlur || self.settings.develop.lens_blur_section
+            })
             .collect()
     }
 

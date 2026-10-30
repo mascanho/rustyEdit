@@ -461,6 +461,14 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // ⌘K / Ctrl+K again closes the palette (its usual binding doesn't
+        // reach here while typing).
+        let m = &event.keystroke.modifiers;
+        if self.palette.is_some() && event.keystroke.key == "k" && (m.platform || m.control) {
+            self.close_command_palette(cx);
+            cx.stop_propagation();
+            return;
+        }
         if self.draft_for(TextTarget::CommandPalette).is_some()
             && self.palette_key(event.keystroke.key.as_str(), window, cx)
         {

@@ -88,6 +88,7 @@ actions!(
         RejectSoftPhotos,
         RejectBadExposures,
         ToggleCommandPalette,
+        ToggleLoupe,
         ToggleShortcuts,
         ToolRemove,
     ]

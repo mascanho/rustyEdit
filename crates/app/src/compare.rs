@@ -524,12 +524,24 @@ impl Workspace {
         // Logical pixels, so a Retina display still shows 1 image pixel
         // per physical pixel at 100%.
         let factor = scale / window.scale_factor();
-        let (w, h) = (asset.width as f32 * factor, asset.height as f32 * factor);
-        let source = self
-            .loupe_full_paths
-            .get(&asset.id)
-            .cloned()
-            .unwrap_or_else(|| self.loupe_source(asset));
+        // An edited photo shows its edits: the rendered preview enlarged,
+        // with the sharp render of what's in view over it (see
+        // `detail_view`). Sizes follow the photo as cropped.
+        let edited = self.loupe_shows_edits();
+        let (w, h) = match self.develop_zoom_size().filter(|_| edited) {
+            Some((fw, fh)) => (fw * factor, fh * factor),
+            None => (asset.width as f32 * factor, asset.height as f32 * factor),
+        };
+        self.loupe_zoomed_size.set((w, h));
+        let source: gpui::ImageSource = match self.live_preview.image().filter(|_| edited) {
+            Some(rendered) => rendered.into(),
+            None => self
+                .loupe_full_paths
+                .get(&asset.id)
+                .cloned()
+                .unwrap_or_else(|| self.loupe_source(asset))
+                .into(),
+        };
 
         // Centre the photo the first frame after zooming, once the
         // viewport's size is known.
@@ -566,7 +578,22 @@ impl Workspace {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .child(img(source).w(px(w)).h(px(h)).flex_shrink_0()),
+                        .child(
+                            div()
+                                .relative()
+                                .w(px(w))
+                                .h(px(h))
+                                .flex_shrink_0()
+                                .child(img(source).size_full())
+                                .children(self.detail_tile().map(|(tile, (l, t, rw, rh))| {
+                                    img(gpui::ImageSource::Render(tile))
+                                        .absolute()
+                                        .left(px(l * w))
+                                        .top(px(t * h))
+                                        .w(px(rw * w))
+                                        .h(px(rh * h))
+                                })),
+                        ),
                 )
                 .into_any_element(),
         )

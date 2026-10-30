@@ -79,6 +79,26 @@ struct Tile {
 }
 
 /// One export in flight, or just finished and still on show.
+impl ExportRun {
+    /// (finished, total) while it's running; `None` once it's done.
+    pub(crate) fn progress(&self) -> Option<(usize, usize)> {
+        if self.finished.is_some() {
+            return None;
+        }
+        let status = self.status.lock().ok()?;
+        let done = status
+            .iter()
+            .filter(|s| !matches!(s, ItemStatus::Pending | ItemStatus::Working))
+            .count();
+        Some((done, status.len()))
+    }
+
+    /// Asks the workers to stop after the photos they're on.
+    pub(crate) fn cancel(&self) {
+        self.cancel.store(true, Ordering::Relaxed);
+    }
+}
+
 pub(crate) struct ExportRun {
     /// Position in the export (drives sequence naming) and the photo.
     jobs: Vec<(usize, Asset)>,

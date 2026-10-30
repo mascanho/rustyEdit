@@ -372,7 +372,11 @@ impl Workspace {
                             .min_w(sp(0.0))
                             .overflow_hidden()
                             .whitespace_nowrap()
-                            .child(format!("{} {}", gradient.kind.label(), ix + 1)),
+                            .child(if gradient.lens_focus {
+                                format!("{} {} \u{00B7} lens focus", gradient.kind.label(), ix + 1)
+                            } else {
+                                format!("{} {}", gradient.kind.label(), ix + 1)
+                            }),
                     )
                     .when(!note.is_empty(), |el| {
                         el.child(

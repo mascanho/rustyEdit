@@ -918,12 +918,13 @@ impl Workspace {
                 target = parent.to_path_buf();
             }
         }
-        match Command::new("open").arg("-R").arg(&target).spawn() {
-            Ok(_) => {
-                self.status_message = Some("Revealed in Finder.".into());
+        match reveal_path(&target) {
+            Ok(()) => {
+                self.status_message = Some(format!("Shown in {}.", file_manager_name()).into());
             }
             Err(err) => {
-                self.status_message = Some(format!("Couldn't open Finder: {err}").into());
+                self.status_message =
+                    Some(format!("Couldn't open {}: {err}", file_manager_name()).into());
             }
         }
         cx.notify();
@@ -1025,5 +1026,47 @@ impl Workspace {
         self.catalog_def.restore_excluded();
         self.save_catalog_def();
         self.sync_folders(cx);
+    }
+}
+
+/// The system file browser's name, for menus and messages.
+pub(crate) fn file_manager_name() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Finder"
+    } else if cfg!(target_os = "windows") {
+        "Explorer"
+    } else {
+        "the file manager"
+    }
+}
+
+/// "Reveal in Finder" / "Show in Explorer" / "Show in folder".
+pub(crate) fn reveal_label() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Reveal in Finder"
+    } else if cfg!(target_os = "windows") {
+        "Show in Explorer"
+    } else {
+        "Show in folder"
+    }
+}
+
+/// Opens the system file browser with `path` selected (its folder, where
+/// selecting isn't possible).
+pub(crate) fn reveal_path(path: &std::path::Path) -> std::io::Result<()> {
+    if cfg!(target_os = "macos") {
+        Command::new("open").arg("-R").arg(path).spawn().map(|_| ())
+    } else if cfg!(target_os = "windows") {
+        Command::new("explorer")
+            .arg(format!("/select,{}", path.display()))
+            .spawn()
+            .map(|_| ())
+    } else {
+        let folder = if path.is_dir() {
+            path
+        } else {
+            path.parent().unwrap_or(path)
+        };
+        Command::new("xdg-open").arg(folder).spawn().map(|_| ())
     }
 }

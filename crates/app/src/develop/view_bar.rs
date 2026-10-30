@@ -1,4 +1,4 @@
-//! The bar under the Develop photo: which photo this is and where it sits
+//! The Before / After bar under the photo (Develop and the Library loupe): which photo this is and where it sits
 //! in the filmstrip, and the Before / After views, always in the same
 //! place. Whatever the photo is showing (the edit, the original, a split)
 //! is named here, so it's never a guess.
@@ -6,10 +6,74 @@
 use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString};
 use rustyedit_ui::{sp, Icon};
 
-use crate::{before_after::BaMode, workspace::Workspace};
+use crate::{
+    before_after::BaMode,
+    workspace::{LibraryView, Mode, Workspace},
+};
 
 impl Workspace {
-    pub(super) fn render_develop_view_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+    /// Whether the bar is under the photo: switched on, or a comparison is
+    /// showing (so one left on is never hidden).
+    pub(crate) fn compare_bar_shown(&self) -> bool {
+        self.ba_screen_or_loupe() && (self.settings.layout.compare_bar || self.ba_active())
+    }
+
+    /// Develop, or the Library's loupe: the screens with the bar.
+    fn ba_screen_or_loupe(&self) -> bool {
+        match self.mode {
+            Mode::Develop => true,
+            Mode::Library => self.library_view == LibraryView::Loupe,
+            Mode::Export => false,
+        }
+    }
+
+    /// The rail button that shows or hides the bar. Hiding it also ends a
+    /// comparison, so nothing is left on out of sight.
+    pub(crate) fn compare_bar_rail_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let on = self.settings.layout.compare_bar || self.ba_active();
+        let comparing = self.ba_active();
+        div()
+            .id("rail-compare")
+            .flex()
+            .items_center()
+            .justify_center()
+            .size(gpui::px(rustyedit_ui::RAIL_BUTTON_SIZE))
+            .rounded_md()
+            .cursor_pointer()
+            .when(on, |el| el.bg(theme.accent_muted))
+            .when(!on, |el| el.hover(|el| el.bg(theme.surface_elevated)))
+            .child(rustyedit_ui::icon(
+                Icon::BeforeAfter,
+                16.0,
+                if comparing {
+                    theme.accent
+                } else if on {
+                    theme.text
+                } else {
+                    theme.text_muted
+                },
+            ))
+            .tooltip(rustyedit_ui::tip(
+                match (on, self.mode) {
+                    (true, _) => "Hide the Before / After bar",
+                    (false, Mode::Library) => "Before / After bar (in the loupe)",
+                    _ => "Show the Before / After bar",
+                },
+                &theme,
+            ))
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                let show = !(this.settings.layout.compare_bar || this.ba_active());
+                if !show && this.ba.mode != BaMode::Off {
+                    this.set_ba_mode(BaMode::Off, cx);
+                }
+                this.update_settings(|s| s.layout.compare_bar = show, cx);
+                cx.notify();
+            }))
+            .into_any_element()
+    }
+
+    pub(crate) fn render_develop_view_bar(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
         let catalog = &self.catalog;
         let selected = catalog.selected;

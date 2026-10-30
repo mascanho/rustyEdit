@@ -16,6 +16,7 @@ use rustyedit_ui::sp;
 use std::{
     hash::{Hash, Hasher},
     rc::Rc,
+    sync::Arc,
 };
 
 use gpui::{div, img, prelude::*, AnyElement, Context, ObjectFit, Window};
@@ -120,13 +121,18 @@ impl Workspace {
         if jobs.is_empty() {
             return;
         }
+        if self.sharpness_progress.is_some() {
+            return;
+        }
+        let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        self.sharpness_progress = Some((counter.clone(), jobs.len()));
         let work = cx.background_executor().spawn(async move {
-            let counter = std::sync::atomic::AtomicUsize::new(0);
             rustyedit_io::generate_thumbnails(&cache, &jobs, &counter, true)
         });
         cx.spawn(async move |this, cx| {
             let infos = work.await;
             this.update(cx, |this, cx| {
+                this.sharpness_progress = None;
                 let mut changed = false;
                 for info in infos {
                     if let Some(asset) = this
@@ -231,7 +237,7 @@ impl Workspace {
             return;
         }
         self.exposure_scan_at = Some(std::time::Instant::now());
-        let jobs: Vec<(u64, std::path::PathBuf)> = self
+        let all: Vec<(u64, std::path::PathBuf)> = self
             .catalog
             .assets
             .iter()
@@ -242,8 +248,9 @@ impl Workspace {
                     && !self.exposure_failed.contains(&a.id)
             })
             .filter_map(|a| Some((a.id, a.thumbnail_path.clone()?)))
-            .take(BATCH)
             .collect();
+        self.exposure_left = all.len();
+        let jobs: Vec<_> = all.into_iter().take(BATCH).collect();
         if jobs.is_empty() {
             return;
         }

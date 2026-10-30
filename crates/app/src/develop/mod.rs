@@ -35,10 +35,12 @@ mod detail_view;
 mod gradients;
 mod grid_overlay;
 mod history;
+mod lens_blur_ui;
 mod look;
 mod navigator;
 pub(crate) use navigator::{navigator_size, navigator_slot};
 mod presets;
+mod quick_develop;
 mod preview;
 mod proof_ui;
 mod recipe_modal;
@@ -307,6 +309,7 @@ impl Workspace {
             S::Lens => ("develop-lens", self.lens_section(cx)),
             // Frames has its own rail tool, not a panel section.
             S::Frames => ("develop-frames", Vec::new()),
+            S::LensBlur => ("develop-lens-blur", self.lens_blur_section(cx)),
             S::Effects => (
                 "develop-effects",
                 self.adjustment_sliders(&Adjustment::EFFECTS, cx),

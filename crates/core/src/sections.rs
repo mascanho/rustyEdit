@@ -19,10 +19,11 @@ pub enum DevelopSection {
     Crop,
     Lens,
     Frames,
+    LensBlur,
 }
 
 impl DevelopSection {
-    pub const ALL: [DevelopSection; 12] = [
+    pub const ALL: [DevelopSection; 13] = [
         DevelopSection::Crop,
         DevelopSection::Retouch,
         DevelopSection::Gradients,
@@ -33,6 +34,7 @@ impl DevelopSection {
         DevelopSection::ColorGrading,
         DevelopSection::Detail,
         DevelopSection::Effects,
+        DevelopSection::LensBlur,
         DevelopSection::Lens,
         DevelopSection::Frames,
     ];
@@ -51,6 +53,7 @@ impl DevelopSection {
             DevelopSection::Effects => "Effects",
             DevelopSection::Lens => "Lens Corrections",
             DevelopSection::Frames => "Frames",
+            DevelopSection::LensBlur => "Lens Blur",
         }
     }
 
@@ -69,6 +72,7 @@ impl DevelopSection {
             DevelopSection::Gradients => "gradients",
             DevelopSection::Lens => "lens",
             DevelopSection::Frames => "frames",
+            DevelopSection::LensBlur => "lens_blur",
         }
     }
 
@@ -178,6 +182,7 @@ impl DevelopSection {
                 to.defringe_green = from.defringe_green;
             }
             DevelopSection::Frames => to.frame = from.frame,
+            DevelopSection::LensBlur => to.lens_blur = from.lens_blur,
             DevelopSection::Lens => {
                 to.lens_distortion = from.lens_distortion;
                 to.lens_vignetting = from.lens_vignetting;

@@ -49,6 +49,44 @@ pub struct Spot {
     pub feather: f32,
     /// 0..=1.
     pub opacity: f32,
+    /// A stroke, not a circle: the spot covers everything within `radius`
+    /// of the line from `target` to here, all copied from the same offset
+    /// (`source` is where `target` copies from). Painted by the remove
+    /// tool, so one stroke takes a few spots instead of dozens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end: Option<(f32, f32)>,
+}
+
+impl Spot {
+    /// The circles this spot is applied as, on a `width` x `height` photo:
+    /// itself, or for a stroke, circles along it close enough to leave no
+    /// gaps (spaced 1.2 radii, as the remove tool paints them).
+    pub fn circles(&self, width: f32, height: f32) -> Vec<Spot> {
+        let Some(end) = self.end else {
+            return vec![*self];
+        };
+        let r = (self.radius * width.max(height)).max(1.0);
+        let (ax, ay) = (self.target.0 * width, self.target.1 * height);
+        let (bx, by) = (end.0 * width, end.1 * height);
+        let length = ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt();
+        let steps = (length / (r * 1.2)).ceil().max(1.0) as usize;
+        let offset = (self.source.0 - self.target.0, self.source.1 - self.target.1);
+        (0..=steps)
+            .map(|i| {
+                let t = i as f32 / steps as f32;
+                let target = (
+                    self.target.0 + (end.0 - self.target.0) * t,
+                    self.target.1 + (end.1 - self.target.1) * t,
+                );
+                Spot {
+                    target,
+                    source: (target.0 + offset.0, target.1 + offset.1),
+                    end: None,
+                    ..*self
+                }
+            })
+            .collect()
+    }
 }
 
 /// A photo's spots, oldest first (later spots apply on top).

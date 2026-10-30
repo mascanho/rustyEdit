@@ -176,6 +176,9 @@ pub struct Workspace {
     pub(crate) loupe_zoom: Option<f32>,
     pub(crate) loupe_scroll: ScrollHandle,
     pub(crate) loupe_center_pending: Cell<bool>,
+    /// The zoomed loupe photo's size in logical pixels, from the last render
+    /// (for the sharp detail view of an edited photo).
+    pub(crate) loupe_zoomed_size: Cell<(f32, f32)>,
     pub(crate) loupe_drag: Option<(gpui::Point<gpui::Pixels>, gpui::Point<gpui::Pixels>)>,
     /// The loupe's photo area, recorded every frame (for its fit scale).
     pub(crate) loupe_bounds: Rc<Cell<gpui::Bounds<gpui::Pixels>>>,
@@ -325,6 +328,14 @@ pub struct Workspace {
     pub(crate) survey_tile_size: std::rc::Rc<std::cell::Cell<(f32, f32)>>,
     pub(crate) exposure_scan_busy: bool,
     pub(crate) exposure_scan_at: Option<std::time::Instant>,
+    /// Photos still to have their exposure measured, at the last batch.
+    pub(crate) exposure_left: usize,
+    /// Sharpness measuring: (done counter, total), while it runs.
+    pub(crate) sharpness_progress: Option<(Arc<std::sync::atomic::AtomicUsize>, usize)>,
+    /// The background-activity list is open (see `activity.rs`).
+    pub(crate) activity_open: bool,
+    /// Repaints while background work runs, so progress moves.
+    pub(crate) activity_ticker: Option<gpui::Task<()>>,
     pub(crate) exposure_failed: HashSet<u64>,
     pub(crate) cull_checked: std::cell::Cell<Option<(std::time::Instant, usize, bool, bool)>>,
     pub(crate) cull_view: bool,
@@ -424,6 +435,7 @@ impl Workspace {
             compare_active_left: true,
             loupe_zoom: None,
             loupe_scroll: ScrollHandle::new(),
+            loupe_zoomed_size: Cell::new((0.0, 0.0)),
             loupe_center_pending: Cell::new(false),
             loupe_drag: None,
             loupe_bounds: Rc::new(Cell::new(gpui::Bounds::default())),
@@ -512,6 +524,10 @@ impl Workspace {
             survey_tile_size: Default::default(),
             exposure_scan_busy: false,
             exposure_scan_at: None,
+            exposure_left: 0,
+            sharpness_progress: None,
+            activity_open: false,
+            activity_ticker: None,
             exposure_failed: HashSet::new(),
             cull_view: false,
             cull_made_fullscreen: false,
@@ -775,6 +791,28 @@ impl Workspace {
         }
         self.mode = Mode::Library;
         cx.notify();
+    }
+
+    /// L: in the Library's grid, opens the selected photo in the loupe; in
+    /// the loupe (or compare / survey), back to the grid; anywhere else,
+    /// to the Library.
+    pub fn toggle_loupe(
+        &mut self,
+        _: &crate::actions::ToggleLoupe,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.mode != Mode::Library || self.cull_view {
+            self.go_library(&GoLibrary, window, cx);
+            return;
+        }
+        if self.library_view == LibraryView::Grid {
+            if self.catalog.selected_asset().is_some() {
+                self.set_library_view(LibraryView::Loupe, cx);
+            }
+        } else {
+            self.set_library_view(LibraryView::Grid, cx);
+        }
     }
 
     pub fn go_export(&mut self, _: &GoExport, _window: &mut Window, cx: &mut Context<Self>) {
@@ -1067,6 +1105,11 @@ impl Workspace {
             );
         }
 
+        // What's running in the background, first on the right.
+        if let Some(chip) = self.render_activity_chip(cx) {
+            right.insert(0, chip);
+        }
+
         if let Some(zoom) = self.render_footer_zoom(cx) {
             right.push(rustyedit_ui::status_divider(&theme).into_any_element());
             right.push(zoom);
@@ -1106,6 +1149,7 @@ impl Render for Workspace {
         self.live_preview.release_retired(window);
         self.sync_frame_preview(cx);
         self.sync_detail_view(cx);
+        self.sync_activity_ticker(cx);
         self.pixel_ratio.set(window.scale_factor());
         // Interface scale: fixed sizes (`sp`) and rem-based ones together.
         let scale = self.settings.appearance.ui_scale.clamp(90, 130) as f32 / 100.0;
@@ -1125,12 +1169,16 @@ impl Render for Workspace {
             }))
             .key_context(if self.text_draft.is_some() {
                 "TextEntry"
+            } else if self.context_menu.is_some() {
+                // The menu takes the keys (see `on_context_menu_key`).
+                "ContextMenu"
             } else {
                 "Workspace"
             })
             // Clicking anywhere applies a slider value being typed.
             .capture_any_mouse_down(|_, window, cx| rustyedit_ui::sliders_pointer_down(window, cx))
             .on_key_down(cx.listener(Self::on_text_key))
+            .on_key_down(cx.listener(Self::on_context_menu_key))
             .on_key_down(cx.listener(Self::develop_key_down))
             .on_key_up(cx.listener(Self::develop_key_up))
             .track_focus(&focus_handle)
@@ -1206,6 +1254,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::label_green))
             .on_action(cx.listener(Self::label_blue))
             .on_action(cx.listener(Self::go_library))
+            .on_action(cx.listener(Self::toggle_loupe))
             .on_action(cx.listener(Self::go_develop))
             .on_action(cx.listener(Self::cycle_filter))
             .on_action(cx.listener(Self::toggle_before_after))
@@ -1255,6 +1304,7 @@ impl Render for Workspace {
             })
             .when(self.cull_view, |el| el.child(self.render_cull_view(cx)))
             .children(self.render_toasts(cx))
+            .children(self.render_activity_panel(cx))
             .children(self.render_shortcut_sheet(cx))
             .children(self.render_command_palette(cx))
             .child(drop_overlay(&theme))

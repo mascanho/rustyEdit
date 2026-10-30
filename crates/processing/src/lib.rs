@@ -34,6 +34,7 @@ mod frame;
 mod geometry;
 mod gpu;
 mod lens;
+mod lens_blur;
 mod look;
 mod maskview;
 mod parallel;
@@ -59,7 +60,7 @@ pub use look::{match_look, preset_from_look, LookStats};
 pub use frame::{frame_bgra, frame_rgb16, frame_rgb8, framed_size};
 pub use watermark::apply_watermark;
 pub use develop_source::DevelopSource;
-pub use retouch::{find_spot_source, stroke_spots};
+pub use retouch::{find_spot_source, plan_stroke, stroke_spots, StrokeFill};
 pub use upright::{detect as detect_upright, Upright, UprightMode};
 
 use image::{imageops::FilterType, DynamicImage, RgbImage, RgbaImage};
@@ -312,6 +313,9 @@ fn apply_cpu(source: &DevelopSource, settings: &DevelopSettings) -> RgbImage {
     }
     if let Some(finishing) = finishing::Finishing::before_crop(settings, &buffer) {
         finishing.apply(&mut buffer);
+    }
+    if lens_blur::is_active(settings) {
+        lens_blur::apply(&mut buffer, settings);
     }
     let mut buffer = crop::straighten_and_crop(buffer, &settings.crop);
     let (width, height) = buffer.dimensions();
@@ -661,6 +665,29 @@ mod tests {
                     });
                 }),
             ),
+            (
+                "lens blur",
+                with(|s| {
+                    s.lens_blur.amount = 70.0;
+                    s.lens_blur.boost = 60.0;
+                }),
+            ),
+            (
+                "lens blur cat's eye on a focus layer",
+                with(|s| {
+                    s.lens_blur.amount = 50.0;
+                    s.lens_blur.shape = rustyedit_core::BokehShape::CatEye;
+                    s.lens_blur.falloff = 10.0;
+                    s.gradients.push(Gradient {
+                        kind: GradientKind::Radial,
+                        start: (0.35, 0.4),
+                        radius: (0.2, 0.15),
+                        feather: 0.5,
+                        lens_focus: true,
+                        ..Default::default()
+                    });
+                }),
+            ),
             ("dehaze", with(|s| s.dehaze = 70.0)),
             ("haze", with(|s| s.dehaze = -50.0)),
             (
@@ -759,6 +786,7 @@ mod tests {
                         radius: 0.05,
                         feather: 0.5,
                         opacity: 1.0,
+                        end: None,
                     });
                 }),
             ),
@@ -785,7 +813,7 @@ mod tests {
             noise_luma, noise_color, defringe_purple, defringe_green, lens_distortion, lens_vignetting, lens_ca, spots,
             gradients, curves, parametric, mixer, grading, dehaze, vignette,
             vignette_midpoint, vignette_feather, grain, grain_size, crop,
-            rotation_degrees, flip_horizontal, flip_vertical
+            rotation_degrees, flip_horizontal, flip_vertical, lens_blur
         );
         a
     }
@@ -1086,6 +1114,55 @@ mod tests {
     }
 
     #[test]
+    fn detail_region_matches_the_full_render_with_lens_blur() {
+        if !gpu_available() {
+            return;
+        }
+        let source = card(900, 640);
+        let settings = {
+            let mut s = busy();
+            s.lens_blur.amount = 80.0;
+            s.lens_blur.boost = 60.0;
+            s
+        };
+        // The whole photo as a "region" is an ordinary full render.
+        let full_size = {
+            let rgb = working_rgb(&source, &settings).expect("full render");
+            (rgb.width(), rgb.height())
+        };
+        let detail = |region, size| match gpu::render(
+            &source,
+            &settings,
+            gpu::Output::Detail { region, size },
+        ) {
+            Some(gpu::Rendered::Detail(bgra)) => bgra,
+            _ => panic!("detail render failed"),
+        };
+        let full = detail((0.0, 0.0, 1.0, 1.0), full_size);
+        let (fw, fh) = (full.width() as f32, full.height() as f32);
+        // A region in the middle and one touching the corner: each must
+        // match the same pixels of the full render.
+        for region in [(0.3, 0.35, 0.25, 0.2), (0.0, 0.0, 0.3, 0.3)] {
+            let x0 = (region.0 * fw).floor() as u32;
+            let y0 = (region.1 * fh).floor() as u32;
+            let x1 = ((region.0 + region.2) * fw).ceil() as u32;
+            let y1 = ((region.1 + region.3) * fh).ceil() as u32;
+            let size = (x1 - x0, y1 - y0);
+            let part = detail(region, size);
+            assert_eq!(part.dimensions(), size);
+            let expected = image::imageops::crop_imm(&full, x0, y0, size.0, size.1).to_image();
+            let max = part
+                .as_raw()
+                .iter()
+                .zip(expected.as_raw())
+                .map(|(a, b)| a.abs_diff(*b))
+                .max()
+                .unwrap();
+            assert!(max <= 1, "region {region:?}: max diff {max}");
+        }
+    }
+
+    #[test]
     fn gpu_keeps_gradients_smooth() {
         if !gpu_available() {
             return;
@@ -1241,5 +1318,68 @@ mod detail_tests {
         let colour_nr = render(0.0, 80.0);
         assert!(spread(&luma_nr, 8, 120, luma) < spread(&base, 8, 120, luma) * 0.5);
         assert!(spread(&colour_nr, 8, 120, chroma) < spread(&base, 8, 120, chroma) * 0.5);
+    }
+
+    /// Renders a test scene (lights behind a sharp subject) with each
+    /// bokeh shape to the temp folder, to look at. `cargo test -- --ignored`.
+    #[test]
+    #[ignore]
+    fn lens_blur_look() {
+        let scene = RgbImage::from_fn(900, 600, |x, y| {
+            let (fx, fy) = (x as f32, y as f32);
+            // A dark background with scattered small lights.
+            let mut v = [30.0f32, 34.0, 45.0];
+            for k in 0..60u32 {
+                let lx = ((k * 7919) % 900) as f32;
+                let ly = ((k * 104_729) % 600) as f32;
+                if (fx - lx).powi(2) + (fy - ly).powi(2) < 9.0 {
+                    v = [255.0, 220.0 - (k % 3) as f32 * 40.0, 150.0 + (k % 4) as f32 * 30.0];
+                }
+            }
+            // A sharp checkered "subject" in the middle.
+            if (330..570).contains(&x) && (180..420).contains(&y) {
+                let c = if (x / 20 + y / 20) % 2 == 0 { 230.0 } else { 60.0 };
+                v = [c, c * 0.9, c * 0.8];
+            }
+            image::Rgb(v.map(|c| c as u8))
+        });
+        let source = DevelopSource::from_working(DynamicImage::ImageRgb8(scene));
+        for shape in rustyedit_core::BokehShape::ALL {
+            let mut settings = DevelopSettings::default();
+            settings.lens_blur.amount = 100.0;
+            settings.lens_blur.boost = 70.0;
+            settings.lens_blur.shape = shape;
+            let out = crate::apply_cpu(&source, &settings);
+            out.save(std::env::temp_dir().join(format!("lens_{shape:?}.png"))).unwrap();
+        }
+    }
+
+    /// How long a preview-sized lens blur takes. `cargo test -- --ignored`.
+    #[test]
+    #[ignore]
+    fn lens_blur_timing() {
+        let image = RgbImage::from_fn(2048, 1365, |x, y| image::Rgb([(x % 251) as u8, (y % 241) as u8, ((x + y) % 239) as u8]));
+        let source = DevelopSource::from_working(DynamicImage::ImageRgb8(image));
+        let mut settings = DevelopSettings::default();
+        settings.lens_blur.amount = 100.0;
+        settings.lens_blur.boost = 60.0;
+        let plain = DevelopSettings { exposure: 5.0, ..DevelopSettings::default() };
+        let mut no_boost = settings;
+        no_boost.lens_blur.boost = 0.0;
+        let mut small = settings;
+        small.lens_blur.amount = 30.0;
+        for (name, s) in [
+            ("plain", &plain),
+            ("lens blur", &settings),
+            ("lens blur, no boost", &no_boost),
+            ("lens blur, amount 30", &small),
+        ] {
+            let _ = render_preview(&source, s, ClipWarnings::default());
+            let start = std::time::Instant::now();
+            for _ in 0..5 {
+                let _ = render_preview(&source, s, ClipWarnings::default());
+            }
+            eprintln!("TIMING {name}: {:?} per preview", start.elapsed() / 5);
+        }
     }
 }

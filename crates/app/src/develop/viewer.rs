@@ -113,7 +113,9 @@ impl Workspace {
             .flex_1()
             .min_w(sp(0.0))
             .child(viewer)
-            .child(self.render_develop_view_bar(cx))
+            .when(self.compare_bar_shown(), |el| {
+                el.child(self.render_develop_view_bar(cx))
+            })
             .into_any_element()
     }
 

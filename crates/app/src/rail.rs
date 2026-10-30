@@ -73,9 +73,17 @@ impl Workspace {
             })
             .collect();
         // The rail beside Develop's editing panel also holds the
-        // composition guides and the view options, which act on the photo.
+        // composition guides, the view options and the Before / After bar's
+        // switch, which act on the photo; the Library's right rail, that
+        // switch.
         let tail = if develop && side == self.develop_panel_side() {
-            vec![self.guides_rail_button(side, cx), self.view_rail_button(side, cx)]
+            vec![
+                self.guides_rail_button(side, cx),
+                self.view_rail_button(side, cx),
+                self.compare_bar_rail_button(cx),
+            ]
+        } else if self.mode == crate::workspace::Mode::Library && side == DockSide::Right {
+            vec![self.compare_bar_rail_button(cx)]
         } else {
             Vec::new()
         };

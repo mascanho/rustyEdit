@@ -636,7 +636,7 @@ impl Workspace {
                 .into_any_element(),
         };
 
-        div()
+        let loupe = div()
             .id("library-loupe")
             // Records the loupe's area, for the footer slider's fit scale.
             .child({
@@ -663,16 +663,34 @@ impl Workspace {
             .bg(self.loupe_bg())
             .child(content)
             .children(split)
-            .children(self.ba_pill(true, cx))
-            .when(!self.ba_active() && self.ba_photo_edited(), |el| {
-                el.child(self.ba_start_button(cx))
+            // A thin accent frame while comparing, as in Develop.
+            .when(self.ba_active(), |el| {
+                el.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .border_2()
+                        .border_color(theme.accent.opacity(0.55)),
+                )
             })
             .children(self.render_info_overlay(cx))
             .on_click(cx.listener(|this, event: &ClickEvent, _window, cx| {
                 if event.click_count() >= 2 {
                     this.enter_develop(cx);
                 }
-            }))
+            }));
+
+        // The Before / After bar under the photo, when it's on.
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h(sp(0.0))
+            .min_w(sp(0.0))
+            .child(loupe)
+            .when(self.compare_bar_shown(), |el| {
+                el.child(self.render_develop_view_bar(cx))
+            })
             .into_any_element()
     }
 

@@ -3,6 +3,7 @@
 //! the menu, and the window, then hands off to `Workspace`.
 
 mod actions;
+mod activity;
 mod albums;
 mod catalogs;
 mod commands;
@@ -66,7 +67,7 @@ use actions::{
 };
 use actions::{
     AutoTone, CreateVirtualCopy, MatchLook, PickBestOfBursts, PresetFromPhoto, RejectSoftPhotos, RejectBadExposures,
-    SyncSettings, ToggleCommandPalette, ToggleCullView, ToggleShortcuts, ToolRemove,
+    SyncSettings, ToggleCommandPalette, ToggleCullView, ToggleLoupe, ToggleShortcuts, ToolRemove,
     ToolWhiteBalance, ToolCrop,
     CycleGridStyle, GridLarger, GridSmaller, ToolLinearGradient, ToolRadialGradient,
     ToolSpotRemoval, ExtendDown, ExtendFirst, ExtendLast, ExtendLeft, ExtendRight, ExtendUp,
@@ -110,7 +111,7 @@ fn main() {
             KeyBinding::new("9", LabelBlue, Some(KEY_CONTEXT)),
             KeyBinding::new("g", GoLibrary, Some(KEY_CONTEXT)),
             KeyBinding::new("\\", ToggleBeforeAfter, Some(KEY_CONTEXT)),
-            KeyBinding::new("l", GoLibrary, Some(KEY_CONTEXT)),
+            KeyBinding::new("l", ToggleLoupe, Some(KEY_CONTEXT)),
             KeyBinding::new("d", GoDevelop, Some(KEY_CONTEXT)),
             KeyBinding::new("e", GoExport, Some(KEY_CONTEXT)),
             KeyBinding::new("escape", GoLibrary, Some(KEY_CONTEXT)),

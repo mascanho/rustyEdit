@@ -83,6 +83,26 @@ pub enum Icon {
     MatchLook,
     /// An eraser: content-aware remove.
     Remove,
+    /// A clipboard: copy (edits).
+    Copy,
+    /// A clipboard with an arrow into it: paste.
+    Paste,
+    /// Two arrows chasing each other: sync.
+    Sync,
+    /// A flag on a pole: pick.
+    Flag,
+    /// Two chain links: a file path.
+    Link,
+    /// A page with lines and a folded corner: a sidecar / metadata file.
+    Sidecar,
+    /// A circled cross: marked for deletion.
+    MarkDelete,
+    /// A circled minus: remove (from the catalog).
+    RemoveCircle,
+    ChevronUp,
+    /// A star outline (not a favourite), and filled (a favourite).
+    Star,
+    StarFilled,
 }
 
 /// `icon` drawn `size` pixels square in `color`.
@@ -194,6 +214,9 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
     match icon {
         Icon::ChevronRight => pen.line(&[(6.0, 3.5), (10.5, 8.0), (6.0, 12.5)]),
         Icon::ChevronDown => pen.line(&[(3.5, 6.0), (8.0, 10.5), (12.5, 6.0)]),
+        Icon::ChevronUp => pen.line(&[(3.5, 10.0), (8.0, 5.5), (12.5, 10.0)]),
+        Icon::Star => pen.shape(&[(8.0, 2.1), (9.53, 6.3), (13.99, 6.45), (10.47, 9.2), (11.7, 13.5), (8.0, 11.0), (4.3, 13.5), (5.53, 9.2), (2.01, 6.45), (6.47, 6.3)]),
+        Icon::StarFilled => pen.solid(&[(8.0, 2.1), (9.53, 6.3), (13.99, 6.45), (10.47, 9.2), (11.7, 13.5), (8.0, 11.0), (4.3, 13.5), (5.53, 9.2), (2.01, 6.45), (6.47, 6.3)]),
         Icon::ChevronLeft => pen.line(&[(10.0, 3.5), (5.5, 8.0), (10.0, 12.5)]),
         Icon::Folder => pen.shape(&[
             (1.5, 3.5),
@@ -392,6 +415,56 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
             pen.shape(&[(9.5, 2.5), (14.0, 7.0), (8.0, 13.0), (3.5, 8.5)]);
             pen.solid(&[(3.5, 8.5), (6.0, 6.0), (10.5, 10.5), (8.0, 13.0)]);
             pen.line(&[(8.0, 14.2), (14.0, 14.2)]);
+        }
+        Icon::Copy => {
+            pen.shape(&[(3.5, 3.5), (12.5, 3.5), (12.5, 14.5), (3.5, 14.5)]);
+            pen.shape(&[(6.0, 2.0), (10.0, 2.0), (10.0, 5.0), (6.0, 5.0)]);
+            pen.line(&[(6.0, 8.0), (10.0, 8.0)]);
+            pen.line(&[(6.0, 10.8), (10.0, 10.8)]);
+        }
+        Icon::Paste => {
+            pen.shape(&[(3.5, 3.5), (12.5, 3.5), (12.5, 14.5), (3.5, 14.5)]);
+            pen.shape(&[(6.0, 2.0), (10.0, 2.0), (10.0, 5.0), (6.0, 5.0)]);
+            pen.line(&[(8.0, 7.0), (8.0, 12.0)]);
+            pen.line(&[(5.8, 9.8), (8.0, 12.0), (10.2, 9.8)]);
+        }
+        Icon::Sync => {
+            pen.arc(8.0, 8.0, 5.2, 200.0, 340.0);
+            pen.line(&[(11.2, 2.6), (12.9, 6.3), (9.1, 6.9)]);
+            pen.arc(8.0, 8.0, 5.2, 20.0, 160.0);
+            pen.line(&[(4.8, 13.4), (3.1, 9.7), (6.9, 9.1)]);
+        }
+        Icon::Flag => {
+            pen.line(&[(4.0, 14.5), (4.0, 2.0)]);
+            pen.shape(&[(4.0, 2.5), (12.5, 2.5), (10.3, 5.6), (12.5, 8.7), (4.0, 8.7)]);
+        }
+        Icon::Link => {
+            // Two links at 45 degrees, overlapping in the middle.
+            let rotate = |(x, y): (f32, f32)| {
+                let (s, c) = (
+                    -std::f32::consts::FRAC_1_SQRT_2,
+                    std::f32::consts::FRAC_1_SQRT_2,
+                );
+                let (dx, dy) = (x - 8.0, y - 8.0);
+                (8.0 + dx * c - dy * s, 8.0 + dx * s + dy * c)
+            };
+            pen.shape(&[(1.5, 6.0), (8.5, 6.0), (8.5, 10.0), (1.5, 10.0)].map(rotate));
+            pen.shape(&[(7.5, 6.0), (14.5, 6.0), (14.5, 10.0), (7.5, 10.0)].map(rotate));
+        }
+        Icon::Sidecar => {
+            pen.line(&[(10.0, 1.8), (3.0, 1.8), (3.0, 14.2), (13.0, 14.2), (13.0, 4.8), (10.0, 1.8)]);
+            pen.line(&[(10.0, 1.8), (10.0, 4.8), (13.0, 4.8)]);
+            pen.line(&[(5.5, 8.0), (10.5, 8.0)]);
+            pen.line(&[(5.5, 10.8), (10.5, 10.8)]);
+        }
+        Icon::MarkDelete => {
+            pen.circle(8.0, 8.0, 6.0);
+            pen.line(&[(5.6, 5.6), (10.4, 10.4)]);
+            pen.line(&[(10.4, 5.6), (5.6, 10.4)]);
+        }
+        Icon::RemoveCircle => {
+            pen.circle(8.0, 8.0, 6.0);
+            pen.line(&[(5.0, 8.0), (11.0, 8.0)]);
         }
         Icon::RangeMask => {
             pen.line(&[(2.0, 8.0), (14.0, 8.0)]);

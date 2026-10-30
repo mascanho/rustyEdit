@@ -9,8 +9,8 @@
 
 use rustyedit_ui::sp;
 use gpui::{
-    div, img, prelude::*, px, AnyElement, App, Bounds, ClickEvent, Context, DragMoveEvent,
-    ImageSource, MouseButton, ObjectFit, Pixels, Render, SharedString, Window,
+    div, img, prelude::*, px, AnyElement, App, Bounds, Context, DragMoveEvent,
+    ImageSource, MouseButton, ObjectFit, Pixels, Render, Window,
 };
 
 use crate::{
@@ -30,8 +30,6 @@ pub(crate) enum BaMode {
 }
 
 impl BaMode {
-    const ON: [BaMode; 3] = [BaMode::Split, BaMode::SideBySide, BaMode::Before];
-
     pub(crate) fn label(&self) -> &'static str {
         match self {
             BaMode::Off => "Off",
@@ -372,115 +370,5 @@ impl Workspace {
                 .child(handle)
                 .into_any_element(),
         )
-    }
-
-    /// The row of comparison views, shown while a comparison is on.
-    pub(crate) fn ba_pill(&self, at_bottom: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !self.ba_active() {
-            return None;
-        }
-        let theme = self.theme;
-        let button = |mode: BaMode| {
-            let active = self.ba.mode == mode;
-            div()
-                .id(SharedString::from(format!("ba-{}", mode.label())))
-                .flex()
-                .items_center()
-                .h(sp(22.0))
-                .px_2()
-                .cursor_pointer()
-                .text_size(sp(10.5))
-                .when(active, |el| {
-                    el.bg(theme.accent_muted).text_color(theme.text)
-                })
-                .when(!active, |el| {
-                    el.text_color(theme.text_muted)
-                        .hover(|el| el.text_color(theme.text))
-                })
-                .child(mode.label())
-                .on_click(
-                    cx.listener(move |this, _: &ClickEvent, _w, cx| this.set_ba_mode(mode, cx)),
-                )
-        };
-        Some(
-            div()
-                .absolute()
-                .when(at_bottom, |el| el.bottom(sp(12.0)))
-                .when(!at_bottom, |el| el.top(sp(10.0)))
-                .left_0()
-                .right_0()
-                .flex()
-                .justify_center()
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap_0p5()
-                        .p_0p5()
-                        .bg(theme.surface.opacity(0.92))
-                        .border_1()
-                        .border_color(theme.border)
-                        .occlude()
-                        .child(
-                            div()
-                                .px_2()
-                                .text_size(sp(10.0))
-                                .font_weight(gpui::FontWeight::BOLD)
-                                .text_color(theme.text_faint)
-                                .child(if self.ba_reference().is_some() {
-                                    "CAMERA JPEG / RAW"
-                                } else {
-                                    "BEFORE / AFTER"
-                                }),
-                        )
-                        .children(BaMode::ON.map(button))
-                        .child(
-                            div()
-                                .id("ba-off")
-                                .flex()
-                                .items_center()
-                                .h(sp(22.0))
-                                .px_2()
-                                .cursor_pointer()
-                                .text_size(sp(11.0))
-                                .text_color(theme.text_muted)
-                                .hover(|el| el.text_color(theme.danger))
-                                .child("\u{2715}")
-                                .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
-                                    this.set_ba_mode(BaMode::Off, cx)
-                                })),
-                        ),
-                )
-                .into_any_element(),
-        )
-    }
-
-    /// A small button in the loupe's corner that starts a comparison.
-    pub(crate) fn ba_start_button(&self, cx: &mut Context<Self>) -> AnyElement {
-        let theme = self.theme;
-        div()
-            .id("ba-start")
-            .absolute()
-            .top(sp(10.0))
-            .right(sp(10.0))
-            .flex()
-            .items_center()
-            .h(sp(24.0))
-            .px_2()
-            .cursor_pointer()
-            .bg(theme.surface.opacity(0.85))
-            .border_1()
-            .border_color(theme.border)
-            .text_size(sp(10.5))
-            .text_color(theme.text_muted)
-            .hover(|el| el.text_color(theme.text))
-            .tooltip(rustyedit_ui::tip("Before / After (\\)", &theme))
-            .child("Before / After")
-            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
-                let mode = this.ba.last;
-                this.set_ba_mode(mode, cx);
-            }))
-            .into_any_element()
     }
 }

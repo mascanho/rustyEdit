@@ -437,7 +437,7 @@ fn tone_summary(d: &DevelopSettings) -> String {
 }
 
 /// A label on the left and a control on the right.
-fn section_row(label: &'static str, control: AnyElement, theme: &Theme) -> AnyElement {
+pub(super) fn section_row(label: &'static str, control: AnyElement, theme: &Theme) -> AnyElement {
     div()
         .flex()
         .flex_row()
@@ -451,7 +451,7 @@ fn section_row(label: &'static str, control: AnyElement, theme: &Theme) -> AnyEl
 
 /// A compact icon-and-text button; `active` shows it pressed.
 #[allow(clippy::too_many_arguments)]
-fn small_button(
+pub(super) fn small_button(
     id: &'static str,
     icon: Icon,
     label: &'static str,

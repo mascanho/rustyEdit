@@ -102,6 +102,10 @@ pub struct DevelopSettings {
     /// A border drawn around the finished photo.
     pub frame: FrameSettings,
 
+    /// Shallow depth of field: everything but the focus blurred like a
+    /// fast lens (see `lens_blur.rs`).
+    pub lens_blur: crate::LensBlur,
+
     /// Sections switched off in the panel, one bit per
     /// [`crate::DevelopSection`]: their values are kept but not applied
     /// (see [`DevelopSettings::effective`]).
@@ -150,6 +154,7 @@ impl Default for DevelopSettings {
             flip_horizontal: false,
             flip_vertical: false,
             frame: FrameSettings::default(),
+            lens_blur: crate::LensBlur::default(),
             disabled_sections: 0,
         }
     }
@@ -223,9 +228,19 @@ pub enum Adjustment {
     VignetteRoundness,
     Grain,
     GrainSize,
+    /// Lens Blur's Amount, Boost and Falloff (see `LensBlur`).
+    LensBlurAmount,
+    LensBlurBoost,
+    LensBlurFalloff,
 }
 
 impl Adjustment {
+    pub const LENS_BLUR: [Adjustment; 3] = [
+        Adjustment::LensBlurAmount,
+        Adjustment::LensBlurBoost,
+        Adjustment::LensBlurFalloff,
+    ];
+
     pub const BASIC: [Adjustment; 6] = [
         Adjustment::Exposure,
         Adjustment::Contrast,
@@ -318,6 +333,9 @@ impl Adjustment {
             Adjustment::VignetteRoundness => "Roundness",
             Adjustment::Grain => "Grain",
             Adjustment::GrainSize => "Grain size",
+            Adjustment::LensBlurAmount => "Amount",
+            Adjustment::LensBlurBoost => "Boost",
+            Adjustment::LensBlurFalloff => "Falloff",
         }
     }
 
@@ -333,6 +351,9 @@ impl Adjustment {
                 format!("{} luminance", zone.label())
             }
             Adjustment::GradingBalance => "Grading balance".to_string(),
+            Adjustment::LensBlurAmount => "Lens blur".to_string(),
+            Adjustment::LensBlurBoost => "Bokeh boost".to_string(),
+            Adjustment::LensBlurFalloff => "Lens blur falloff".to_string(),
             Adjustment::SharpenRadius => "Sharpening radius".to_string(),
             Adjustment::SharpenMasking => "Sharpening masking".to_string(),
             Adjustment::NoiseLuma => "Luminance noise reduction".to_string(),
@@ -360,6 +381,9 @@ impl Adjustment {
             | Adjustment::VignetteRoundness
             | Adjustment::Grain
             | Adjustment::GrainSize
+            | Adjustment::LensBlurAmount
+            | Adjustment::LensBlurBoost
+            | Adjustment::LensBlurFalloff
             | Adjustment::Sharpening
             | Adjustment::SharpenRadius
             | Adjustment::SharpenMasking
@@ -434,6 +458,9 @@ impl Adjustment {
             Adjustment::VignetteRoundness => settings.vignette_roundness,
             Adjustment::Grain => settings.grain,
             Adjustment::GrainSize => settings.grain_size,
+            Adjustment::LensBlurAmount => settings.lens_blur.amount,
+            Adjustment::LensBlurBoost => settings.lens_blur.boost,
+            Adjustment::LensBlurFalloff => settings.lens_blur.falloff,
         }
     }
 
@@ -482,6 +509,9 @@ impl Adjustment {
             Adjustment::VignetteRoundness => settings.vignette_roundness = v,
             Adjustment::Grain => settings.grain = v,
             Adjustment::GrainSize => settings.grain_size = v,
+            Adjustment::LensBlurAmount => settings.lens_blur.amount = v,
+            Adjustment::LensBlurBoost => settings.lens_blur.boost = v,
+            Adjustment::LensBlurFalloff => settings.lens_blur.falloff = v,
         }
     }
 }

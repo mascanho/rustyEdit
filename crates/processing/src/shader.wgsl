@@ -47,7 +47,10 @@ struct Params {
     // Spot removal: the spot's table in `aux` (see gpu.rs `plan_spots`).
     full_h: u32, src_off_x: u32, src_off_y: u32, spot_offset: u32,
     // Perspective correction (Crop::perspective_strength).
-    persp_x: f32, persp_y: f32, vig_round: f32, pad1: f32,
+    persp_x: f32, persp_y: f32, vig_round: f32, lb_radius: f32,
+    // Lens blur (lens_blur.rs).
+    lb_boost: f32, lb_falloff: f32, lb_shape: u32, lb_invert: u32,
+    lb_focus: u32, lb_table: u32, pad3: f32, pad4: f32,
 }
 
 const F_CURVES: u32 = 1u;
@@ -1380,4 +1383,142 @@ fn histogram(
             atomicAdd(&hist[k], n);
         }
     }
+}
+
+// ------------------------------------------------- lens blur (lens_blur.rs)
+
+/// LensBlur::blur_at: how blurred (0..1) a pixel `focus` in focus is.
+fn lb_blur_at(focus: f32) -> f32 {
+    var away = 1.0 - focus;
+    if (p.lb_invert != 0u) { away = focus; }
+    away = clamp(away, 0.0, 1.0);
+    let t = clamp((away - 0.15) / 0.35, 0.0, 1.0);
+    let steep = t * t * (3.0 - 2.0 * t);
+    return steep + (away - steep) * clamp(p.lb_falloff, 0.0, 1.0);
+}
+
+/// Each pixel's colour and circle of confusion, into `tmp`.
+@compute @workgroup_size(16, 16)
+fn lens_coc(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (!in_bounds(id)) { return; }
+    let i = id.y * p.width + id.x;
+    let c = clamp(px_src(i), vec3<f32>(0.0), vec3<f32>(1.0));
+    let x = f32(p.off_x + id.x) + 0.5;
+    let y = f32(p.off_y + id.y) + 0.5;
+    var m = mask_at(p.lb_focus, x, y);
+    if (m > 0.001) {
+        m = m * range_at(p.lb_focus, c);
+    }
+    tmp[i] = vec4<f32>(c, p.lb_radius * lb_blur_at(m));
+}
+
+/// lens_blur.rs `highlight`: how much a pixel is a point of light.
+fn lb_highlight(l: f32, around: f32) -> f32 {
+    let t = clamp((l - 0.55) / 0.35, 0.0, 1.0);
+    let bright = t * t * (3.0 - 2.0 * t);
+    return bright * clamp((l - around - 0.3) / 0.25, 0.0, 1.0);
+}
+
+/// The points of light (`src` against its wide blur in `img_a`).
+@compute @workgroup_size(16, 16)
+fn lens_bright(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (!in_bounds(id)) { return; }
+    let i = id.y * p.width + id.x;
+    let c = clamp(px_src(i), vec3<f32>(0.0), vec3<f32>(1.0));
+    let soft = clamp(px_a(i), vec3<f32>(0.0), vec3<f32>(1.0));
+    store(i, c * lb_highlight(luma(c), luma(soft)));
+}
+
+
+/// `tmp` at (`x`, `y`) (pixel centres at .5), bilinear, inside the pass.
+fn lb_bilinear(x: f32, y: f32) -> vec3<f32> {
+    let w = f32(p.width);
+    let h = f32(p.height);
+    let fx = clamp(x - 0.5, 0.0, w - 1.0);
+    let fy = clamp(y - 0.5, 0.0, h - 1.0);
+    let x0 = u32(floor(fx));
+    let y0 = u32(floor(fy));
+    let x1 = min(x0 + 1u, p.width - 1u);
+    let y1 = min(y0 + 1u, p.height - 1u);
+    let tx = fx - f32(x0);
+    let ty = fy - f32(y0);
+    let top = mix(tmp[y0 * p.width + x0].xyz, tmp[y0 * p.width + x1].xyz, tx);
+    let bottom = mix(tmp[y1 * p.width + x0].xyz, tmp[y1 * p.width + x1].xyz, tx);
+    return mix(top, bottom, ty);
+}
+
+/// The pixel nearest (`x`, `y`): the softened copies are smooth enough
+/// to read without blending neighbours (lens_blur.rs `index`).
+fn lb_index(x: f32, y: f32) -> u32 {
+    let xi = min(u32(max(floor(x), 0.0)), p.width - 1u);
+    let yi = min(u32(max(floor(y), 0.0)), p.height - 1u);
+    return yi * p.width + xi;
+}
+
+/// Gathers each pixel's bokeh from `tmp` (see lens_blur.rs `apply`).
+@compute @workgroup_size(16, 16)
+fn lens_blur(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (!in_bounds(id)) { return; }
+    let i = id.y * p.width + id.x;
+    let here = tmp[i];
+    let r = here.w;
+    if (r < 0.5) {
+        store(i, here.xyz);
+        return;
+    }
+    let cx = f32(id.x) + 0.5;
+    let cy = f32(id.y) + 0.5;
+    let gx = f32(p.off_x) + cx;
+    let gy = f32(p.off_y) + cy;
+    let edge = vec2<f32>(gx / f32(p.full_w) * 2.0 - 1.0, gy / f32(p.full_h) * 2.0 - 1.0);
+    var sum = here.xyz;
+    var total = 1.0;
+    var glow = vec3<f32>(0.0);
+    var glow_n = 0.0;
+    // lens_blur.rs `level`, `level_start` and `pre_blur_mix`.
+    let wanted = r * 2.0;
+    var count = 64u;
+    var start = 48u;
+    if (wanted <= 16.0) {
+        count = 16u;
+        start = 0u;
+    } else if (wanted <= 32.0) {
+        count = 32u;
+        start = 16u;
+    }
+    let soft_mix = clamp(r / max(p.lb_radius, 1.0) * 1.2, 0.0, 1.0);
+    let lit = p.lb_boost > 0.0;
+    for (var n = 0u; n < count; n++) {
+        let at = p.lb_table + (start + n) * 3u;
+        let o = vec2<f32>(aux[at], aux[at + 1u]);
+        let shape_w = aux[at + 2u];
+        if (p.lb_shape == 2u) {
+            let k = o + edge * 0.6;
+            if (dot(k, k) > 1.0) { continue; }
+        }
+        let qx = cx + o.x * r;
+        let qy = cy + o.y * r;
+        let distance = length(o) * r;
+        glow_n += shape_w;
+        let q = lb_index(qx, qy);
+        let reach = clamp(tmp[q].w - distance + 1.0, 0.0, 1.0);
+        if (reach <= 0.0) { continue; }
+        if (lit) {
+            glow += px_b(q) * (reach * shape_w);
+        }
+        var c: vec3<f32>;
+        if (soft_mix >= 1.0) {
+            c = px_a(q);
+        } else {
+            c = mix(lb_bilinear(qx, qy), px_a(q), soft_mix);
+        }
+        let weight = reach * shape_w;
+        sum += c * weight;
+        total += weight;
+    }
+    // lens_blur.rs `bloom`: isolated lights bloom, crowded ones don't.
+    let lights = glow / max(glow_n, 1.0);
+    let gain = p.lb_boost * 40.0;
+    let strength = gain / (1.0 + luma(lights) * gain / 0.6);
+    store(i, sum / total + lights * strength);
 }

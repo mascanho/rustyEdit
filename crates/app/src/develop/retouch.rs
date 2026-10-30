@@ -151,7 +151,7 @@ impl Workspace {
             .gap_1()
             .child(self.tool_button(SpotKind::Heal, cx))
             .child(self.tool_button(SpotKind::Clone, cx))
-            .child(self.remove_button(cx));
+            .when(self.settings.develop.remove_tool, |el| el.child(self.remove_button(cx)));
 
         let hint = match ui.tool {
             Some(_) if ui.remove => {
@@ -308,7 +308,11 @@ impl Workspace {
             rows.push(list_row(
                 ("retouch-spot", ix),
                 &theme,
-                format!("{} {}", spot.kind.label(), ix + 1),
+                format!(
+                    "{} {}",
+                    if spot.end.is_some() { "Remove" } else { spot.kind.label() },
+                    ix + 1
+                ),
                 Some(format!("{:.1}%", spot.radius * 100.0)),
                 self.develop_ui.retouch.selected == Some(ix),
                 cx.listener(move |this, _: &ClickEvent, _w, cx| {
@@ -427,6 +431,11 @@ impl Workspace {
             .map(|(ix, spot)| SpotMarks {
                 target: to_screen(spot.target),
                 source: to_screen(spot.source),
+                // A stroke's far end, and where it copies that from.
+                end: spot.end.map(|end| {
+                    let offset = (spot.source.0 - spot.target.0, spot.source.1 - spot.target.1);
+                    (to_screen(end), to_screen((end.0 + offset.0, end.1 + offset.1)))
+                }),
                 radius: spot.radius * long_edge,
                 selected: ui.selected == Some(ix),
             })
@@ -494,17 +503,30 @@ impl Workspace {
             )
         };
         let (px_, py_) = (f32::from(position.x), f32::from(position.y));
-        let within = |centre: (f32, f32), r: f32| {
-            (centre.0 - px_).powi(2) + (centre.1 - py_).powi(2) <= r * r
+        // Within `r` of the segment from `a` to `b` (a circle when they're
+        // the same point).
+        let within = |a: (f32, f32), b: (f32, f32), r: f32| {
+            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+            let len2 = dx * dx + dy * dy;
+            let t = if len2 < 1e-6 {
+                0.0
+            } else {
+                (((px_ - a.0) * dx + (py_ - a.1) * dy) / len2).clamp(0.0, 1.0)
+            };
+            let (cx_, cy_) = (a.0 + dx * t, a.1 + dy * t);
+            (cx_ - px_).powi(2) + (cy_ - py_).powi(2) <= r * r
         };
 
         // Newest first, so the spot drawn on top is the one picked.
         let spots = develop.spots.as_slice();
         for (ix, spot) in spots.iter().enumerate().rev() {
             let r = (spot.radius * long_edge).max(6.0);
-            let part = if within(screen(spot.source), r) {
+            let end = spot.end.unwrap_or(spot.target);
+            let offset = (spot.source.0 - spot.target.0, spot.source.1 - spot.target.1);
+            let source_end = (end.0 + offset.0, end.1 + offset.1);
+            let part = if within(screen(spot.source), screen(source_end), r) {
                 Some(SpotPart::Source)
-            } else if within(screen(spot.target), r) {
+            } else if within(screen(spot.target), screen(end), r) {
                 Some(SpotPart::Target)
             } else {
                 None
@@ -561,41 +583,53 @@ impl Workspace {
             .collect();
         let ui = &self.develop_ui.retouch;
         let (radius, feather, opacity) = (ui.size, ui.feather.min(0.4), ui.opacity);
-        let placed = rustyedit_processing::stroke_spots(&image, &path, radius);
-        if placed.is_empty() {
+        let room = MAX_SPOTS - develop.spots.len();
+        // A little larger than the brush, so the circles a stroke is made
+        // of leave no gaps between them.
+        let spot_radius = (radius * 1.1).min(MAX_SIZE);
+        let spot = |target: (f32, f32), source: (f32, f32), end: Option<(f32, f32)>| Spot {
+            kind: SpotKind::Heal,
+            target,
+            source,
+            end,
+            radius: spot_radius,
+            feather,
+            opacity,
+        };
+        let spots: Vec<Spot> = match rustyedit_processing::plan_stroke(&image, &path, radius, room) {
+            // A few straight pieces sharing one source: a spot each.
+            rustyedit_processing::StrokeFill::Segments { points, offset } => points
+                .windows(2)
+                .map(|pair| {
+                    let (a, b) = (pair[0], pair[1]);
+                    spot(a, (a.0 + offset.0, a.1 + offset.1), Some(b))
+                })
+                .collect(),
+            rustyedit_processing::StrokeFill::Circles(circles) => circles
+                .into_iter()
+                .map(|(target, source)| spot(target, source, None))
+                .collect(),
+        };
+        if spots.is_empty() {
             return;
         }
-        let room = MAX_SPOTS - develop.spots.len();
-        if placed.len() > room {
+        if spots.len() > room {
             self.status_message = Some(
                 format!(
                     "That stroke needs {} spots and {room} of {MAX_SPOTS} are left. \
-                     Try a shorter stroke or a bigger brush.",
-                    placed.len()
+                     Try a simpler stroke, or clear some spots.",
+                    spots.len()
                 )
                 .into(),
             );
             return;
         }
-        let count = placed.len();
         self.edit_spots("Remove object", cx, |develop| {
-            for (target, source) in placed {
-                develop.spots.push(Spot {
-                    kind: SpotKind::Heal,
-                    target,
-                    source,
-                    // A little larger than the brush, so the circles
-                    // between the stroke's spots leave no gaps.
-                    radius: (radius * 1.1).min(MAX_SIZE),
-                    feather,
-                    opacity,
-                });
+            for spot in spots {
+                develop.spots.push(spot);
             }
         });
         self.develop_ui.retouch.selected = None;
-        if count > 1 {
-            self.status_message = Some(format!("Removed with {count} heal spots").into());
-        }
     }
 
     /// Drops a new spot covering `target`, copying from the best-matching
@@ -614,6 +648,7 @@ impl Workspace {
             kind,
             target,
             source,
+            end: None,
             radius,
             feather,
             opacity,
@@ -671,7 +706,14 @@ impl Workspace {
         self.edit_spots("Move spot", cx, |develop| {
             if let Some(spot) = develop.spots.get_mut(drag.index) {
                 match drag.part {
-                    SpotPart::Target => spot.target = at,
+                    // A stroke moves whole, keeping its shape.
+                    SpotPart::Target => {
+                        let delta = (at.0 - spot.target.0, at.1 - spot.target.1);
+                        spot.target = at;
+                        if let Some(end) = spot.end.as_mut() {
+                            *end = (end.0 + delta.0, end.1 + delta.1);
+                        }
+                    }
                     SpotPart::Source => spot.source = at,
                 }
             }
@@ -689,6 +731,8 @@ impl Workspace {
 struct SpotMarks {
     target: Point<Pixels>,
     source: Point<Pixels>,
+    /// For a stroke: its far end, and the far end of its source.
+    end: Option<(Point<Pixels>, Point<Pixels>)>,
     radius: f32,
     selected: bool,
 }
@@ -706,10 +750,11 @@ fn paint_marks(
         // A dark halo under each line keeps it visible on light photos.
         stroke_line(window, mark.source, mark.target, 2.5, shadow, None);
         stroke_line(window, mark.source, mark.target, 1.0, colour, None);
-        stroke_circle(window, mark.source, mark.radius, 2.5, shadow, None);
-        stroke_circle(window, mark.source, mark.radius, 1.0, colour, Some(4.0));
-        stroke_circle(window, mark.target, mark.radius, 3.0, shadow, None);
-        stroke_circle(window, mark.target, mark.radius, 1.5, colour, None);
+        let (end, source_end) = mark.end.unwrap_or((mark.target, mark.source));
+        stroke_capsule(window, mark.source, source_end, mark.radius, 2.5, shadow, None);
+        stroke_capsule(window, mark.source, source_end, mark.radius, 1.0, colour, Some(4.0));
+        stroke_capsule(window, mark.target, end, mark.radius, 3.0, shadow, None);
+        stroke_capsule(window, mark.target, end, mark.radius, 1.5, colour, None);
     }
     if let Some((centre, radius)) = brush {
         stroke_circle(window, centre, radius, 2.5, shadow, None);
@@ -742,6 +787,42 @@ fn paint_stroke(window: &mut Window, points: &[Point<Pixels>], radius: f32, them
     for &p in &points[1..] {
         path.line_to(p);
     }
+    if let Ok(path) = path.build() {
+        window.paint_path(path, colour);
+    }
+}
+
+/// The outline of everything within `radius` of the segment `a`-`b`: a
+/// circle when they're the same point.
+fn stroke_capsule(
+    window: &mut Window,
+    a: Point<Pixels>,
+    b: Point<Pixels>,
+    radius: f32,
+    width: f32,
+    colour: Hsla,
+    dash: Option<f32>,
+) {
+    let (dx, dy) = (f32::from(b.x - a.x), f32::from(b.y - a.y));
+    if dx * dx + dy * dy < 1.0 {
+        stroke_circle(window, a, radius, width, colour, dash);
+        return;
+    }
+    const HALF: usize = 24;
+    let angle = dy.atan2(dx);
+    let half = std::f32::consts::FRAC_PI_2;
+    let arc = |centre: Point<Pixels>, from: f32| {
+        (0..=HALF).map(move |i| {
+            let a = from + i as f32 / HALF as f32 * std::f32::consts::PI;
+            point(centre.x + px(a.cos() * radius), centre.y + px(a.sin() * radius))
+        })
+    };
+    let points: Vec<_> = arc(b, angle - half).chain(arc(a, angle + half)).collect();
+    let mut path = PathBuilder::stroke(px(width));
+    if let Some(dash) = dash {
+        path = path.dash_array(&[px(dash), px(dash)]);
+    }
+    path.add_polygon(&points, true);
     if let Ok(path) = path.build() {
         window.paint_path(path, colour);
     }

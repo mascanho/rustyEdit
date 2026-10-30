@@ -16,6 +16,13 @@ use rustyedit_core::{Asset, DevelopSettings, FrameSettings};
 use crate::workspace::Workspace;
 
 /// Rendered edit thumbnails, and the ones being made.
+impl EditedThumbs {
+    /// Thumbnails waiting to be rendered or rendering now.
+    pub(crate) fn backlog(&self) -> usize {
+        self.pending.len()
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct EditedThumbs {
     /// Asset id -> (settings fingerprint, rendered file).
