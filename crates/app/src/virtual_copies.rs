@@ -30,7 +30,7 @@ impl Workspace {
     /// new copy. New copies go at the end of the catalog list, so nothing
     /// that refers to photos by position (undo, the selection) shifts.
     pub(crate) fn create_virtual_copies(&mut self, cx: &mut Context<Self>) {
-        if self.is_importing || self.mode == Mode::Export {
+        if self.is_importing || matches!(self.mode, Mode::Export | Mode::Zines) {
             return;
         }
         let targets: Vec<usize> = self

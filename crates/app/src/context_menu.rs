@@ -442,6 +442,25 @@ impl Workspace {
             )
             .entry(),
         );
+        entries.push(
+            item(
+                "ctx-zine",
+                Icon::Sidecar,
+                if self.targets_in_zine() {
+                    if multi {
+                        format!("Take {count} photos out of the zine")
+                    } else {
+                        "Take out of the zine".to_string()
+                    }
+                } else if multi {
+                    format!("Add {count} photos to zine")
+                } else {
+                    "Add to zine".to_string()
+                },
+                |this, _w, cx| this.toggle_in_zine(cx),
+            )
+            .entry(),
+        );
         if !multi {
             entries.push(
                 item("ctx-rename", Icon::Edit, "Rename\u{2026}", dispatch(RenamePhoto))

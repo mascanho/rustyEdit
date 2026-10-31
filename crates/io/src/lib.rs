@@ -11,6 +11,8 @@ mod decode;
 mod fuji;
 mod maintenance;
 mod metadata;
+mod pdf;
+pub mod zine;
 mod lens_db;
 mod preset_store;
 mod scan;

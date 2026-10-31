@@ -105,7 +105,7 @@ impl Workspace {
         let zoomable = match self.mode {
             Mode::Library => matches!(self.library_view, LibraryView::Loupe | LibraryView::Grid),
             Mode::Develop => true,
-            Mode::Export => false,
+            Mode::Export | Mode::Zines => false,
         };
         if !zoomable {
             return false;

@@ -1893,7 +1893,7 @@ fn fmt_bytes(bytes: u64) -> String {
 }
 
 /// Shows `path` in the system file manager.
-fn reveal(path: &Path) {
+pub(crate) fn reveal(path: &Path) {
     #[cfg(target_os = "macos")]
     let opener = "open";
     #[cfg(target_os = "windows")]

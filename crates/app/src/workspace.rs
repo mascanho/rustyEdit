@@ -86,6 +86,8 @@ const CATALOG_SAVE_DEBOUNCE: Duration = Duration::from_millis(750);
 pub enum Mode {
     Library,
     Develop,
+    /// Zines made from photos picked with right-click ▸ Add to zine.
+    Zines,
     Export,
 }
 
@@ -120,6 +122,9 @@ pub enum TextTarget {
     SettingText,
     /// Naming a new export preset.
     ExportPresetName,
+    /// The zine's title and author.
+    ZineTitle,
+    ZineAuthor,
     /// The command palette's search.
     CommandPalette,
 }
@@ -232,6 +237,11 @@ pub struct Workspace {
     /// filmstrip, in the order they were added; they're exported on top of
     /// whatever the scope picks.
     pub(crate) export_added: Vec<u64>,
+    /// The photos picked for a zine, and how it is made.
+    pub(crate) zine: rustyedit_core::Zine,
+    pub(crate) zine_run: Option<crate::zines::ZineRun>,
+    pub(crate) zine_message: Option<SharedString>,
+    pub(crate) zine_panel_scroll: ScrollHandle,
     /// Smallest width of an export tile; the size slider in the queue bar.
     pub(crate) export_tile_size: f32,
     pub(crate) export_message: Option<SharedString>,
@@ -467,6 +477,10 @@ impl Workspace {
             export_run: None,
             export_excluded: HashSet::new(),
             export_added: Vec::new(),
+            zine: rustyedit_io::zine::load(),
+            zine_run: None,
+            zine_message: None,
+            zine_panel_scroll: ScrollHandle::new(),
             export_tile_size: crate::export::TILE_MIN,
             export_message: None,
             left_rail_tool: None,
@@ -1021,6 +1035,18 @@ impl Workspace {
             )
             .into_any_element(),
             rustyedit_ui::chrome_tab(
+                "mode-zines",
+                if self.zine.photos.is_empty() {
+                    "Zines".to_string()
+                } else {
+                    format!("Zines ({})", self.zine.photos.len())
+                },
+                self.mode == Mode::Zines,
+                &theme,
+                cx.listener(|this, _: &ClickEvent, _w, cx| this.go_zines(cx)),
+            )
+            .into_any_element(),
+            rustyedit_ui::chrome_tab(
                 "mode-export",
                 "Export",
                 self.mode == Mode::Export,
@@ -1276,6 +1302,7 @@ impl Render for Workspace {
             .child(match self.mode {
                 Mode::Library => self.render_library(window, cx),
                 Mode::Develop => self.render_develop(window, cx),
+                Mode::Zines => self.render_zines(window, cx),
                 Mode::Export => self.render_export(window, cx),
             })
             .child(self.render_status_bar(cx))

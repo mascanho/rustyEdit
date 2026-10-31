@@ -50,6 +50,7 @@ mod undo;
 mod virtual_copies;
 mod wheel_zoom;
 mod workspace;
+mod zines;
 
 use gpui::{
     point, prelude::*, px, size, App, Application, Bounds, KeyBinding, Menu, MenuItem,

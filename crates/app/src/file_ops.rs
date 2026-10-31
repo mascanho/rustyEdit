@@ -23,7 +23,7 @@ use crate::{
 
 impl Workspace {
     fn lifecycle_allowed(&self) -> bool {
-        !self.is_importing && self.mode != Mode::Export
+        !self.is_importing && !matches!(self.mode, Mode::Export | Mode::Zines)
     }
 
     // --- Delete -------------------------------------------------------------

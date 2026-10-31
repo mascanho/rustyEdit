@@ -23,7 +23,7 @@ impl Workspace {
         match self.mode {
             Mode::Develop => true,
             Mode::Library => self.library_view == LibraryView::Loupe,
-            Mode::Export => false,
+            Mode::Export | Mode::Zines => false,
         }
     }
 

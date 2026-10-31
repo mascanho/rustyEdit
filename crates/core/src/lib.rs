@@ -34,6 +34,7 @@ mod sections;
 pub mod culling;
 pub mod settings;
 mod snapshot;
+mod zine;
 
 pub use albums::{Album, Albums};
 pub use asset::{is_raw_path, AppliedPreset, Asset, AssetState, PhotoMeta, RAW_EXTENSIONS};
@@ -78,3 +79,9 @@ pub use retouch::{to_display, to_source, Spot, SpotKind, Spots, MAX_SPOTS};
 pub use sections::DevelopSection;
 pub use settings::Settings;
 pub use snapshot::{next_snapshot_name, Snapshot};
+
+pub use zine::{
+    layout_pages, Cell as ZineCell, Content as ZineContent, Page as ZinePage, PageLayout as ZinePageLayout,
+    Rect as ZineRect, Zine, ZineFormat, ZineLayout, ZineOptions, ZinePageSize, ZinePaper, ZinePhoto,
+    CAPTION_MM,
+};

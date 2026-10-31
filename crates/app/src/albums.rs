@@ -550,6 +550,7 @@ impl Workspace {
             TextTarget::SnapshotName => self.take_snapshot(text, cx),
             TextTarget::SettingText => self.commit_setting_text(text, cx),
             TextTarget::ExportPresetName => self.save_export_preset(text, cx),
+            TextTarget::ZineTitle | TextTarget::ZineAuthor => self.commit_zine_text(target, text, cx),
             TextTarget::Title
             | TextTarget::Caption
             | TextTarget::Creator

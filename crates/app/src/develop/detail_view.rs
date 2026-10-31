@@ -80,7 +80,7 @@ impl Workspace {
         let zoomed = match self.mode {
             Mode::Develop => self.develop_ui.zoom.scale.is_some(),
             Mode::Library => self.loupe_zoom.is_some() && self.loupe_shows_edits(),
-            Mode::Export => false,
+            Mode::Export | Mode::Zines => false,
         };
         zoomed
             && !self.ba_active()
@@ -158,7 +158,7 @@ impl Workspace {
                 let top = (-f32::from(offset.y) / h).clamp(0.0, 1.0 - fh);
                 Some(((left, top, fw, fh), (w, h), self.pixel_ratio.get()))
             }
-            Mode::Export => None,
+            Mode::Export | Mode::Zines => None,
         }
     }
 
