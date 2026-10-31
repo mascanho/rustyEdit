@@ -15,7 +15,7 @@
 //!   previewed as they will print.
 
 use gpui::{
-    canvas, div, img, prelude::*, px, relative, AnyElement, ClickEvent, Context, DragMoveEvent,
+    canvas, div, img, linear_color_stop, linear_gradient, prelude::*, px, relative, ScrollHandle, AnyElement, ClickEvent, Context, DragMoveEvent,
     MouseButton, MouseDownEvent, ObjectFit, PathBuilder, Pixels, Point, Render, SharedString,
     Window,
 };
@@ -32,10 +32,14 @@ use crate::{
     zines::{plural, ZineDrag},
 };
 
-/// Width of the bar of photos.
-const TRAY_W: f32 = 244.0;
-/// Height of the strip of page thumbnails.
-const STRIP_H: f32 = 104.0;
+/// Width of the side bar of controls.
+const SIDEBAR_W: f32 = 340.0;
+/// The strips: a header's and a roll's height, and a photo's width.
+const STRIP_HEADER_H: f32 = 22.0;
+const ROLL_H: f32 = 128.0;
+const PHOTO_W: f32 = 112.0;
+/// How tall a page's small picture is in the side bar.
+const THUMB_H: f32 = 88.0;
 
 /// Marks a drag of a box on a free page. Nothing follows the pointer: the
 /// box itself moves.
@@ -120,15 +124,16 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let theme = self.theme;
-        let middle = div()
+        // The pages on top, the photos along the bottom as in the filmstrip.
+        let centre = div()
             .flex()
             .flex_col()
             .flex_1()
             .min_w(sp(0.0))
             .min_h(sp(0.0))
             .bg(theme.background)
-            .child(self.zine_toolbar(layout, cx))
-            .child(self.zine_context_bar(cx))
+            .child(self.zine_workbench_header(layout))
+            .child(self.zine_page_strip(layout, cx))
             .child(
                 div()
                     .id("zine-pages-scroll")
@@ -146,23 +151,24 @@ impl Workspace {
                     .py_4()
                     .children(self.zine_cards(cx)),
             )
-            .child(self.zine_strip(layout, cx));
+            .child(self.zine_photo_strip(cx));
         let workbench = div()
             .flex()
             .flex_row()
             .flex_1()
             .min_w(sp(0.0))
             .min_h(sp(0.0))
-            .child(middle)
-            .child(self.zine_tray(cx))
+            .child(centre)
+            .child(self.zine_sidebar(cx))
             .into_any_element();
         self.zine_ui.cache.borrow_mut().prune(window);
         workbench
     }
 
-    // --- Toolbar ----------------------------------------------------------------
+    // --- Header and the side bar -------------------------------------------------------
 
-    fn zine_toolbar(&self, layout: &ZinePageLayout, cx: &mut Context<Self>) -> AnyElement {
+    /// The zine's title and how many photos and pages it has.
+    fn zine_workbench_header(&self, layout: &ZinePageLayout) -> AnyElement {
         let theme = self.theme;
         let count = self.zine.photos.len();
         let unplaced = self
@@ -180,41 +186,11 @@ impl Workspace {
         if unplaced > 0 {
             summary.push_str(&format!(" \u{00B7} {unplaced} not on a page yet"));
         }
-        let entity = cx.entity();
-        let button = |id: &'static str, label: &'static str, tip: &'static str, on: bool, enabled: bool| {
-            div()
-                .id(id)
-                .flex()
-                .items_center()
-                .h(sp(26.0))
-                .px_2()
-                .rounded_md()
-                .text_size(sp(11.0))
-                .border_1()
-                .when(on, |el| {
-                    el.bg(theme.accent_muted)
-                        .border_color(theme.accent)
-                        .text_color(theme.text)
-                })
-                .when(!on && enabled, |el| {
-                    el.border_color(theme.border_subtle)
-                        .text_color(theme.text_muted)
-                        .cursor_pointer()
-                        .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
-                })
-                .when(!enabled, |el| {
-                    el.border_color(theme.border_subtle)
-                        .text_color(theme.text_faint.opacity(0.5))
-                })
-                .tooltip(rustyedit_ui::tip(tip, &theme))
-                .child(label)
-        };
         div()
             .flex()
             .flex_row()
-            .items_center()
-            .justify_between()
-            .gap_4()
+            .items_baseline()
+            .gap_3()
             .flex_shrink_0()
             .px_6()
             .py_2()
@@ -223,30 +199,61 @@ impl Workspace {
             .border_color(theme.border)
             .child(
                 div()
-                    .flex()
-                    .flex_col()
-                    .min_w(sp(0.0))
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(sp(16.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.text)
-                            .child(self.zine.options.title.clone()),
-                    )
-                    .child(
-                        div()
-                            .text_size(sp(11.0))
-                            .text_color(if unplaced > 0 { theme.accent } else { theme.text_faint })
-                            .child(summary),
-                    ),
+                    .truncate()
+                    .text_size(sp(16.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme.text)
+                    .child(self.zine.options.title.clone()),
             )
+            .child(
+                div()
+                    .text_size(sp(11.0))
+                    .text_color(if unplaced > 0 { theme.accent } else { theme.text_faint })
+                    .child(summary),
+            )
+            .into_any_element()
+    }
+
+    /// Every control, in a bar down the right: the view, what can be added,
+    /// the page and the selection, and the pages themselves.
+    fn zine_sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        div()
+            .id("zine-sidebar")
+            .flex()
+            .flex_col()
+            .flex_shrink_0()
+            .w(sp(SIDEBAR_W))
+            .h_full()
+            .overflow_y_scroll()
+            .gap_3()
+            .p_3()
+            .bg(theme.surface)
+            .border_l_1()
+            .border_color(theme.border)
+            .child(side_section(&theme, "View", self.zine_view_controls(cx)))
+            .child(side_section(&theme, "Add to a page", self.zine_add_tools(cx)))
+            .child(self.zine_context_sections(cx))
+            .into_any_element()
+    }
+
+    /// Undo, spreads, preview, zoom.
+    fn zine_view_controls(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let entity = cx.entity();
+        let button = |id: &'static str, label: &'static str, tip: &'static str, on: bool, enabled: bool| {
+            crate::zine_bar::pill(&theme, id.into(), label, tip, on, enabled)
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
             .child(
                 div()
                     .flex()
                     .flex_row()
-                    .items_center()
-                    .gap_2()
+                    .flex_wrap()
+                    .gap_1()
                     .child(
                         button("zine-undo", "\u{21B6} Undo", "Undo the last change to the zine (\u{2318}Z)", false, !self.zine_ui.undo.is_empty())
                             .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.zine_undo(cx))),
@@ -255,7 +262,6 @@ impl Workspace {
                         button("zine-redo", "\u{21B7} Redo", "Redo (\u{21E7}\u{2318}Z)", false, !self.zine_ui.redo.is_empty())
                             .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.zine_redo(cx))),
                     )
-                    .child(div().w(sp(8.0)))
                     .child(
                         button("zine-spreads", "Spreads", "Show the pages as left and right pages, as a booklet reads", self.zine_ui.spreads, true)
                             .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
@@ -268,27 +274,6 @@ impl Workspace {
                             .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.open_zine_preview(cx))),
                     )
                     .child(
-                        div().w(sp(180.0)).child(rustyedit_ui::labeled_slider(
-                            "zine-zoom",
-                            "Zoom",
-                            self.zine_ui.zoom,
-                            rustyedit_ui::SliderSpec {
-                                min: ZOOM_RANGE.0,
-                                max: ZOOM_RANGE.1,
-                                default: crate::zine_edit::ZOOM_DEFAULT,
-                                signed: false,
-                                track: rustyedit_ui::SliderTrack::Accent,
-                            },
-                            &theme,
-                            move |value, _w: &mut Window, cx: &mut gpui::App| {
-                                entity.update(cx, |this, cx| {
-                                    this.zine_ui.zoom = value;
-                                    cx.notify();
-                                });
-                            },
-                        )),
-                    )
-                    .child(
                         button("zine-reseed", "Start again", "Throw the pages away and lay the photos out automatically again", false, true)
                             .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
                                 this.zine_ui.clear_selection();
@@ -297,6 +282,64 @@ impl Workspace {
                             })),
                     ),
             )
+            .child(rustyedit_ui::labeled_slider(
+                "zine-zoom",
+                "Zoom",
+                self.zine_ui.zoom,
+                rustyedit_ui::SliderSpec {
+                    min: ZOOM_RANGE.0,
+                    max: ZOOM_RANGE.1,
+                    default: crate::zine_edit::ZOOM_DEFAULT,
+                    signed: false,
+                    track: rustyedit_ui::SliderTrack::Accent,
+                },
+                &theme,
+                move |value, _w: &mut Window, cx: &mut gpui::App| {
+                    entity.update(cx, |this, cx| {
+                        this.zine_ui.zoom = value;
+                        cx.notify();
+                    });
+                },
+            ))
+            .into_any_element()
+    }
+
+    /// The tiles to drag onto a page for a box of text or an empty frame.
+    fn zine_add_tools(&self, _cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let tool = |id: &'static str, label: &'static str, hint: &'static str, kind: NewItem| {
+            let drag = NewItemDrag { kind, theme };
+            div()
+                .id(id)
+                .flex()
+                .flex_1()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap_0p5()
+                .h(sp(46.0))
+                .rounded_lg()
+                .cursor_grab()
+                .border_1()
+                .border_color(theme.border_subtle)
+                .bg(theme.background)
+                .hover(|el| el.border_color(theme.accent).bg(theme.surface_elevated))
+                .tooltip(rustyedit_ui::tip(hint, &theme))
+                .on_drag(drag, |drag, _offset, _window, cx| cx.new(|_| drag.clone()))
+                .child(
+                    div()
+                        .text_size(sp(14.0))
+                        .text_color(theme.text)
+                        .child(if kind == NewItem::Text { "T" } else { "\u{25A2}" }),
+                )
+                .child(div().text_size(sp(10.0)).text_color(theme.text_muted).child(label))
+        };
+        div()
+            .flex()
+            .flex_row()
+            .gap_2()
+            .child(tool("zine-tool-text", "Text box", "Drag onto a page to write on it", NewItem::Text))
+            .child(tool("zine-tool-frame", "Photo frame", "Drag onto a page for an empty frame to fill", NewItem::Frame))
             .into_any_element()
     }
 
@@ -1306,9 +1349,12 @@ impl Workspace {
         }
     }
 
-    // --- The bar of photos -------------------------------------------------------
+    // --- The photos, along the bottom -------------------------------------------------
 
-    fn zine_tray(&self, cx: &mut Context<Self>) -> AnyElement {
+    /// The photos chosen for the zine in a strip along the bottom, as in the
+    /// filmstrip: drag one up onto a page. Drop one from a page back here to
+    /// take it off.
+    fn zine_photo_strip(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
         let total = self.zine.photos.len();
         let unplaced: Vec<usize> = (0..total)
@@ -1320,27 +1366,22 @@ impl Workspace {
         } else {
             (0..total).collect()
         };
+        let look = self.film_look();
         let filter = |id: &'static str, label: String, on: bool, cx: &mut Context<Self>, only: bool| {
             div()
                 .id(id)
                 .flex()
-                .flex_1()
                 .items_center()
                 .justify_center()
-                .h(sp(24.0))
-                .rounded_md()
-                .text_size(sp(11.0))
+                .h(sp(16.0))
+                .px_2()
+                .rounded_sm()
+                .text_size(sp(9.0))
                 .cursor_pointer()
-                .border_1()
-                .when(on, |el| {
-                    el.bg(theme.accent_muted)
-                        .border_color(theme.accent)
-                        .text_color(theme.text)
-                })
+                .when(on, |el| el.bg(look.chrome_hover).text_color(look.selected))
                 .when(!on, |el| {
-                    el.border_color(theme.background)
-                        .text_color(theme.text_muted)
-                        .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                    el.text_color(look.chrome_text)
+                        .hover(|el| el.bg(look.chrome_hover).text_color(look.selected))
                 })
                 .child(label)
                 .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
@@ -1349,7 +1390,7 @@ impl Workspace {
                 }))
         };
 
-        let rows: Vec<AnyElement> = shown
+        let tiles: Vec<AnyElement> = shown
             .iter()
             .map(|&n| {
                 let photo = &self.zine.photos[n];
@@ -1368,11 +1409,14 @@ impl Workspace {
                 };
                 let photo = photo.clone();
                 div()
-                    .id(SharedString::from(format!("zine-tray-row-{n}")))
+                    .id(SharedString::from(format!("zine-photo-{n}")))
+                    .group("zine-photo")
+                    .relative()
                     .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_2()
+                    .flex_col()
+                    .flex_shrink_0()
+                    .gap_1()
+                    .w(sp(PHOTO_W))
                     .p_1()
                     .rounded_lg()
                     .cursor_grab()
@@ -1384,9 +1428,8 @@ impl Workspace {
                     .child(
                         div()
                             .relative()
-                            .flex_shrink_0()
-                            .w(sp(78.0))
-                            .h(sp(58.0))
+                            .w_full()
+                            .h(sp(PHOTO_W * 0.72))
                             .rounded_md()
                             .overflow_hidden()
                             .bg(gpui::black())
@@ -1408,99 +1451,98 @@ impl Workspace {
                                     .text_size(sp(9.0))
                                     .text_color(theme.text)
                                     .child(format!("{}", n + 1)),
-                            ),
+                            )
+                            .when(placed > 0, |el| {
+                                el.child(
+                                    div()
+                                        .absolute()
+                                        .top(sp(3.0))
+                                        .right(sp(3.0))
+                                        .px_1()
+                                        .rounded_sm()
+                                        .bg(theme.accent)
+                                        .text_size(sp(9.0))
+                                        .text_color(gpui::white())
+                                        .child(format!("\u{2713}{}", if placed > 1 { placed.to_string() } else { String::new() })),
+                                )
+                            }),
                     )
                     .child(
                         div()
                             .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w(sp(0.0))
-                            .gap_0p5()
+                            .flex_row()
+                            .items_center()
+                            .justify_between()
                             .child(
                                 div()
+                                    .flex_1()
+                                    .min_w(sp(0.0))
                                     .truncate()
-                                    .text_size(sp(11.0))
-                                    .text_color(theme.text)
+                                    .text_size(sp(10.0))
+                                    .text_color(if placed == 0 { theme.accent } else { theme.text_muted })
                                     .child(name),
                             )
                             .child(
                                 div()
-                                    .text_size(sp(10.0))
-                                    .text_color(if placed == 0 { theme.accent } else { theme.text_faint })
-                                    .child(if placed == 0 {
-                                        "Not on a page".to_string()
-                                    } else {
-                                        format!("On {placed} page spot{}", plural(placed))
-                                    }),
+                                    .id(SharedString::from(format!("zine-photo-remove-{n}")))
+                                    .flex()
+                                    .flex_shrink_0()
+                                    .items_center()
+                                    .justify_center()
+                                    .size(sp(16.0))
+                                    .rounded_md()
+                                    .text_size(sp(9.0))
+                                    .text_color(theme.text_faint)
+                                    .cursor_pointer()
+                                    .hover(|el| el.bg(theme.surface).text_color(theme.danger))
+                                    .tooltip(rustyedit_ui::tip("Take out of the zine", &theme))
+                                    .child("\u{2715}")
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                                        let photo = photo.clone();
+                                        this.zine_ui.clear_selection();
+                                        this.update_zine(cx, |z| {
+                                            z.remove(&[photo]);
+                                        })
+                                    })),
                             ),
-                    )
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("zine-tray-remove-{n}")))
-                            .flex()
-                            .flex_shrink_0()
-                            .items_center()
-                            .justify_center()
-                            .size(sp(20.0))
-                            .rounded_md()
-                            .text_size(sp(10.0))
-                            .text_color(theme.text_faint)
-                            .cursor_pointer()
-                            .hover(|el| el.bg(theme.surface).text_color(theme.danger))
-                            .tooltip(rustyedit_ui::tip("Take out of the zine", &theme))
-                            .child("\u{2715}")
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                                let photo = photo.clone();
-                                this.zine_ui.clear_selection();
-                                this.update_zine(cx, |z| {
-                                    z.remove(&[photo]);
-                                })
-                            })),
                     )
                     .into_any_element()
             })
             .collect();
 
-        let tool = |id: &'static str, label: &'static str, hint: &'static str, kind: NewItem| {
-            let drag = NewItemDrag { kind, theme };
-            div()
-                .id(id)
-                .flex()
-                .flex_1()
-                .flex_col()
-                .items_center()
-                .justify_center()
-                .gap_0p5()
-                .h(sp(46.0))
-                .rounded_lg()
-                .cursor_grab()
-                .border_1()
-                .border_color(theme.border_subtle)
-                .bg(theme.background)
-                .hover(|el| el.border_color(theme.accent).bg(theme.surface_elevated))
-                .tooltip(rustyedit_ui::tip(hint, &theme))
-                .on_drag(drag, |drag, _offset, _window, cx| cx.new(|_| drag.clone()))
-                .child(
-                    div()
-                        .text_size(sp(14.0))
-                        .text_color(theme.text)
-                        .child(if kind == NewItem::Text { "T" } else { "\u{25A2}" }),
-                )
-                .child(div().text_size(sp(10.0)).text_color(theme.text_muted).child(label))
+        let look = self.film_look();
+        let handle = self.zine_ui.photos_scroll.clone();
+        let filters = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_1()
+            .child(filter("zine-photos-all", "All".to_string(), !only_unplaced, cx, false))
+            .child(filter(
+                "zine-photos-unplaced",
+                format!("Not placed {}", unplaced.len()),
+                only_unplaced,
+                cx,
+                true,
+            ))
+            .into_any_element();
+        let content = if tiles.is_empty() {
+            vec![div()
+                .text_size(sp(11.0))
+                .text_color(look.chrome_text)
+                .child("Every photo is on a page.")
+                .into_any_element()]
+        } else {
+            tiles
         };
-
         div()
-            .id("zine-tray")
+            .id("zine-photo-strip")
             .flex()
             .flex_col()
             .flex_shrink_0()
-            .w(sp(TRAY_W))
-            .h_full()
-            .bg(theme.surface)
-            .border_l_1()
-            .border_color(theme.border)
+            .border_t_1()
+            .border_color(look.divider)
             // A photo dragged here from a page comes off it.
             .drag_over::<ZineDrag>(move |style, drag, _, _| {
                 if drag.from.is_some() {
@@ -1514,183 +1556,348 @@ impl Workspace {
                     this.update_zine(cx, |z| z.clear_spot(from));
                 }
             }))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_shrink_0()
-                    .gap_2()
-                    .p_3()
-                    .border_b_1()
-                    .border_color(theme.border_subtle)
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .text_size(sp(13.0))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.text)
-                                    .child("Photos"),
-                            )
-                            .child(
-                                div()
-                                    .text_size(sp(10.5))
-                                    .text_color(theme.text_faint)
-                                    .child(format!("{total} chosen")),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .gap_2()
-                            .child(tool("zine-tool-text", "Text box", "Drag onto a page to write on it", NewItem::Text))
-                            .child(tool("zine-tool-frame", "Photo frame", "Drag onto a page for an empty frame to fill", NewItem::Frame)),
-                    )
-                    .child(
-                        div()
-                            .text_size(sp(10.5))
-                            .text_color(theme.text_muted)
-                            .child("Drag a photo onto a page. Drop one back here to take it off."),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .gap_1()
-                            .p_0p5()
-                            .rounded_lg()
-                            .bg(theme.background)
-                            .child(filter("zine-tray-all", format!("All {total}"), !only_unplaced, cx, false))
-                            .child(filter(
-                                "zine-tray-unplaced",
-                                format!("Not placed {}", unplaced.len()),
-                                only_unplaced,
-                                cx,
-                                true,
-                            )),
-                    ),
-            )
-            .child(
-                div()
-                    .id("zine-tray-list")
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h(sp(0.0))
-                    .overflow_y_scroll()
-                    .gap_1p5()
-                    .p_2()
-                    .children(rows)
-                    .when(shown.is_empty(), |el| {
-                        el.child(
-                            div()
-                                .p_3()
-                                .text_size(sp(11.0))
-                                .text_color(theme.text_faint)
-                                .child("Every photo is on a page."),
-                        )
-                    }),
-            )
+            .child(self.strip_header(
+                format!("Photos \u{00B7} {total}"),
+                None,
+                Some(filters),
+                true,
+            ))
+            .child(self.strip_roll("zine-photo-list", &handle, ROLL_H, content, cx))
             .into_any_element()
     }
 
-    // --- The strip of pages ---------------------------------------------------------
+    // --- Strips: header, arrows and a roll, as in the filmstrip --------------------------------
 
-    /// Every page small along the bottom: click one to go to it, drag one
-    /// onto another to move it there.
-    fn zine_strip(&self, layout: &ZinePageLayout, cx: &mut Context<Self>) -> AnyElement {
-        let theme = self.theme;
-        let sheet = self.zine.manual.pages.iter().any(|p| p.is_sheet());
-        let cover = self.zine.options.cover && !sheet;
-        let thumbs = layout.pages.iter().enumerate().map(|(layout_ix, page)| {
-            let manual_ix = layout_ix.checked_sub(usize::from(cover));
-            let focused = manual_ix.is_some() && self.zine_ui.page == manual_ix;
-            let picked = manual_ix.is_some_and(|m| self.zine_ui.pages_selected.contains(&m));
-            let label = match manual_ix {
-                None => "Cover".to_string(),
-                Some(_) if sheet => "Sheet".to_string(),
-                Some(_) => format!("{}", layout_ix + 1),
-            };
-            let mini = self.page_mini(page, layout.size, STRIP_H - 34.0);
-            let thumb = div()
-                .id(SharedString::from(format!("zine-strip-{layout_ix}")))
-                .flex()
-                .flex_col()
-                .items_center()
-                .gap_1()
-                .flex_shrink_0()
-                .p_1()
-                .rounded_md()
-                .cursor_pointer()
-                .border_1()
-                .border_color(if focused { theme.accent } else { gpui::transparent_black() })
-                .when(picked, |el| el.bg(theme.accent_muted))
-                .hover(|el| el.bg(theme.surface_elevated))
-                .child(div().border_1().border_color(theme.border).child(mini))
-                .child(
-                    div()
-                        .text_size(sp(9.5))
-                        .text_color(if focused { theme.accent } else { theme.text_faint })
-                        .child(label),
-                )
-                .on_click(cx.listener(move |this, event: &ClickEvent, _w, cx| {
-                    // Cmd- or Shift-click picks pages for copying a look to.
-                    let m = event.modifiers();
-                    if let (Some(page), true) = (manual_ix, m.platform || m.control || m.shift) {
-                        let picked = &mut this.zine_ui.pages_selected;
-                        match picked.iter().position(|&p| p == page) {
-                            Some(at) => {
-                                picked.remove(at);
-                            }
-                            None => picked.push(page),
-                        }
-                        cx.notify();
-                        return;
-                    }
-                    this.zine_ui.pages_selected.clear();
-                    this.zine_ui.page = manual_ix;
-                    this.zine_ui.items.clear();
-                    let child = if this.zine_ui.spreads { (layout_ix + 1) / 2 } else { layout_ix };
-                    this.zine_ui.scroll.scroll_to_top_of_item(child);
-                    cx.notify();
-                }));
-            match manual_ix {
-                Some(from) => thumb
-                    .on_drag(PageDrag { page: from, theme }, |drag, _o, _w, cx| cx.new(|_| drag.clone()))
-                    .drag_over::<PageDrag>(move |style, _, _, _| {
-                        style.border_color(theme.accent).bg(theme.accent.opacity(0.15))
-                    })
-                    .on_drop(cx.listener(move |this, drag: &PageDrag, _w, cx| {
-                        this.zine_ui.page = Some(from);
-                        this.zine_ui.clear_selection();
-                        this.update_zine(cx, |z| {
-                            z.move_page(drag.page, from);
-                        });
-                    }))
-                    .into_any_element(),
-                None => thumb.into_any_element(),
-            }
-        });
+    /// The thin bar over a strip, dressed as the filmstrip's: a title, an
+    /// optional control in the middle and one at the right.
+    fn strip_header(
+        &self,
+        title: String,
+        centre: Option<AnyElement>,
+        right: Option<AnyElement>,
+        border_below: bool,
+    ) -> AnyElement {
+        let look = self.film_look();
         div()
-            .id("zine-strip")
             .flex()
             .flex_row()
             .items_center()
-            .gap_2()
             .flex_shrink_0()
-            .h(sp(STRIP_H))
-            .px_4()
-            .overflow_x_scroll()
-            .bg(theme.surface)
-            .border_t_1()
-            .border_color(theme.border)
-            .children(thumbs)
+            .h(px(STRIP_HEADER_H))
+            .px_3()
+            .bg(look.chrome_bg)
+            .when(border_below, |el| el.border_b_1())
+            .border_color(look.divider)
+            .when(look.monospace, |el| el.font_family(crate::filmstrip::EDGE_PRINT_FONT))
+            .text_size(sp(9.0))
+            .text_color(look.chrome_text)
+            .child(div().flex_1().min_w(sp(0.0)).truncate().child(title.to_uppercase()))
+            .children(centre)
+            .child(div().flex().flex_1().min_w(sp(0.0)).justify_end().children(right))
             .into_any_element()
+    }
+
+    /// Scrolls a strip by most of its width: `direction` -1 for left, 1 for
+    /// right.
+    fn scroll_strip(handle: &ScrollHandle, direction: f32) {
+        let page = f32::from(handle.bounds().size.width) * 0.8;
+        let most = f32::from(handle.max_offset().width).max(0.0);
+        let mut offset = handle.offset();
+        offset.x = px((f32::from(offset.x) - direction * page).max(-most).min(0.0));
+        handle.set_offset(offset);
+    }
+
+    /// An arrow button at the end of a strip, as the filmstrip's.
+    fn strip_arrow(&self, id: &'static str, forward: bool, handle: &ScrollHandle, cx: &mut Context<Self>) -> AnyElement {
+        let look = self.film_look();
+        let offset = f32::from(handle.offset().x);
+        let most = f32::from(handle.max_offset().width);
+        let enabled = if forward { -offset < most - 0.5 } else { offset < -0.5 };
+        let handle = handle.clone();
+        div()
+            .id(id)
+            .flex()
+            .flex_shrink_0()
+            .items_center()
+            .justify_center()
+            .w(px(30.0))
+            .h_full()
+            .bg(look.chrome_bg)
+            .text_size(sp(12.0))
+            .when(!forward, |el| el.border_r_1())
+            .when(forward, |el| el.border_l_1())
+            .border_color(look.divider)
+            .when(enabled, |el| {
+                el.text_color(look.chrome_text)
+                    .cursor_pointer()
+                    .hover(|el| el.bg(look.chrome_hover).text_color(look.selected))
+            })
+            .when(!enabled, |el| el.text_color(look.chrome_text.opacity(0.25)))
+            .child(if forward { "\u{25B6}" } else { "\u{25C0}" })
+            .tooltip(rustyedit_ui::tip(if forward { "Scroll right" } else { "Scroll left" }, &self.theme))
+            .on_click(cx.listener(move |_this, _, _window, cx| {
+                Self::scroll_strip(&handle, if forward { 1.0 } else { -1.0 });
+                cx.notify();
+            }))
+            .into_any_element()
+    }
+
+    /// A strip's roll: arrows at both ends and the items between, on the
+    /// filmstrip's background.
+    fn strip_roll(
+        &self,
+        id: &'static str,
+        handle: &ScrollHandle,
+        height: f32,
+        items: Vec<AnyElement>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let look = self.film_look();
+        div()
+            .flex()
+            .flex_row()
+            .flex_shrink_0()
+            .w_full()
+            .h(px(height))
+            .bg(linear_gradient(
+                180.0,
+                linear_color_stop(look.base_top, 0.0),
+                linear_color_stop(look.base_bottom, 1.0),
+            ))
+            .child(self.strip_arrow(if id == "zine-photo-list" { "zine-photos-prev" } else { "zine-pages-prev" }, false, handle, cx))
+            .child(
+                div()
+                    .id(id)
+                    .track_scroll(handle)
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_2()
+                    .flex_1()
+                    .min_w(sp(0.0))
+                    .h_full()
+                    .px_2()
+                    .overflow_x_scroll()
+                    .children(items),
+            )
+            .child(self.strip_arrow(if id == "zine-photo-list" { "zine-photos-next" } else { "zine-pages-next" }, true, handle, cx))
+            .into_any_element()
+    }
+
+    // --- The pages, across the top ---------------------------------------------------------
+
+    /// The pages in a strip across the top, left to right, the photos'
+    /// counterpart along the bottom. The tab in the middle folds it away.
+    fn zine_page_strip(&self, layout: &ZinePageLayout, cx: &mut Context<Self>) -> AnyElement {
+        let look = self.film_look();
+        let open = self.zine_ui.pages_open;
+        let picked = self.zine_ui.pages_selected.len();
+        let hint = if picked > 0 {
+            format!("{picked} picked")
+        } else {
+            "Drag to reorder \u{00B7} Cmd-click to pick".to_string()
+        };
+        let toggle = div()
+            .id("zine-pages-toggle")
+            .flex()
+            .items_center()
+            .justify_center()
+            .w(sp(44.0))
+            .h(sp(16.0))
+            .rounded_full()
+            .bg(look.chrome_hover)
+            .text_color(look.chrome_text)
+            .cursor_pointer()
+            .hover(|el| el.text_color(look.selected))
+            .tooltip(rustyedit_ui::tip(
+                if open { "Hide the pages" } else { "Show the pages" },
+                &self.theme,
+            ))
+            .child(rustyedit_ui::icon(
+                if open { rustyedit_ui::Icon::ChevronUp } else { rustyedit_ui::Icon::ChevronDown },
+                12.0,
+                look.chrome_text,
+            ))
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.zine_ui.pages_open = !this.zine_ui.pages_open;
+                cx.notify();
+            }))
+            .into_any_element();
+        let hint = div().child(hint.to_uppercase()).into_any_element();
+        let handle = self.zine_ui.pages_scroll.clone();
+        div()
+            .flex()
+            .flex_col()
+            .flex_shrink_0()
+            .border_b_1()
+            .border_color(look.divider)
+            .child(self.strip_header(
+                format!("Pages \u{00B7} {}", layout.pages.len()),
+                Some(toggle),
+                Some(hint),
+                open,
+            ))
+            .when(open, |el| {
+                el.child(self.strip_roll("zine-pages-list", &handle, ROLL_H, self.zine_page_thumbs(layout, cx), cx))
+            })
+            .into_any_element()
+    }
+
+    /// The small pages, and a tile at the end that adds one. Click a page to
+    /// go to it, drag one onto another to move it there, Cmd- or Shift-click
+    /// to pick several.
+    fn zine_page_thumbs(&self, layout: &ZinePageLayout, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let theme = self.theme;
+        let look = self.film_look();
+        let sheet = self.zine.manual.pages.iter().any(|p| p.is_sheet());
+        let cover = self.zine.options.cover && !sheet;
+        let mut items: Vec<AnyElement> = layout
+            .pages
+            .iter()
+            .enumerate()
+            .map(|(layout_ix, page)| {
+                let manual_ix = layout_ix.checked_sub(usize::from(cover));
+                let focused = manual_ix.is_some() && self.zine_ui.page == manual_ix;
+                let picked = manual_ix.is_some_and(|m| self.zine_ui.pages_selected.contains(&m));
+                let label = match manual_ix {
+                    None => "Cover".to_string(),
+                    Some(_) if sheet => "Sheet".to_string(),
+                    Some(_) => format!("{}", layout_ix + 1),
+                };
+                let mini = self.page_mini(page, layout.size, THUMB_H);
+                let thumb = div()
+                    .id(SharedString::from(format!("zine-strip-{layout_ix}")))
+                    .relative()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap_1()
+                    .flex_shrink_0()
+                    .px_1p5()
+                    .pt_1p5()
+                    .pb_1()
+                    .rounded_lg()
+                    .cursor_pointer()
+                    .border_2()
+                    .border_color(if focused { look.selected } else { gpui::transparent_black() })
+                    .when(picked, |el| el.bg(look.frame_selected_bg))
+                    .hover(|el| el.bg(look.frame_hover_bg))
+                    .child(
+                        div()
+                            .border_1()
+                            .border_color(look.picture_border)
+                            .shadow_sm()
+                            .child(mini),
+                    )
+                    .child(
+                        div()
+                            .text_size(sp(9.5))
+                            .text_color(if focused { look.selected } else { look.meta_text })
+                            .child(label),
+                    )
+                    .when(picked, |el| {
+                        el.child(
+                            div()
+                                .absolute()
+                                .top(sp(2.0))
+                                .right(sp(4.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .size(sp(14.0))
+                                .rounded_full()
+                                .bg(look.selected)
+                                .text_size(sp(8.5))
+                                .text_color(gpui::white())
+                                .child("\u{2713}"),
+                        )
+                    })
+                    .on_click(cx.listener(move |this, event: &ClickEvent, _w, cx| {
+                        // Cmd- or Shift-click picks pages for copying a look to.
+                        let m = event.modifiers();
+                        if let (Some(page), true) = (manual_ix, m.platform || m.control || m.shift) {
+                            let picked = &mut this.zine_ui.pages_selected;
+                            match picked.iter().position(|&p| p == page) {
+                                Some(at) => {
+                                    picked.remove(at);
+                                }
+                                None => picked.push(page),
+                            }
+                            cx.notify();
+                            return;
+                        }
+                        this.zine_ui.pages_selected.clear();
+                        this.zine_ui.page = manual_ix;
+                        this.zine_ui.items.clear();
+                        let child = if this.zine_ui.spreads { (layout_ix + 1) / 2 } else { layout_ix };
+                        this.zine_ui.scroll.scroll_to_top_of_item(child);
+                        cx.notify();
+                    }));
+                match manual_ix {
+                    Some(from) => thumb
+                        .on_drag(PageDrag { page: from, theme }, |drag, _o, _w, cx| cx.new(|_| drag.clone()))
+                        .drag_over::<PageDrag>(move |style, _, _, _| {
+                            style.border_color(theme.accent).bg(theme.accent.opacity(0.15))
+                        })
+                        .on_drop(cx.listener(move |this, drag: &PageDrag, _w, cx| {
+                            this.zine_ui.page = Some(from);
+                            this.zine_ui.clear_selection();
+                            this.update_zine(cx, |z| {
+                                z.move_page(drag.page, from);
+                            });
+                        }))
+                        .into_any_element(),
+                    None => thumb.into_any_element(),
+                }
+            })
+            .collect();
+
+        // The tile that adds a page is built like the pages are, so it
+        // lines up with them.
+        if !sheet {
+            let width = THUMB_H * layout.size.0 / layout.size.1.max(1.0);
+            items.push(
+                div()
+                    .id("zine-strip-add")
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap_1()
+                    .flex_shrink_0()
+                    .px_1p5()
+                    .pt_1p5()
+                    .pb_1()
+                    .rounded_lg()
+                    .cursor_pointer()
+                    .border_2()
+                    .border_color(gpui::transparent_black())
+                    .text_color(look.chrome_text)
+                    .hover(|el| el.bg(look.frame_hover_bg).text_color(look.selected))
+                    .tooltip(rustyedit_ui::tip("Add a page at the end", &theme))
+                    .child(
+                        div().border_1().border_color(look.divider).child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .w(px(width))
+                                .h(px(THUMB_H))
+                                .text_size(sp(22.0))
+                                .child("+"),
+                        ),
+                    )
+                    .child(div().text_size(sp(9.5)).child("New page"))
+                    .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                        this.update_zine(cx, |z| z.add_free_page());
+                        let last = this.zine.manual.pages.len().saturating_sub(1);
+                        this.zine_ui.page = Some(last);
+                        this.zine_ui.items.clear();
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+            );
+        }
+        items
     }
 
     // --- Preview -------------------------------------------------------------------------
@@ -1876,4 +2083,26 @@ fn spot_key(spot: ZineSpot) -> (usize, usize) {
         ZineSpot::Cover => (usize::MAX, 0),
         ZineSpot::Slot { page, slot } => (page, slot),
     }
+}
+
+/// A titled block in the side bar.
+fn side_section(theme: &rustyedit_ui::Theme, title: &'static str, content: AnyElement) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .p_2()
+        .rounded_lg()
+        .bg(theme.background)
+        .border_1()
+        .border_color(theme.border_subtle)
+        .child(
+            div()
+                .text_size(sp(10.0))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(theme.text_faint)
+                .child(title.to_uppercase()),
+        )
+        .child(content)
+        .into_any_element()
 }

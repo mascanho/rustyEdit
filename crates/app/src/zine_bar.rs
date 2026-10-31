@@ -41,50 +41,44 @@ fn rgb_colour(rgb: [u8; 3]) -> gpui::Hsla {
 }
 
 impl Workspace {
-    /// The bar above the pages.
-    pub(crate) fn zine_context_bar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+    /// What can be done with the page being worked on and with what is
+    /// selected on it, as blocks for the side bar.
+    pub(crate) fn zine_context_sections(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = self.theme;
         let ui = &self.zine_ui;
         let pages = self.zine.manual.pages.len();
         let page = ui.page.filter(|&p| p < pages).or(pages.checked_sub(1));
 
-        let mut groups: Vec<gpui::AnyElement> = Vec::new();
-        if let Some(page) = page {
-            groups.push(self.page_group(page, cx));
-        } else {
-            groups.push(
+        let mut sections: Vec<gpui::AnyElement> = Vec::new();
+        match page {
+            Some(page) => sections.push(side_block(
+                &theme,
+                &format!("Page {}", page + usize::from(self.zine.options.cover && !self.zine.manual.pages[page].is_sheet()) + 1),
+                self.page_group(page, cx),
+            )),
+            None => sections.push(
                 div()
+                    .px_2()
                     .text_size(sp(11.0))
                     .text_color(theme.text_faint)
                     .child(if pages == 0 {
-                        "Add a page below to begin."
+                        "Add a page to begin."
                     } else {
-                        "Click a page to work on it, or pick a template for it."
+                        "Click a page to work on it."
                     })
                     .into_any_element(),
-            );
+            ),
         }
         if let Some(group) = page.and_then(|p| self.selection_group(p, cx)) {
-            groups.push(group);
+            let count = ui.items.len();
+            let title = if count == 1 { "Selection".to_string() } else { format!("{count} selected") };
+            sections.push(side_block(&theme, &title, group));
         }
-
         div()
-            .id("zine-context-bar")
             .flex()
-            .flex_row()
-            .flex_wrap()
-            .items_start()
-            .gap_x_5()
-            .gap_y_2()
-            .flex_shrink_0()
-            .max_h(sp(190.0))
-            .overflow_y_scroll()
-            .px_6()
-            .py_2()
-            .bg(theme.surface)
-            .border_b_1()
-            .border_color(theme.border_subtle)
-            .children(groups)
+            .flex_col()
+            .gap_3()
+            .children(sections)
             .into_any_element()
     }
 
@@ -139,6 +133,7 @@ impl Workspace {
         let actions = div()
             .flex()
             .flex_row()
+            .flex_wrap()
             .gap_1()
             .child(
                 pill(&theme, "zine-add-text".into(), "Add text", "Put a box of text on this page", false, !sheet)
@@ -173,12 +168,10 @@ impl Workspace {
             );
         div()
             .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap_x_5()
-            .gap_y_2()
-            .child(labelled(&theme, "Template", div().flex().flex_row().gap_1().children(templates).into_any_element()))
-            .child(labelled(&theme, "Page colour", div().flex().flex_row().gap_1().children(swatches).into_any_element()))
+            .flex_col()
+            .gap_3()
+            .child(labelled(&theme, "Template", div().flex().flex_row().flex_wrap().gap_1().children(templates).into_any_element()))
+            .child(labelled(&theme, "Page colour", div().flex().flex_row().flex_wrap().gap_1().children(swatches).into_any_element()))
             .child(labelled(&theme, "Page", actions.into_any_element()))
             .child(labelled(&theme, "Copy a page's look", self.look_controls(page, cx)))
             .into_any_element()
@@ -186,7 +179,6 @@ impl Workspace {
 
     /// What can be done with the selected boxes of `page`.
     fn selection_group(&self, page: usize, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
-        let theme = self.theme;
         let ui = &self.zine_ui;
         if ui.page != Some(page) || ui.items.is_empty() {
             return None;
@@ -208,15 +200,8 @@ impl Workspace {
         Some(
             div()
                 .flex()
-                .flex_row()
-                .flex_wrap()
-                .gap_x_5()
-                .gap_y_2()
-                .p_2()
-                .rounded_lg()
-                .border_1()
-                .border_color(theme.accent.opacity(0.4))
-                .bg(theme.background)
+                .flex_col()
+                .gap_3()
                 .children(parts)
                 .into_any_element(),
         )
@@ -280,19 +265,18 @@ impl Workspace {
         let _ = ix;
         let _ = page;
         vec![
-            labelled(&theme, "Photo", div().flex().flex_row().gap_1().children(fit_row).into_any_element()),
+            labelled(&theme, "Photo", div().flex().flex_row().flex_wrap().gap_1().children(fit_row).into_any_element()),
             labelled(
                 &theme,
                 "Mat",
                 div()
                     .flex()
-                    .flex_row()
-                    .items_center()
+                    .flex_col()
                     .gap_2()
                     .child(self.bar_slider("zine-mat", "Width", frame.mat_mm, 0.0, ZINE_MAX_MAT_MM, 0.0, |i, v| {
                         i.frame.mat_mm = v
                     }, cx))
-                    .child(div().flex().flex_row().gap_1().children(mats))
+                    .child(div().flex().flex_row().flex_wrap().gap_1().children(mats))
                     .into_any_element(),
             ),
             labelled(
@@ -300,8 +284,7 @@ impl Workspace {
                 "Frame",
                 div()
                     .flex()
-                    .flex_row()
-                    .items_center()
+                    .flex_col()
                     .gap_2()
                     .child(self.bar_slider("zine-radius", "Corners", frame.radius_mm, 0.0, ZINE_MAX_RADIUS_MM, 0.0, |i, v| {
                         i.frame.radius_mm = v
@@ -319,8 +302,7 @@ impl Workspace {
                 "Tilt",
                 div()
                     .flex()
-                    .flex_row()
-                    .items_center()
+                    .flex_col()
                     .gap_2()
                     .child(self.bar_slider("zine-tilt", "Degrees", item.rotation, -180.0, 180.0, 0.0, |i, v| {
                         i.rotation = v.round()
@@ -349,8 +331,7 @@ impl Workspace {
             Some(draft) => div()
                 .flex()
                 .items_center()
-                .min_w(sp(260.0))
-                .max_w(sp(420.0))
+                .w_full()
                 .px_2()
                 .py_1()
                 .rounded_md()
@@ -366,8 +347,7 @@ impl Workspace {
                 .id("zine-text-words")
                 .flex()
                 .items_center()
-                .min_w(sp(260.0))
-                .max_w(sp(420.0))
+                .w_full()
                 .px_2()
                 .py_1()
                 .rounded_md()
@@ -431,14 +411,13 @@ impl Workspace {
                 if typing { "Typing \u{2014} Enter keeps it, Shift+Enter starts a line, Esc cancels" } else { "Text" },
                 words,
             ),
-            labelled(&theme, "Typeface", div().flex().flex_row().gap_1().children(fonts).into_any_element()),
+            labelled(&theme, "Typeface", div().flex().flex_row().flex_wrap().gap_1().children(fonts).into_any_element()),
             labelled(
                 &theme,
                 "Size",
                 div()
                     .flex()
-                    .flex_row()
-                    .items_center()
+                    .flex_col()
                     .gap_2()
                     .child(self.bar_slider("zine-text-size", "Points", text.size_pt, ZINE_MIN_TEXT_PT, ZINE_MAX_TEXT_PT, 14.0, |i, v| {
                         if let Some(t) = i.text.as_mut() {
@@ -457,13 +436,14 @@ impl Workspace {
                     )
                     .into_any_element(),
             ),
-            labelled(&theme, "Align", div().flex().flex_row().gap_1().children(aligns).into_any_element()),
+            labelled(&theme, "Align", div().flex().flex_row().flex_wrap().gap_1().children(aligns).into_any_element()),
             labelled(
                 &theme,
                 "Colour",
                 div()
                     .flex()
                     .flex_row()
+                    .flex_wrap()
                     .items_center()
                     .gap_1()
                     .children(inks)
@@ -570,18 +550,17 @@ impl Workspace {
         });
         div()
             .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap_x_5()
-            .gap_y_2()
-            .child(labelled(&theme, &format!("{count} selected \u{2014} align"), div().flex().flex_row().gap_1().children(aligns).into_any_element()))
-            .child(labelled(&theme, "Space evenly", div().flex().flex_row().gap_1().children(spread).into_any_element()))
+            .flex_col()
+            .gap_3()
+            .child(labelled(&theme, &format!("{count} selected \u{2014} align"), div().flex().flex_row().flex_wrap().gap_1().children(aligns).into_any_element()))
+            .child(labelled(&theme, "Space evenly", div().flex().flex_row().flex_wrap().gap_1().children(spread).into_any_element()))
             .child(labelled(
                 &theme,
                 "Together",
                 div()
                     .flex()
                     .flex_row()
+                    .flex_wrap()
                     .gap_1()
                     .child(
                         pill(&theme, "zine-group-dup".into(), "Duplicate", "Copies in front (\u{2318}D)", false, true)
@@ -613,7 +592,7 @@ impl Workspace {
         let theme = self.theme;
         let entity = cx.entity();
         div()
-            .w(sp(190.0))
+            .w_full()
             .child(rustyedit_ui::labeled_slider(
                 id,
                 label,
@@ -755,5 +734,27 @@ fn labelled(theme: &Theme, label: &str, control: gpui::AnyElement) -> gpui::AnyE
                 .child(label.to_uppercase()),
         )
         .child(control)
+        .into_any_element()
+}
+
+/// A titled block of controls in the side bar.
+fn side_block(theme: &Theme, title: &str, content: gpui::AnyElement) -> gpui::AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .p_2()
+        .rounded_lg()
+        .bg(theme.background)
+        .border_1()
+        .border_color(theme.border_subtle)
+        .child(
+            div()
+                .text_size(sp(10.0))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(theme.text_faint)
+                .child(title.to_uppercase()),
+        )
+        .child(content)
         .into_any_element()
 }

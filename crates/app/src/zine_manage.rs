@@ -404,6 +404,7 @@ impl Workspace {
         let actions = div()
             .flex()
             .flex_row()
+            .flex_wrap()
             .gap_1()
             .child(
                 pill(&theme, "zine-new".into(), "New zine", "Start another zine", false, true)
@@ -493,6 +494,7 @@ impl Workspace {
                         div()
                             .flex()
                             .flex_row()
+                            .flex_wrap()
                             .gap_1()
                             .child(
                                 pill(&theme, SharedString::from(format!("zine-design-new-{ix}")), "New zine", "Start a new zine laid out like this", false, true)
@@ -530,6 +532,7 @@ impl Workspace {
         let per = div()
             .flex()
             .flex_row()
+            .flex_wrap()
             .gap_1()
             .children([1usize, 2, 4].map(|n| {
                 pill(
@@ -619,6 +622,7 @@ impl Workspace {
                 div()
                     .flex()
                     .flex_row()
+                    .flex_wrap()
                     .gap_1()
                     .child(toggle("zine-look-colour", "Page colour", parts.colour, |p| p.colour = !p.colour))
                     .child(toggle("zine-look-frames", "Photo frames", parts.frames, |p| p.frames = !p.frames))
@@ -628,6 +632,7 @@ impl Workspace {
                 div()
                     .flex()
                     .flex_row()
+                    .flex_wrap()
                     .gap_1()
                     .child(apply("zine-look-all", "Put on all pages".to_string(), "Every page of the zine", LookScope::All, has))
                     .child(apply("zine-look-after", "On the pages after".to_string(), "Every page after this one", LookScope::After(page), has))

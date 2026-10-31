@@ -110,6 +110,11 @@ pub(crate) struct ZineUi {
     pub(crate) style_parts: ZineStyleParts,
     /// Pages picked in the strip (Cmd- or Shift-click).
     pub(crate) pages_selected: Vec<usize>,
+    /// Whether the strip of pages across the top is open.
+    pub(crate) pages_open: bool,
+    /// Where the strips of pages and of photos are scrolled to.
+    pub(crate) pages_scroll: ScrollHandle,
+    pub(crate) photos_scroll: ScrollHandle,
     /// A zine whose delete button has been pressed once.
     pub(crate) confirm_delete: Option<usize>,
 }
@@ -142,6 +147,9 @@ impl Default for ZineUi {
             style_clipboard: None,
             style_parts: ZineStyleParts::default(),
             pages_selected: Vec::new(),
+            pages_open: true,
+            pages_scroll: ScrollHandle::new(),
+            photos_scroll: ScrollHandle::new(),
             confirm_delete: None,
         }
     }
