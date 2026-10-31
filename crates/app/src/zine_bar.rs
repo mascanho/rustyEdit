@@ -180,6 +180,7 @@ impl Workspace {
             .child(labelled(&theme, "Template", div().flex().flex_row().gap_1().children(templates).into_any_element()))
             .child(labelled(&theme, "Page colour", div().flex().flex_row().gap_1().children(swatches).into_any_element()))
             .child(labelled(&theme, "Page", actions.into_any_element()))
+            .child(labelled(&theme, "Copy a page's look", self.look_controls(page, cx)))
             .into_any_element()
     }
 
@@ -673,7 +674,7 @@ impl Workspace {
 }
 
 /// A small button.
-fn pill(
+pub(crate) fn pill(
     theme: &Theme,
     id: SharedString,
     label: &str,

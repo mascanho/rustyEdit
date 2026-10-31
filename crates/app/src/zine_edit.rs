@@ -6,7 +6,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gpui::{Bounds, Context, Pixels, Point, ScrollHandle};
 use rustyedit_core::{
-    zine_snap_corner, zine_snap_move, Zine, ZineAlignMode, ZineDistributeAxis, ZineFreeItem,
+    ZineGrouping, ZinePageStyle, ZineStyleParts, zine_snap_corner, zine_snap_move, Zine, ZineAlignMode, ZineDistributeAxis, ZineFreeItem,
     ZineGuide, ZINE_MIN_ITEM,
 };
 
@@ -99,6 +99,19 @@ pub(crate) struct ZineUi {
     pub(crate) cache: RefCell<ComposeCache>,
     /// The last change made by a slider, so one drag is one undo step.
     pub(crate) last_edit: Option<(&'static str, std::time::Instant)>,
+    /// The Arrange card: what to group by, photos per page, and whether a
+    /// title page opens each section; and whether it is working.
+    pub(crate) arrange_by: ZineGrouping,
+    pub(crate) arrange_per_page: usize,
+    pub(crate) arrange_headings: bool,
+    pub(crate) arranging: bool,
+    /// A page's look, copied to put on other pages, and which parts of it.
+    pub(crate) style_clipboard: Option<ZinePageStyle>,
+    pub(crate) style_parts: ZineStyleParts,
+    /// Pages picked in the strip (Cmd- or Shift-click).
+    pub(crate) pages_selected: Vec<usize>,
+    /// A zine whose delete button has been pressed once.
+    pub(crate) confirm_delete: Option<usize>,
 }
 
 impl Default for ZineUi {
@@ -122,6 +135,14 @@ impl Default for ZineUi {
             reposition: false,
             cache: RefCell::new(ComposeCache::default()),
             last_edit: None,
+            arrange_by: ZineGrouping::Day,
+            arrange_per_page: 2,
+            arrange_headings: true,
+            arranging: false,
+            style_clipboard: None,
+            style_parts: ZineStyleParts::default(),
+            pages_selected: Vec::new(),
+            confirm_delete: None,
         }
     }
 }
@@ -140,6 +161,7 @@ impl ZineUi {
     }
 
     pub(crate) fn clear_selection(&mut self) {
+        self.pages_selected.clear();
         self.items.clear();
         self.reposition = false;
         self.text_edit = None;

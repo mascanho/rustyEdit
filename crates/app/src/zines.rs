@@ -171,7 +171,8 @@ impl Workspace {
 
     pub(crate) fn zine_changed(&mut self, cx: &mut Context<Self>) {
         self.zine_message = None;
-        if let Err(error) = rustyedit_io::zine::save(&self.zine) {
+        self.zine_library.sync(&self.zine);
+        if let Err(error) = rustyedit_io::zine::save_library(&self.zine_library) {
             eprintln!("Could not save the zine: {error}");
         }
         cx.notify();
@@ -429,7 +430,17 @@ impl Workspace {
                 o.captions = !o.captions
             }),
         ];
+        let zines_children = self.zines_card(cx);
+        let designs_children = self.designs_card(cx);
+        let arrange_children = self.arrange_card(cx);
         let sections = vec![
+            self.export_card(
+                "zine-card-zines",
+                "Your zines",
+                format!("{}", self.zine_library.zines.len()),
+                zines_children,
+                cx,
+            ),
             self.export_card(
                 "zine-card-output",
                 "Output",
@@ -450,6 +461,20 @@ impl Workspace {
                 cx,
             ),
             self.export_card("zine-card-text", "Text", options.title.clone(), text_children, cx),
+            self.export_card(
+                "zine-card-arrange",
+                "Arrange by theme",
+                self.zine_ui.arrange_by.label().to_string(),
+                arrange_children,
+                cx,
+            ),
+            self.export_card(
+                "zine-card-designs",
+                "Templates",
+                format!("{}", self.zine_designs.designs.len()),
+                designs_children,
+                cx,
+            ),
         ];
 
         let ready = count > 0 && options.destination.is_some();
@@ -858,7 +883,7 @@ impl Workspace {
     }
 
     /// A one-line text field: click to type, Enter to keep it.
-    fn zine_text_field(
+    pub(crate) fn zine_text_field(
         &self,
         id: &'static str,
         target: TextTarget,

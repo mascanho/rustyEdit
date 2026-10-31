@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 use image::RgbImage;
 use rustyedit_core::{
-    Zine, ZineCell, ZineContent, ZineLayout, ZineOptions, ZinePageLayout, ZineRect, CAPTION_MM,
+    Zine, ZineCell, ZineContent, ZineDesigns, ZineLayout, ZineLibrary, ZineOptions,
+    ZinePageLayout, ZineRect, CAPTION_MM,
 };
 
 use crate::pdf::{self, JpegImage, PdfPage};
@@ -600,30 +601,71 @@ pub fn write_html(
 
 // --- Remembering ---------------------------------------------------------------
 
-fn store_path() -> Option<PathBuf> {
-    crate::settings_path().map(|path| path.with_file_name("zine.json"))
+fn store_path(name: &str) -> Option<PathBuf> {
+    crate::settings_path().map(|path| path.with_file_name(name))
 }
 
-/// The zine saved last time (or an empty one).
-pub fn load() -> Zine {
-    store_path()
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .and_then(|data| serde_json::from_str(&data).ok())
-        .unwrap_or_default()
+fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
+    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
 }
 
-pub fn save(zine: &Zine) -> anyhow::Result<()> {
-    let path = store_path().ok_or_else(|| anyhow::anyhow!("no config directory"))?;
+fn write_json<T: serde::Serialize>(path: Option<PathBuf>, value: &T) -> anyhow::Result<()> {
+    let path = path.ok_or_else(|| anyhow::anyhow!("no config directory"))?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, serde_json::to_string_pretty(zine)?)?;
+    std::fs::write(path, serde_json::to_string_pretty(value)?)?;
     Ok(())
+}
+
+/// The zines saved last time. A single zine saved by an earlier version
+/// becomes the first of the library.
+pub fn load_library() -> ZineLibrary {
+    if let Some(library) = store_path("zines.json").and_then(|p| read_json::<ZineLibrary>(&p)) {
+        return library.normalised();
+    }
+    store_path("zine.json")
+        .and_then(|p| read_json::<Zine>(&p))
+        .map(ZineLibrary::of)
+        .unwrap_or_default()
+}
+
+pub fn save_library(library: &ZineLibrary) -> anyhow::Result<()> {
+    write_json(store_path("zines.json"), library)
+}
+
+/// The designs saved to start zines from.
+pub fn load_designs() -> ZineDesigns {
+    store_path("zine_designs.json")
+        .and_then(|p| read_json(&p))
+        .unwrap_or_default()
+}
+
+pub fn save_designs(designs: &ZineDesigns) -> anyhow::Result<()> {
+    write_json(store_path("zine_designs.json"), designs)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_library_and_designs_round_trip_and_an_old_zine_loads() {
+        let mut library = ZineLibrary::default();
+        library.zines[0].options.title = "Kept".into();
+        let json = serde_json::to_string(&library).unwrap();
+        let back: ZineLibrary = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.zines[0].options.title, "Kept");
+        // A library file with nothing in it still has a zine to work on.
+        let empty: ZineLibrary = serde_json::from_str(r#"{"zines":[],"active":3}"#).unwrap();
+        let empty = empty.normalised();
+        assert_eq!((empty.zines.len(), empty.active), (1, 0));
+        // What the earlier version wrote is a bare zine.
+        let old: Zine = serde_json::from_str(r#"{"photos":[],"options":{"title":"Old"}}"#).unwrap();
+        assert_eq!(ZineLibrary::of(old).zines[0].options.title, "Old");
+        let designs: ZineDesigns = serde_json::from_str("{}").unwrap();
+        assert!(designs.designs.is_empty());
+    }
     use rustyedit_core::layout_pages;
 
     fn picture(w: u32, h: u32, caption: &str) -> Option<ZineImage> {

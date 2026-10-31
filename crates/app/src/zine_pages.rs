@@ -1610,6 +1610,7 @@ impl Workspace {
         let thumbs = layout.pages.iter().enumerate().map(|(layout_ix, page)| {
             let manual_ix = layout_ix.checked_sub(usize::from(cover));
             let focused = manual_ix.is_some() && self.zine_ui.page == manual_ix;
+            let picked = manual_ix.is_some_and(|m| self.zine_ui.pages_selected.contains(&m));
             let label = match manual_ix {
                 None => "Cover".to_string(),
                 Some(_) if sheet => "Sheet".to_string(),
@@ -1628,6 +1629,7 @@ impl Workspace {
                 .cursor_pointer()
                 .border_1()
                 .border_color(if focused { theme.accent } else { gpui::transparent_black() })
+                .when(picked, |el| el.bg(theme.accent_muted))
                 .hover(|el| el.bg(theme.surface_elevated))
                 .child(div().border_1().border_color(theme.border).child(mini))
                 .child(
@@ -1636,7 +1638,21 @@ impl Workspace {
                         .text_color(if focused { theme.accent } else { theme.text_faint })
                         .child(label),
                 )
-                .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                .on_click(cx.listener(move |this, event: &ClickEvent, _w, cx| {
+                    // Cmd- or Shift-click picks pages for copying a look to.
+                    let m = event.modifiers();
+                    if let (Some(page), true) = (manual_ix, m.platform || m.control || m.shift) {
+                        let picked = &mut this.zine_ui.pages_selected;
+                        match picked.iter().position(|&p| p == page) {
+                            Some(at) => {
+                                picked.remove(at);
+                            }
+                            None => picked.push(page),
+                        }
+                        cx.notify();
+                        return;
+                    }
+                    this.zine_ui.pages_selected.clear();
                     this.zine_ui.page = manual_ix;
                     this.zine_ui.items.clear();
                     let child = if this.zine_ui.spreads { (layout_ix + 1) / 2 } else { layout_ix };

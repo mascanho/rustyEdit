@@ -556,6 +556,7 @@ impl Workspace {
             TextTarget::ExportPresetName => self.save_export_preset(text, cx),
             TextTarget::ZineTitle | TextTarget::ZineAuthor => self.commit_zine_text(target, text, cx),
             TextTarget::ZineText => self.commit_zine_item_text(text, cx),
+            TextTarget::ZineDesignName => self.save_design(text, cx),
             TextTarget::Title
             | TextTarget::Caption
             | TextTarget::Creator

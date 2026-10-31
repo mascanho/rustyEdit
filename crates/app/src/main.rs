@@ -53,6 +53,7 @@ mod workspace;
 mod zine_bar;
 mod zine_compose;
 mod zine_edit;
+mod zine_manage;
 mod zine_pages;
 mod zine_visuals;
 mod zines;

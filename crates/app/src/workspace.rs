@@ -127,6 +127,8 @@ pub enum TextTarget {
     ZineAuthor,
     /// The words of a text box on a zine page.
     ZineText,
+    /// The name a zine's design is saved under.
+    ZineDesignName,
     /// The command palette's search.
     CommandPalette,
 }
@@ -241,6 +243,9 @@ pub struct Workspace {
     pub(crate) export_added: Vec<u64>,
     /// The photos picked for a zine, and how it is made.
     pub(crate) zine: rustyedit_core::Zine,
+    /// Every zine (the one being worked on is `zine`), and saved designs.
+    pub(crate) zine_library: rustyedit_core::ZineLibrary,
+    pub(crate) zine_designs: rustyedit_core::ZineDesigns,
     pub(crate) zine_run: Option<crate::zines::ZineRun>,
     pub(crate) zine_message: Option<SharedString>,
     pub(crate) zine_panel_scroll: ScrollHandle,
@@ -376,6 +381,7 @@ pub struct Workspace {
 impl Workspace {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let settings = rustyedit_io::load_settings();
+        let zine_library = rustyedit_io::zine::load_library();
         let develop_ui = DevelopUi::new(&settings);
         let (catalog_def, catalog_list) = Self::init_catalogs();
         // Flush any not-yet-written edits synchronously on quit, since the
@@ -481,7 +487,9 @@ impl Workspace {
             export_run: None,
             export_excluded: HashSet::new(),
             export_added: Vec::new(),
-            zine: rustyedit_io::zine::load(),
+            zine: zine_library.zines[zine_library.active].clone(),
+            zine_library,
+            zine_designs: rustyedit_io::zine::load_designs(),
             zine_run: None,
             zine_message: None,
             zine_panel_scroll: ScrollHandle::new(),

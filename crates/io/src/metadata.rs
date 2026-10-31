@@ -655,6 +655,29 @@ fn gps_text(exif: &Exif) -> Option<String> {
     Some(format!("{lat}, {lon}"))
 }
 
+/// Where a photo was taken, as degrees north and east, when its file says.
+pub fn read_gps(path: &Path) -> Option<(f64, f64)> {
+    let file = File::open(path).ok()?;
+    let exif = exif::Reader::new()
+        .read_from_container(&mut BufReader::new(file))
+        .ok()?;
+    let coordinate = |value_tag: Tag, ref_tag: Tag, negative: &str| -> Option<f64> {
+        let field = exif.get_field(value_tag, In::PRIMARY)?;
+        let Value::Rational(parts) = &field.value else {
+            return None;
+        };
+        let [d, m, s] = parts.get(..3)? else {
+            return None;
+        };
+        let degrees = d.to_f64() + m.to_f64() / 60.0 + s.to_f64() / 3600.0;
+        let south_or_west = display(&exif, ref_tag).is_some_and(|r| r.trim().starts_with(negative));
+        Some(if south_or_west { -degrees } else { degrees })
+    };
+    let lat = coordinate(Tag::GPSLatitude, Tag::GPSLatitudeRef, "S")?;
+    let lon = coordinate(Tag::GPSLongitude, Tag::GPSLongitudeRef, "W")?;
+    (lat != 0.0 || lon != 0.0).then_some((lat, lon))
+}
+
 /// The EXIF facts the library sorts and filters on, read once at import and
 /// kept in the catalog. Falls back to the file's modified time for the date.
 pub fn read_photo_meta(path: &Path) -> rustyedit_core::PhotoMeta {

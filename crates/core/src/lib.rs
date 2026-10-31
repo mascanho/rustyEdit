@@ -36,6 +36,7 @@ pub mod settings;
 mod snapshot;
 mod zine;
 mod zine_design;
+mod zine_library;
 
 pub use albums::{Album, Albums};
 pub use asset::{is_raw_path, AppliedPreset, Asset, AssetState, PhotoMeta, RAW_EXTENSIONS};
@@ -92,4 +93,10 @@ pub use zine::{
     TextAlign as ZineTextAlign, TextBox as ZineTextBox, ZineFont, ZineStyle, ZineTemplate,
     MAX_MAT_MM as ZINE_MAX_MAT_MM, MAX_RADIUS_MM as ZINE_MAX_RADIUS_MM, MAX_TEXT_PT as ZINE_MAX_TEXT_PT,
     MIN_TEXT_PT as ZINE_MIN_TEXT_PT,
+};
+
+pub use zine_library::{
+    civil_date, group_photos as zine_group_photos, unused_title as zine_unused_title,
+    GroupInput as ZineGroupInput, PageStyle as ZinePageStyle, PhotoGroup as ZinePhotoGroup,
+    StyleParts as ZineStyleParts, ZineDesign, ZineDesigns, ZineGrouping, ZineLibrary,
 };
