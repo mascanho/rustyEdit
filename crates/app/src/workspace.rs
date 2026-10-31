@@ -125,6 +125,8 @@ pub enum TextTarget {
     /// The zine's title and author.
     ZineTitle,
     ZineAuthor,
+    /// The words of a text box on a zine page.
+    ZineText,
     /// The command palette's search.
     CommandPalette,
 }
@@ -242,6 +244,8 @@ pub struct Workspace {
     pub(crate) zine_run: Option<crate::zines::ZineRun>,
     pub(crate) zine_message: Option<SharedString>,
     pub(crate) zine_panel_scroll: ScrollHandle,
+    /// The Zines workbench's selection, drags, undo history and views.
+    pub(crate) zine_ui: crate::zine_edit::ZineUi,
     /// Smallest width of an export tile; the size slider in the queue bar.
     pub(crate) export_tile_size: f32,
     pub(crate) export_message: Option<SharedString>,
@@ -481,6 +485,7 @@ impl Workspace {
             zine_run: None,
             zine_message: None,
             zine_panel_scroll: ScrollHandle::new(),
+            zine_ui: Default::default(),
             export_tile_size: crate::export::TILE_MIN,
             export_message: None,
             left_rail_tool: None,
@@ -769,6 +774,11 @@ impl Workspace {
     }
 
     pub fn go_library(&mut self, _: &GoLibrary, window: &mut Window, cx: &mut Context<Self>) {
+        // In the Zines workbench Escape first lets go of the selection and
+        // closes the preview.
+        if self.zine_key(crate::zine_edit::ZineKey::Escape, cx) {
+            return;
+        }
         // Escape first leaves the cull view, then closes a dialog, then a
         // context menu.
         if self.shortcut_sheet {
@@ -1280,6 +1290,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::label_green))
             .on_action(cx.listener(Self::label_blue))
             .on_action(cx.listener(Self::go_library))
+            .on_action(cx.listener(Self::zine_duplicate_action))
             .on_action(cx.listener(Self::toggle_loupe))
             .on_action(cx.listener(Self::go_develop))
             .on_action(cx.listener(Self::cycle_filter))

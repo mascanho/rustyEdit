@@ -208,6 +208,7 @@ impl Workspace {
         self.end_develop_drag();
         self.end_histogram_drag();
         self.survey_pan = None;
+        self.end_zine_gesture(cx);
         self.finish_resize(cx);
     }
 

@@ -136,6 +136,10 @@ impl Workspace {
     }
 
     pub fn undo(&mut self, _: &Undo, _w: &mut Window, cx: &mut Context<Self>) {
+        if self.mode == crate::workspace::Mode::Zines && self.text_draft.is_none() {
+            self.zine_undo(cx);
+            return;
+        }
         let Some(entry) = self.undo_stack.pop() else {
             self.status_message = Some("Nothing to undo.".into());
             cx.notify();
@@ -148,6 +152,10 @@ impl Workspace {
     }
 
     pub fn redo(&mut self, _: &Redo, _w: &mut Window, cx: &mut Context<Self>) {
+        if self.mode == crate::workspace::Mode::Zines && self.text_draft.is_none() {
+            self.zine_redo(cx);
+            return;
+        }
         let Some(entry) = self.redo_stack.pop() else {
             self.status_message = Some("Nothing to redo.".into());
             cx.notify();

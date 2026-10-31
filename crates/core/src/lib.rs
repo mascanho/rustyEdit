@@ -35,6 +35,7 @@ pub mod culling;
 pub mod settings;
 mod snapshot;
 mod zine;
+mod zine_design;
 
 pub use albums::{Album, Albums};
 pub use asset::{is_raw_path, AppliedPreset, Asset, AssetState, PhotoMeta, RAW_EXTENSIONS};
@@ -82,6 +83,13 @@ pub use snapshot::{next_snapshot_name, Snapshot};
 
 pub use zine::{
     layout_pages, Cell as ZineCell, Content as ZineContent, Page as ZinePage, PageLayout as ZinePageLayout,
-    Rect as ZineRect, Zine, ZineFormat, ZineLayout, ZineOptions, ZinePageSize, ZinePaper, ZinePhoto,
-    CAPTION_MM,
+    FreeItem as ZineFreeItem, Guide as ZineGuide, ManualLayout as ZineManualLayout, ManualPage as ZineManualPage, Rect as ZineRect, Spot as ZineSpot, Zine, ZineFormat, ZineLayout, ZineMode, ZineOptions, ZinePageSize, ZinePaper, ZinePhoto,
+    snap_corner as zine_snap_corner, snap_move as zine_snap_move, CAPTION_MM, MIN_ITEM as ZINE_MIN_ITEM,
+    SHEET_PANELS as ZINE_SHEET_PANELS,
+    fit_rect as zine_fit_rect, fill_rect as zine_fill_rect, ink_on as zine_ink_on, photo_geometry as zine_photo_geometry, PhotoGeometry as ZinePhotoGeometry,
+    align_rects as zine_align_rects, AlignMode as ZineAlignMode, bounding_box as zine_bounding_box,
+    DistributeAxis as ZineDistributeAxis, Fit as ZineFit, FrameStyle as ZineFrameStyle,
+    TextAlign as ZineTextAlign, TextBox as ZineTextBox, ZineFont, ZineStyle, ZineTemplate,
+    MAX_MAT_MM as ZINE_MAX_MAT_MM, MAX_RADIUS_MM as ZINE_MAX_RADIUS_MM, MAX_TEXT_PT as ZINE_MAX_TEXT_PT,
+    MIN_TEXT_PT as ZINE_MIN_TEXT_PT,
 };

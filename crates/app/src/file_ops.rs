@@ -34,6 +34,11 @@ impl Workspace {
         _w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // In the Zines workbench it removes what is selected on the page,
+        // never a photo from the catalog.
+        if self.zine_key(crate::zine_edit::ZineKey::Delete, cx) {
+            return;
+        }
         // In Develop with a retouch or gradient tool out, Backspace removes
         // the selected spot or gradient rather than the photo.
         if self.mode == Mode::Develop

@@ -481,6 +481,10 @@ impl Workspace {
         let target = *target;
         let keystroke = &event.keystroke;
         match keystroke.key.as_str() {
+            // Shift+Enter starts a new line in a text box on a zine page.
+            "enter" if target == TextTarget::ZineText && keystroke.modifiers.shift => {
+                draft.push('\n');
+            }
             "enter" => {
                 let name = std::mem::take(draft);
                 self.text_draft = None;
@@ -551,6 +555,7 @@ impl Workspace {
             TextTarget::SettingText => self.commit_setting_text(text, cx),
             TextTarget::ExportPresetName => self.save_export_preset(text, cx),
             TextTarget::ZineTitle | TextTarget::ZineAuthor => self.commit_zine_text(target, text, cx),
+            TextTarget::ZineText => self.commit_zine_item_text(text, cx),
             TextTarget::Title
             | TextTarget::Caption
             | TextTarget::Creator

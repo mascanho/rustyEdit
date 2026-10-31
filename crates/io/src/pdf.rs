@@ -7,11 +7,50 @@ use std::fmt::Write as _;
 /// Points per millimetre.
 const PT: f32 = 72.0 / 25.4;
 
+/// The three standard type families.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Font {
-    Regular,
-    Bold,
+pub enum Family {
+    Sans,
+    Serif,
+    Mono,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Font {
+    pub family: Family,
+    pub bold: bool,
+}
+
+#[allow(dead_code)]
+impl Font {
+    pub const REGULAR: Font = Font::new(Family::Sans, false);
+    pub const BOLD: Font = Font::new(Family::Sans, true);
+
+    pub const fn new(family: Family, bold: bool) -> Self {
+        Self { family, bold }
+    }
+
+    /// The name the page's resources give it.
+    fn resource(&self) -> &'static str {
+        match (self.family, self.bold) {
+            (Family::Sans, false) => "F1",
+            (Family::Sans, true) => "F2",
+            (Family::Serif, false) => "F3",
+            (Family::Serif, true) => "F4",
+            (Family::Mono, false) => "F5",
+            (Family::Mono, true) => "F6",
+        }
+    }
+}
+
+const FONT_NAMES: [&str; 6] = [
+    "Helvetica",
+    "Helvetica-Bold",
+    "Times-Roman",
+    "Times-Bold",
+    "Courier",
+    "Courier-Bold",
+];
 
 /// A JPEG to embed.
 #[derive(Debug, Clone)]
@@ -28,6 +67,8 @@ pub struct PdfPage {
     content: String,
     /// Indexes into the document's images used on this page.
     images: Vec<usize>,
+    /// The see-through levels (percent) the page paints with.
+    alphas: Vec<u32>,
 }
 
 impl PdfPage {
@@ -37,6 +78,7 @@ impl PdfPage {
             height_mm,
             content: String::new(),
             images: Vec::new(),
+            alphas: Vec::new(),
         }
     }
 
@@ -111,10 +153,7 @@ impl PdfPage {
         } else {
             x
         };
-        let name = match font {
-            Font::Regular => "F1",
-            Font::Bold => "F2",
-        };
+        let name = font.resource();
         let _ = writeln!(
             self.content,
             "BT /{name} {size_pt:.2} Tf {} rg {:.2} {:.2} Td ({}) Tj ET",
@@ -123,6 +162,70 @@ impl PdfPage {
             self.y(y),
             escape(text)
         );
+    }
+
+    /// The path of a rounded rectangle, in the page's own units.
+    fn rounded_path(&self, x: f32, y: f32, w: f32, h: f32, radius_mm: f32) -> String {
+        let (l, b) = (self.x(x), self.y(y + h));
+        let (w, h) = (w * PT, h * PT);
+        let r = (radius_mm * PT).clamp(0.0, w.min(h) / 2.0);
+        if r < 0.05 {
+            return format!("{l:.2} {b:.2} {w:.2} {h:.2} re");
+        }
+        let k = r * 0.5523;
+        format!(
+            "{:.2} {:.2} m {:.2} {:.2} l {:.2} {:.2} {:.2} {:.2} {:.2} {:.2} c {:.2} {:.2} l \
+             {:.2} {:.2} {:.2} {:.2} {:.2} {:.2} c {:.2} {:.2} l {:.2} {:.2} {:.2} {:.2} {:.2} {:.2} c \
+             {:.2} {:.2} l {:.2} {:.2} {:.2} {:.2} {:.2} {:.2} c h",
+            l + r, b,
+            l + w - r, b,
+            l + w - r + k, b, l + w, b + r - k, l + w, b + r,
+            l + w, b + h - r,
+            l + w, b + h - r + k, l + w - r + k, b + h, l + w - r, b + h,
+            l + r, b + h,
+            l + r - k, b + h, l, b + h - r + k, l, b + h - r,
+            l, b + r,
+            l, b + r - k, l + r - k, b, l + r, b,
+        )
+    }
+
+    /// Fills a rectangle with rounded corners, more or less see-through.
+    pub fn fill_rounded_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius_mm: f32, rgb: [u8; 3], alpha: f32) {
+        let pct = (alpha.clamp(0.0, 1.0) * 100.0).round() as u32;
+        let path = self.rounded_path(x, y, w, h, radius_mm);
+        if pct < 100 {
+            if !self.alphas.contains(&pct) {
+                self.alphas.push(pct);
+            }
+            let _ = writeln!(self.content, "q /GS{pct} gs {} rg {path} f Q", Self::colour(rgb));
+        } else {
+            let _ = writeln!(self.content, "{} rg {path} f", Self::colour(rgb));
+        }
+    }
+
+    /// Draws what `draw` adds, cut off outside a rounded rectangle.
+    pub fn clipped_to(&mut self, x: f32, y: f32, w: f32, h: f32, radius_mm: f32, draw: impl FnOnce(&mut PdfPage)) {
+        let path = self.rounded_path(x, y, w, h, radius_mm);
+        let _ = writeln!(self.content, "q {path} W n");
+        draw(self);
+        self.content.push_str("Q\n");
+    }
+
+    /// Draws what `draw` adds turned `degrees` clockwise about `centre`.
+    pub fn rotated_by(&mut self, centre: (f32, f32), degrees: f32, draw: impl FnOnce(&mut PdfPage)) {
+        if degrees.abs() < 0.01 {
+            draw(self);
+            return;
+        }
+        // On the page's own upward axes a clockwise turn is the reverse.
+        let phi = (-degrees).to_radians();
+        let (sin, cos) = phi.sin_cos();
+        let (cx, cy) = (self.x(centre.0), self.y(centre.1));
+        let tx = cx - (cos * cx - sin * cy);
+        let ty = cy - (sin * cx + cos * cy);
+        let _ = writeln!(self.content, "q {cos:.5} {sin:.5} {:.5} {cos:.5} {tx:.2} {ty:.2} cm", -sin);
+        draw(self);
+        self.content.push_str("Q\n");
     }
 
     /// Draws what `draw` adds turned half a circle about `centre`.
@@ -142,10 +245,20 @@ impl PdfPage {
 fn escape(text: &str) -> String {
     let mut out = String::new();
     for c in text.chars() {
-        let byte = if (c as u32) < 256 && !c.is_control() {
-            c as u8
-        } else {
-            b'?'
+        let byte = match c {
+            // Typographic marks WinAnsi has beyond Latin-1.
+            '\u{2018}' => 0x91,
+            '\u{2019}' => 0x92,
+            '\u{201C}' => 0x93,
+            '\u{201D}' => 0x94,
+            '\u{2022}' => 0x95,
+            '\u{2013}' => 0x96,
+            '\u{2014}' => 0x97,
+            '\u{2026}' => 0x85,
+            '\u{20AC}' => 0x80,
+            '\u{2122}' => 0x99,
+            c if (c as u32) < 256 && !c.is_control() => c as u8,
+            _ => b'?',
         };
         match byte {
             b'(' | b')' | b'\\' => {
@@ -171,17 +284,57 @@ const WIDTHS: [u16; 95] = [
     222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
 ];
 
+/// Times Roman's, the same way.
+const SERIF_WIDTHS: [u16; 95] = [
+    250, 333, 408, 500, 500, 833, 778, 180, 333, 333, 500, 564, 250, 333, 250, 278, 500, 500, 500,
+    500, 500, 500, 500, 500, 500, 500, 278, 278, 564, 564, 564, 444, 921, 722, 667, 667, 722, 611,
+    556, 722, 722, 333, 389, 722, 611, 889, 722, 722, 556, 722, 667, 556, 611, 722, 722, 944, 722,
+    722, 611, 333, 278, 333, 469, 500, 333, 444, 500, 444, 500, 444, 333, 500, 500, 278, 278, 500,
+    278, 778, 500, 500, 500, 500, 333, 389, 278, 500, 500, 722, 500, 500, 444, 480, 200, 480, 541,
+];
+
 /// The width of `text` set at `size_pt`, in millimetres.
 pub fn text_width_mm(text: &str, size_pt: f32, font: Font) -> f32 {
     let units: u32 = text
         .chars()
-        .map(|c| match c as u32 {
-            32..=126 => WIDTHS[c as usize - 32] as u32,
-            _ => 556,
+        .map(|c| match (font.family, c as u32) {
+            (Family::Mono, _) => 600,
+            (Family::Sans, 32..=126) => WIDTHS[c as usize - 32] as u32,
+            (Family::Serif, 32..=126) => SERIF_WIDTHS[c as usize - 32] as u32,
+            (Family::Sans, _) => 556,
+            (Family::Serif, _) => 500,
         })
         .sum();
-    let bold = if font == Font::Bold { 1.06 } else { 1.0 };
+    let bold = match (font.bold, font.family) {
+        (true, Family::Sans) => 1.06,
+        (true, Family::Serif) => 1.04,
+        _ => 1.0,
+    };
     units as f32 / 1000.0 * size_pt * bold / PT
+}
+
+/// `text` broken into lines no wider than `width_mm`, at word breaks (a
+/// word wider than the line has a line to itself). Newlines start a line.
+pub fn wrap_lines(text: &str, width_mm: f32, size_pt: f32, font: Font) -> Vec<String> {
+    let mut lines = Vec::new();
+    for paragraph in text.split('\n') {
+        let mut line = String::new();
+        for word in paragraph.split_whitespace() {
+            let candidate = if line.is_empty() {
+                word.to_string()
+            } else {
+                format!("{line} {word}")
+            };
+            if line.is_empty() || text_width_mm(&candidate, size_pt, font) <= width_mm {
+                line = candidate;
+            } else {
+                lines.push(std::mem::take(&mut line));
+                line = word.to_string();
+            }
+        }
+        lines.push(line);
+    }
+    lines
 }
 
 /// Shrinks `size_pt` from `start` until `text` fits `width_mm` (not below
@@ -205,9 +358,9 @@ pub fn finish(pages: Vec<PdfPage>, images: &[JpegImage], title: &str) -> Vec<u8>
         out.extend_from_slice(b"\nendobj\n");
     };
 
-    // 1 catalog, 2 page tree, 3-4 fonts, 5 info, then images, then each
+    // 1 catalog, 2 page tree, 3-8 fonts, 9 info, then images, then each
     // page's content stream followed by the page itself.
-    let first_image = 6;
+    let first_image = 10;
     let first_page = first_image + images.len();
     let page_obj = |i: usize| first_page + 2 * i + 1;
     object(&mut out, b"<< /Type /Catalog /Pages 2 0 R >>");
@@ -223,7 +376,7 @@ pub fn finish(pages: Vec<PdfPage>, images: &[JpegImage], title: &str) -> Vec<u8>
         )
         .as_bytes(),
     );
-    for font in ["Helvetica", "Helvetica-Bold"] {
+    for font in FONT_NAMES {
         object(
             &mut out,
             format!(
@@ -250,6 +403,16 @@ pub fn finish(pages: Vec<PdfPage>, images: &[JpegImage], title: &str) -> Vec<u8>
         object(&mut out, &body);
     }
     for (i, page) in pages.iter().enumerate() {
+        let gstates: String = page
+            .alphas
+            .iter()
+            .map(|pct| {
+                format!(
+                    "/GS{pct} << /Type /ExtGState /ca {:.2} >> ",
+                    *pct as f32 / 100.0
+                )
+            })
+            .collect();
         let xobjects: String = page
             .images
             .iter()
@@ -264,7 +427,8 @@ pub fn finish(pages: Vec<PdfPage>, images: &[JpegImage], title: &str) -> Vec<u8>
             &mut out,
             format!(
                 "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.2} {:.2}] \
-                 /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << {xobjects}>> >> \
+                 /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R /F5 7 0 R /F6 8 0 R >> \
+                 /XObject << {xobjects}>> /ExtGState << {gstates}>> >> \
                  /Contents {} 0 R >>",
                 page.width_mm * PT,
                 page.height_mm * PT,
@@ -282,7 +446,7 @@ pub fn finish(pages: Vec<PdfPage>, images: &[JpegImage], title: &str) -> Vec<u8>
     }
     out.extend_from_slice(
         format!(
-            "trailer\n<< /Size {} /Root 1 0 R /Info 5 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            "trailer\n<< /Size {} /Root 1 0 R /Info 9 0 R >>\nstartxref\n{xref}\n%%EOF\n",
             offsets.len() + 1
         )
         .as_bytes(),
@@ -319,7 +483,7 @@ mod tests {
         let mut page = PdfPage::new(210.0, 297.0);
         page.fill_page([255, 255, 255]);
         page.image(0, 10.0, 10.0, 100.0, 75.0);
-        page.text("Hello (zine)", 105.0, 200.0, 20.0, Font::Bold, [0, 0, 0], true);
+        page.text("Hello (zine)", 105.0, 200.0, 20.0, Font::BOLD, [0, 0, 0], true);
         let mut second = PdfPage::new(210.0, 297.0);
         second.rotated_about((105.0, 148.0), |p| p.image(0, 0.0, 0.0, 50.0, 50.0));
         let bytes = finish(vec![page, second], &[tiny_jpeg()], "My zine");
@@ -362,13 +526,13 @@ mod tests {
 
     #[test]
     fn text_is_measured_and_fitted() {
-        let narrow = text_width_mm("iii", 12.0, Font::Regular);
-        let wide = text_width_mm("WWW", 12.0, Font::Regular);
+        let narrow = text_width_mm("iii", 12.0, Font::REGULAR);
+        let wide = text_width_mm("WWW", 12.0, Font::REGULAR);
         assert!(wide > narrow * 3.0);
         let long = "A very long title for a small panel";
-        let size = fit_text_size(long, 40.0, 30.0, 6.0, Font::Bold);
+        let size = fit_text_size(long, 40.0, 30.0, 6.0, Font::BOLD);
         assert!((6.0..30.0).contains(&size));
-        assert!(text_width_mm(long, size, Font::Bold) <= 41.0);
+        assert!(text_width_mm(long, size, Font::BOLD) <= 41.0);
     }
 
     #[test]
@@ -376,5 +540,7 @@ mod tests {
         assert_eq!(escape("a(b)\\"), "a\\(b\\)\\\\");
         assert_eq!(escape("caf\u{e9}"), "caf\\351");
         assert_eq!(escape("\u{4e2d}"), "?");
+        // Curly quotes and dashes are in WinAnsi.
+        assert_eq!(escape("\u{201C}hi\u{201D} \u{2014} it\u{2019}s"), "\\223hi\\224 \\227 it\\222s");
     }
 }

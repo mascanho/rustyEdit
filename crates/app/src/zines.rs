@@ -20,11 +20,11 @@ use std::{
 
 use gpui::{
     div, img, prelude::*, px, relative, AnyElement, App, ClickEvent, Context, Entity, ObjectFit,
-    SharedString, Window,
+    Render, SharedString, Window,
 };
 use rustyedit_core::{
-    layout_pages, Asset, Zine, ZineContent, ZineFormat, ZineLayout, ZineOptions, ZinePageSize,
-    ZinePaper, ZinePhoto,
+    Asset, Zine, ZineContent, ZineFont, ZineFormat, ZineLayout, ZineMode, ZineOptions,
+    ZinePageLayout, ZinePageSize, ZinePaper, ZinePhoto, ZineSpot, ZineStyle,
 };
 use rustyedit_io::zine::ZineImage;
 use rustyedit_ui::{sp, Icon, Theme};
@@ -50,6 +50,48 @@ pub(crate) struct ZineRun {
 impl ZineRun {
     pub(crate) fn progress(&self) -> (usize, usize) {
         (self.done.load(Ordering::Relaxed), self.total)
+    }
+}
+
+/// Manual pages are started from the automatic layout the first time they
+/// are wanted, and again when the layout changes between a folded sheet
+/// and ordinary pages (their slots mean different things).
+pub(crate) fn sync_manual(zine: &mut Zine) {
+    if zine.options.mode != ZineMode::Manual {
+        return;
+    }
+    let wants_sheet = zine.options.layout == ZineLayout::FoldedSheet;
+    let has_sheet = zine.manual.pages.iter().any(|p| p.is_sheet());
+    if !zine.manual.started || (wants_sheet != has_sheet && !zine.manual.pages.is_empty()) {
+        zine.seed_manual();
+    }
+}
+
+/// A photo being dragged onto a page: from the tray, or from a slot.
+#[derive(Clone)]
+pub(crate) struct ZineDrag {
+    pub(crate) photo: ZinePhoto,
+    pub(crate) from: Option<ZineSpot>,
+    pub(crate) label: String,
+    pub(crate) theme: Theme,
+}
+
+impl Render for ZineDrag {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.theme;
+        div()
+            .flex()
+            .items_center()
+            .h(sp(26.0))
+            .px_3()
+            .rounded_md()
+            .bg(theme.surface_elevated)
+            .border_1()
+            .border_color(theme.accent)
+            .shadow_lg()
+            .text_size(sp(11.5))
+            .text_color(theme.text)
+            .child(self.label.clone())
     }
 }
 
@@ -102,22 +144,37 @@ impl Workspace {
         cx.notify();
     }
 
+    /// A photo dropped on a slot (or the cover).
+    pub(crate) fn drop_on_spot(&mut self, drag: &ZineDrag, to: ZineSpot, cx: &mut Context<Self>) {
+        let (photo, from) = (drag.photo.clone(), drag.from);
+        self.update_zine(cx, |z| z.place(photo, to, from));
+    }
+
+    /// A photo dropped on a page, but not on one of its slots: the first
+    /// empty one takes it.
+    pub(crate) fn drop_on_page(&mut self, drag: &ZineDrag, page: usize, cx: &mut Context<Self>) {
+        let Some(slots) = self.zine.manual.pages.get(page).map(|p| p.slots.len()) else {
+            return;
+        };
+        let spot = (0..slots)
+            .map(|slot| ZineSpot::Slot { page, slot })
+            .find(|&spot| self.zine.at(spot).is_none() && !self.zine.is_fixed(spot));
+        if let Some(to) = spot {
+            self.drop_on_spot(drag, to, cx);
+        }
+    }
+
     pub(crate) fn go_zines(&mut self, cx: &mut Context<Self>) {
         self.mode = Mode::Zines;
         cx.notify();
     }
 
-    fn zine_changed(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn zine_changed(&mut self, cx: &mut Context<Self>) {
         self.zine_message = None;
         if let Err(error) = rustyedit_io::zine::save(&self.zine) {
             eprintln!("Could not save the zine: {error}");
         }
         cx.notify();
-    }
-
-    fn update_zine(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut Zine)) {
-        change(&mut self.zine);
-        self.zine_changed(cx);
     }
 
     fn update_zine_options(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut ZineOptions)) {
@@ -191,12 +248,12 @@ impl Workspace {
         }
 
         // How big the pictures need to be for the biggest place they sit.
-        let layout = layout_pages(assets.len(), &options);
+        let layout = self.zine.layout();
         let biggest_mm = layout
             .pages
             .iter()
             .flat_map(|p| &p.cells)
-            .filter(|c| !matches!(c.content, ZineContent::Back))
+            .filter(|c| matches!(c.content, ZineContent::Photo(_) | ZineContent::Cover { .. }))
             .map(|c| c.rect.w.max(c.rect.h))
             .fold(0.0f32, f32::max);
         let edge = match options.format {
@@ -216,7 +273,7 @@ impl Workspace {
         let job = cx.background_executor().spawn({
             let options = options.clone();
             let done = done.clone();
-            async move { make_zine(assets, &options, &destination, edge, &done) }
+            async move { make_zine(assets, &options, &layout, &destination, edge, &done) }
         });
         cx.spawn(async move |this, cx| {
             let ticker = cx.spawn({
@@ -256,12 +313,30 @@ impl Workspace {
 
     // --- UI --------------------------------------------------------------------
 
-    pub(crate) fn render_zines(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_zines(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        // The edited thumbnails the pages show are made in the background.
+        let wanted: Vec<usize> = {
+            let by_key: HashMap<(&PathBuf, &Option<String>), usize> = self
+                .catalog
+                .assets
+                .iter()
+                .enumerate()
+                .map(|(i, a)| ((&a.path, &a.copy_name), i))
+                .collect();
+            self.zine
+                .photos
+                .iter()
+                .filter_map(|p| by_key.get(&(&p.path, &p.copy_name)).copied())
+                .take(200)
+                .collect()
+        };
+        self.ensure_export_thumbnails(&wanted, cx);
+
         let theme = self.theme;
         let entity = cx.entity();
         let options = self.zine.options.clone();
         let count = self.zine.photos.len();
-        let layout = layout_pages(count, &options);
+        let layout = self.zine.layout();
         let running = self.zine_run.as_ref().map(ZineRun::progress);
 
         // --- Left: how it is made ---------------------------------------------
@@ -273,6 +348,15 @@ impl Workspace {
             }),
         ];
         let mut layout_children = vec![
+            chips(&theme, &entity, "zine-mode", &ZineMode::ALL, options.mode, |m| m.label().to_string(), |o, v| o.mode = v),
+            hint(
+                &theme,
+                match options.mode {
+                    ZineMode::Auto => "The photos flow onto the pages in order",
+                    ZineMode::Manual => "Drag each photo onto the page and slot you want",
+                },
+            ),
+            caption(&theme, "Pages"),
             chips(&theme, &entity, "zine-layout", &ZineLayout::ALL, options.layout, |l| l.label().to_string(), |o, v| o.layout = v),
             hint(&theme, options.layout.description()),
             caption(&theme, "Page size"),
@@ -288,7 +372,54 @@ impl Workspace {
         }));
         layout_children.push(caption(&theme, "Paper"));
         layout_children.push(chips(&theme, &entity, "zine-paper", &ZinePaper::ALL, options.paper, |p| p.label().to_string(), |o, v| o.paper = v));
+        let style_chips = div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .gap_1()
+            .p_1()
+            .rounded_lg()
+            .bg(theme.background)
+            .border_1()
+            .border_color(theme.border_subtle)
+            .children(ZineStyle::ALL.map(|style| {
+                let selected = options.style == style;
+                div()
+                    .id(SharedString::from(format!("zine-style-{style:?}")))
+                    .flex()
+                    .flex_1()
+                    .items_center()
+                    .justify_center()
+                    .h(sp(24.0))
+                    .px_2()
+                    .rounded_md()
+                    .text_xs()
+                    .cursor_pointer()
+                    .border_1()
+                    .when(selected, |el| {
+                        el.bg(theme.accent_muted)
+                            .border_color(theme.accent)
+                            .text_color(theme.text)
+                    })
+                    .when(!selected, |el| {
+                        el.border_color(theme.background)
+                            .text_color(theme.text_muted)
+                            .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                    })
+                    .tooltip(rustyedit_ui::tip(style.description(), &theme))
+                    .child(style.label())
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                        this.update_zine(cx, |z| z.apply_style(style))
+                    }))
+                    .into_any_element()
+            }))
+            .into_any_element();
         let text_children = vec![
+            caption(&theme, "Style"),
+            style_chips,
+            hint(&theme, options.style.description()),
+            caption(&theme, "Typeface"),
+            chips(&theme, &entity, "zine-font", &ZineFont::ALL, options.font, |f| f.label().to_string(), |o, v| o.font = v),
             caption(&theme, "Title"),
             self.zine_text_field("zine-title", TextTarget::ZineTitle, &options.title, "Untitled zine", cx),
             caption(&theme, "Author"),
@@ -309,7 +440,12 @@ impl Workspace {
             self.export_card(
                 "zine-card-layout",
                 "Layout",
-                format!("{} \u{00B7} {}", options.layout.label(), options.page_size.label()),
+                format!(
+                    "{} \u{00B7} {} \u{00B7} {}",
+                    options.mode.label(),
+                    options.layout.label(),
+                    options.page_size.label()
+                ),
                 layout_children,
                 cx,
             ),
@@ -367,6 +503,30 @@ impl Workspace {
             sections,
         )
         .into_any_element();
+
+        // The finished zine, page by page.
+        if self.zine_ui.preview.is_some() && count > 0 {
+            return div()
+                .flex()
+                .flex_row()
+                .flex_1()
+                .min_h(sp(0.0))
+                .child(panel)
+                .child(self.render_zine_preview(window, cx))
+                .into_any_element();
+        }
+
+        // Manual: pages in the middle, the photos in a bar on the right.
+        if options.mode == ZineMode::Manual && count > 0 {
+            return div()
+                .flex()
+                .flex_row()
+                .flex_1()
+                .min_h(sp(0.0))
+                .child(panel)
+                .child(self.render_zine_workbench(&layout, window, cx))
+                .into_any_element();
+        }
 
         // --- Centre: the pages, then the photos ---------------------------------
         let mut body: Vec<AnyElement> = Vec::new();
@@ -454,6 +614,19 @@ impl Workspace {
             .when(count > 0, |el| {
                 el.child(
                     div()
+                        .id("zine-preview-open")
+                        .px_2()
+                        .py_1()
+                        .rounded_md()
+                        .cursor_pointer()
+                        .text_size(sp(11.0))
+                        .text_color(theme.text_muted)
+                        .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+                        .child("Preview")
+                        .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.open_zine_preview(cx))),
+                )
+                .child(
+                    div()
                         .id("zine-clear")
                         .px_2()
                         .py_1()
@@ -464,7 +637,7 @@ impl Workspace {
                         .hover(|el| el.bg(theme.surface_elevated).text_color(theme.danger))
                         .child("Clear all")
                         .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
-                            this.update_zine(cx, |z| z.photos.clear())
+                            this.update_zine(cx, |z| z.clear())
                         })),
                 )
             })
@@ -508,6 +681,7 @@ impl Workspace {
                     .child(glyph)
             };
             div()
+                .id(SharedString::from(format!("zine-tile-{n}")))
                 .flex()
                 .flex_col()
                 .gap_1()
@@ -596,8 +770,8 @@ impl Workspace {
                                     button(SharedString::from(format!("zine-remove-{n}")), "\u{2715}", "Take out of the zine", true)
                                         .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                                             this.update_zine(cx, |z| {
-                                                if n < z.photos.len() {
-                                                    z.photos.remove(n);
+                                                if let Some(photo) = z.photos.get(n).cloned() {
+                                                    z.remove(&[photo]);
                                                 }
                                             })
                                         })),
@@ -613,6 +787,15 @@ impl Workspace {
             .gap_3()
             .children(tiles)
             .into_any_element()
+    }
+
+    /// The thumbnail of a photo of the zine.
+    pub(crate) fn zine_thumb(&self, photo: &ZinePhoto) -> Option<PathBuf> {
+        self.catalog
+            .assets
+            .iter()
+            .find(|a| a.path == photo.path && a.copy_name == photo.copy_name)
+            .and_then(|a| self.export_thumbnail(a))
     }
 
     fn zine_destination(&self, options: &ZineOptions, cx: &mut Context<Self>) -> AnyElement {
@@ -727,10 +910,13 @@ impl Workspace {
 fn make_zine(
     assets: Vec<Option<Asset>>,
     options: &ZineOptions,
+    layout: &ZinePageLayout,
     destination: &std::path::Path,
     edge: u32,
     done: &AtomicUsize,
 ) -> anyhow::Result<(PathBuf, usize)> {
+    // Only the photos the pages show are rendered.
+    let used = rustyedit_io::zine::photos_used(layout);
     let images: Mutex<Vec<Option<ZineImage>>> = Mutex::new(vec![None; assets.len()]);
     let next = AtomicUsize::new(0);
     let workers = std::thread::available_parallelism()
@@ -742,7 +928,7 @@ fn make_zine(
             scope.spawn(|| loop {
                 let i = next.fetch_add(1, Ordering::Relaxed);
                 let Some(entry) = assets.get(i) else { break };
-                if let Some(asset) = entry {
+                if let Some(asset) = entry.as_ref().filter(|_| used.contains(&i)) {
                     if let Ok(image) = render_photo(asset, options, edge) {
                         images.lock().unwrap()[i] = Some(image);
                     }
@@ -752,19 +938,19 @@ fn make_zine(
         }
     });
     let images = images.into_inner().unwrap();
-    let skipped = images.iter().filter(|i| i.is_none()).count();
+    let skipped = used.iter().filter(|&&n| images[n].is_none()).count();
 
     std::fs::create_dir_all(destination)?;
     let stem = rustyedit_io::zine::file_stem(&options.title);
     let path = match options.format {
         ZineFormat::Pdf => {
             let path = free_name(destination, &stem, "pdf");
-            rustyedit_io::zine::write_pdf(&path, options, &images)?;
+            rustyedit_io::zine::write_pdf(&path, options, layout, &images)?;
             path
         }
         ZineFormat::Html => {
             let folder = free_name(destination, &stem, "");
-            rustyedit_io::zine::write_html(&folder, options, &images)?;
+            rustyedit_io::zine::write_html(&folder, options, layout, &images)?;
             folder
         }
     };
@@ -807,7 +993,7 @@ fn free_name(dir: &std::path::Path, stem: &str, ext: &str) -> PathBuf {
         .expect("an unused name")
 }
 
-fn plural(n: usize) -> &'static str {
+pub(crate) fn plural(n: usize) -> &'static str {
     if n == 1 {
         ""
     } else {
@@ -817,7 +1003,7 @@ fn plural(n: usize) -> &'static str {
 
 // --- Drawing helpers ------------------------------------------------------------
 
-fn caption(theme: &Theme, text: &'static str) -> AnyElement {
+pub(crate) fn caption(theme: &Theme, text: &'static str) -> AnyElement {
     div()
         .pt_1()
         .text_size(sp(10.0))
@@ -993,6 +1179,7 @@ fn page_strip(theme: &Theme, layout: &rustyedit_core::ZinePageLayout) -> AnyElem
                 ZineContent::Photo(i) => (theme.accent_muted, format!("{}", i + 1)),
                 ZineContent::Cover { .. } => (theme.accent.opacity(0.45), "Cover".to_string()),
                 ZineContent::Back => (theme.surface_elevated, "Back".to_string()),
+                ZineContent::Text => (theme.surface_elevated, "Text".to_string()),
             };
             div()
                 .absolute()

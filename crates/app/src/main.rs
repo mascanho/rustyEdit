@@ -50,6 +50,11 @@ mod undo;
 mod virtual_copies;
 mod wheel_zoom;
 mod workspace;
+mod zine_bar;
+mod zine_compose;
+mod zine_edit;
+mod zine_pages;
+mod zine_visuals;
 mod zines;
 
 use gpui::{
@@ -144,6 +149,7 @@ fn main() {
             KeyBinding::new("secondary-z", Undo, Some(KEY_CONTEXT)),
             KeyBinding::new("secondary-shift-z", Redo, Some(KEY_CONTEXT)),
             KeyBinding::new("secondary-a", SelectAll, Some(KEY_CONTEXT)),
+            KeyBinding::new("secondary-d", actions::ZineDuplicate, Some(KEY_CONTEXT)),
             KeyBinding::new("c", ViewCompare, Some(KEY_CONTEXT)),
             KeyBinding::new("n", ViewSurvey, Some(KEY_CONTEXT)),
             KeyBinding::new("secondary-,", OpenSettings, Some(KEY_CONTEXT)),

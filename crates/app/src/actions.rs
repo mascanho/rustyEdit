@@ -8,6 +8,7 @@ actions!(
     rustyedit,
     [
         Quit,
+        ZineDuplicate,
         NextImage,
         PrevImage,
         FlagPick,

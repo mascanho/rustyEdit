@@ -138,6 +138,18 @@ impl Workspace {
     /// replacing the selection or (`extend`) growing it from the anchor.
     /// Never wraps. Row-wise steps only mean something in the grid.
     pub(crate) fn keyboard_move(&mut self, step: KeyStep, extend: bool, cx: &mut Context<Self>) {
+        // In the Zines workbench the arrows nudge what is selected.
+        if self.mode == Mode::Zines {
+            let (dx, dy) = match step {
+                KeyStep::Left => (-1, 0),
+                KeyStep::Right => (1, 0),
+                KeyStep::Up => (0, -1),
+                KeyStep::Down => (0, 1),
+                _ => return,
+            };
+            self.zine_key(crate::zine_edit::ZineKey::Nudge(dx, dy, extend), cx);
+            return;
+        }
         let in_library = self.mode == Mode::Library;
         let in_grid = in_library && self.library_view == LibraryView::Grid;
         if (extend && !in_library) || (step.is_vertical() && !in_grid) {
@@ -250,6 +262,9 @@ impl Workspace {
     }
 
     pub fn select_all(&mut self, _: &SelectAll, _w: &mut Window, cx: &mut Context<Self>) {
+        if self.zine_key(crate::zine_edit::ZineKey::SelectAll, cx) {
+            return;
+        }
         if self.mode != Mode::Library {
             return;
         }
