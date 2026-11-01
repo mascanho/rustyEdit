@@ -15,6 +15,11 @@ image = { version = "0.25", default-features = false, features = [
     "bmp",
 ] }
 walkdir = "2"
+base64 = "0.22"
+crc32fast = "1"
+tiny-skia = "0.11"
+fontdb = "0.23"
+ttf-parser = "0.25"
 rayon = "1"
 dirs = "5"
 serde = { version = "1", features = ["derive"] }

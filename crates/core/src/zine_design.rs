@@ -118,6 +118,9 @@ pub struct TextBox {
     /// A tint laid behind the text (half see-through), for text over a
     /// photo.
     pub backdrop: Option<[u8; 3]>,
+    /// Written by splitting the zine's story across its pages, so a new
+    /// split replaces it.
+    pub story: bool,
 }
 
 impl Default for TextBox {
@@ -130,6 +133,7 @@ impl Default for TextBox {
             colour: None,
             align: TextAlign::Left,
             backdrop: None,
+            story: false,
         }
     }
 }

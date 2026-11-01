@@ -129,6 +129,8 @@ pub enum TextTarget {
     ZineText,
     /// The name a zine's design is saved under.
     ZineDesignName,
+    /// The story of a zine, to split across its pages.
+    ZineStory,
     /// The command palette's search.
     CommandPalette,
 }

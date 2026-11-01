@@ -22,15 +22,126 @@ pub enum ZineFormat {
     Pdf,
     /// A folder holding a web page and its pictures.
     Html,
+    /// One web page file with its pictures inside it, to send by email.
+    HtmlSingle,
+    /// A fixed-layout e-book.
+    Epub,
+    /// A picture of each page, as PNG.
+    Png,
+    /// A picture of each page, as JPEG.
+    Jpeg,
 }
 
 impl ZineFormat {
-    pub const ALL: [ZineFormat; 2] = [ZineFormat::Pdf, ZineFormat::Html];
+    pub const ALL: [ZineFormat; 6] = [
+        ZineFormat::Pdf,
+        ZineFormat::Html,
+        ZineFormat::HtmlSingle,
+        ZineFormat::Epub,
+        ZineFormat::Png,
+        ZineFormat::Jpeg,
+    ];
 
     pub fn label(&self) -> &'static str {
         match self {
             ZineFormat::Pdf => "PDF",
-            ZineFormat::Html => "HTML",
+            ZineFormat::Html => "Web folder",
+            ZineFormat::HtmlSingle => "One HTML file",
+            ZineFormat::Epub => "EPUB",
+            ZineFormat::Png => "PNG pages",
+            ZineFormat::Jpeg => "JPEG pages",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            ZineFormat::Pdf => "Pages to print or share as a document",
+            ZineFormat::Html => "A web page with its pictures beside it, to put online",
+            ZineFormat::HtmlSingle => "One file with everything inside, small enough to email",
+            ZineFormat::Epub => "An e-book that keeps each page as designed",
+            ZineFormat::Png => "A sharp picture of every page, in a folder",
+            ZineFormat::Jpeg => "A smaller picture of every page, in a folder",
+        }
+    }
+
+    /// What the result is called in a sentence.
+    pub fn noun(&self) -> &'static str {
+        match self {
+            ZineFormat::Pdf => "PDF",
+            ZineFormat::Html => "web page",
+            ZineFormat::HtmlSingle => "HTML file",
+            ZineFormat::Epub => "EPUB",
+            ZineFormat::Png | ZineFormat::Jpeg => "page pictures",
+        }
+    }
+
+    /// Whether the result is a picture of each page.
+    pub fn is_page_pictures(&self) -> bool {
+        matches!(self, ZineFormat::Png | ZineFormat::Jpeg)
+    }
+}
+
+/// A set-up for a common purpose, one click.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ZinePreset {
+    /// A printed A5 booklet.
+    PrintA5,
+    /// A web page to put online.
+    WebGallery,
+    /// Square pictures of each page, to post.
+    SocialCarousel,
+}
+
+impl ZinePreset {
+    pub const ALL: [ZinePreset; 3] = [ZinePreset::PrintA5, ZinePreset::WebGallery, ZinePreset::SocialCarousel];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            ZinePreset::PrintA5 => "Print A5",
+            ZinePreset::WebGallery => "Web gallery",
+            ZinePreset::SocialCarousel => "Social carousel",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            ZinePreset::PrintA5 => "A PDF on A5 pages with a print margin, at high quality",
+            ZinePreset::WebGallery => "A web folder: one photo a page, with captions, for the web",
+            ZinePreset::SocialCarousel => "Square 1080 pixel PNG slides, one photo each, to post",
+        }
+    }
+
+    /// Sets up `options` for this purpose (the title, author and where it
+    /// is saved stay).
+    pub fn apply(&self, options: &mut ZineOptions) {
+        match self {
+            ZinePreset::PrintA5 => {
+                options.format = ZineFormat::Pdf;
+                options.page_size = ZinePageSize::A5;
+                options.landscape = false;
+                options.margin_mm = 8;
+                options.quality = 92;
+                options.captions = false;
+                options.cover = true;
+            }
+            ZinePreset::WebGallery => {
+                options.format = ZineFormat::Html;
+                options.layout = ZineLayout::OnePerPage;
+                options.page_size = ZinePageSize::A4;
+                options.margin_mm = 12;
+                options.quality = 85;
+                options.captions = true;
+                options.cover = true;
+            }
+            ZinePreset::SocialCarousel => {
+                options.format = ZineFormat::Png;
+                options.layout = ZineLayout::OnePerPage;
+                options.page_size = ZinePageSize::Square;
+                options.margin_mm = 8;
+                options.image_edge = 1080;
+                options.captions = false;
+                options.cover = true;
+            }
         }
     }
 }
@@ -200,6 +311,9 @@ pub struct ZineOptions {
     pub captions: bool,
     /// JPEG quality of the pictures inside the zine.
     pub quality: u8,
+    /// The long edge, in pixels, of a picture of a page (PNG and JPEG
+    /// pages).
+    pub image_edge: u32,
     pub destination: Option<PathBuf>,
 }
 
@@ -220,13 +334,14 @@ impl Default for ZineOptions {
             cover: true,
             captions: false,
             quality: 88,
+            image_edge: 1600,
             destination: None,
         }
     }
 }
 
 /// One photo in a zine: the file, and which virtual copy of it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ZinePhoto {
     pub path: PathBuf,
     pub copy_name: Option<String>,
@@ -298,6 +413,8 @@ pub struct Zine {
     pub photos: Vec<ZinePhoto>,
     pub options: ZineOptions,
     pub manual: ManualLayout,
+    /// The words of the zine, written once, to be split across its pages.
+    pub story: String,
 }
 
 impl Zine {
@@ -1327,6 +1444,7 @@ mod tests {
             photos: (0..n).map(|i| photo(&format!("p{i}"))).collect(),
             options: ZineOptions { mode: ZineMode::Manual, ..options },
             manual: ManualLayout::default(),
+            story: String::new(),
         }
     }
 
@@ -1598,5 +1716,22 @@ mod tests {
         let order: Vec<u8> = zine.manual.pages.iter().map(|p| p.background.unwrap()[0]).collect();
         assert_eq!(order, vec![1, 2, 0, 3]);
         assert_eq!(zine.move_page(3, 9), None);
+    }
+
+    #[test]
+    fn a_preset_sets_the_zine_up_for_its_purpose_and_keeps_its_words() {
+        let mut o = ZineOptions { title: "Mine".into(), author: "Me".into(), ..Default::default() };
+        ZinePreset::SocialCarousel.apply(&mut o);
+        assert_eq!((o.format, o.page_size, o.image_edge), (ZineFormat::Png, ZinePageSize::Square, 1080));
+        assert!(o.format.is_page_pictures());
+        ZinePreset::PrintA5.apply(&mut o);
+        assert_eq!((o.format, o.page_size, o.margin_mm), (ZineFormat::Pdf, ZinePageSize::A5, 8));
+        ZinePreset::WebGallery.apply(&mut o);
+        assert_eq!(o.format, ZineFormat::Html);
+        assert!(o.captions);
+        assert_eq!((o.title.as_str(), o.author.as_str()), ("Mine", "Me"));
+        // An older saved zine, from before the new formats, still loads.
+        let old: ZineOptions = serde_json::from_str(r#"{"format":"Html","title":"Old"}"#).unwrap();
+        assert_eq!((old.format, old.image_edge), (ZineFormat::Html, 1600));
     }
 }

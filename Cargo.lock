@@ -5340,7 +5340,10 @@ name = "rustyedit-io"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
+ "crc32fast",
  "dirs 5.0.1",
+ "fontdb 0.23.0",
  "image",
  "kamadak-exif",
  "rawler",
@@ -5350,7 +5353,9 @@ dependencies = [
  "rustyedit-processing",
  "serde",
  "serde_json",
+ "tiny-skia",
  "trash",
+ "ttf-parser 0.25.1",
  "walkdir",
 ]
 

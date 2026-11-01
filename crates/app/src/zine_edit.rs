@@ -104,6 +104,9 @@ pub(crate) struct ZineUi {
     pub(crate) arrange_by: ZineGrouping,
     pub(crate) arrange_per_page: usize,
     pub(crate) arrange_headings: bool,
+    /// Pick each section's best photo as its hero and shape the pages to
+    /// the mix of tall and wide photos.
+    pub(crate) arrange_smart: bool,
     pub(crate) arranging: bool,
     /// A page's look, copied to put on other pages, and which parts of it.
     pub(crate) style_clipboard: Option<ZinePageStyle>,
@@ -143,6 +146,7 @@ impl Default for ZineUi {
             arrange_by: ZineGrouping::Day,
             arrange_per_page: 2,
             arrange_headings: true,
+            arrange_smart: true,
             arranging: false,
             style_clipboard: None,
             style_parts: ZineStyleParts::default(),

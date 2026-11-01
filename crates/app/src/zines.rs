@@ -24,7 +24,7 @@ use gpui::{
 };
 use rustyedit_core::{
     Asset, Zine, ZineContent, ZineFont, ZineFormat, ZineLayout, ZineMode, ZineOptions,
-    ZinePageLayout, ZinePageSize, ZinePaper, ZinePhoto, ZineSpot, ZineStyle,
+    ZinePageLayout, ZinePageSize, ZinePaper, ZinePhoto, ZinePreset, ZineSpot, ZineStyle,
 };
 use rustyedit_io::zine::ZineImage;
 use rustyedit_ui::{sp, Icon, Theme};
@@ -259,7 +259,9 @@ impl Workspace {
             .fold(0.0f32, f32::max);
         let edge = match options.format {
             ZineFormat::Pdf => ((biggest_mm / 25.4 * PRINT_DPI) as u32).clamp(MIN_EDGE, MAX_EDGE),
-            ZineFormat::Html => WEB_EDGE,
+            ZineFormat::Html | ZineFormat::HtmlSingle | ZineFormat::Epub => WEB_EDGE,
+            // Pictures of the pages: a photo is never larger than a page.
+            ZineFormat::Png | ZineFormat::Jpeg => options.image_edge.clamp(MIN_EDGE, MAX_EDGE),
         };
 
         let total = assets.len();
@@ -341,13 +343,58 @@ impl Workspace {
         let running = self.zine_run.as_ref().map(ZineRun::progress);
 
         // --- Left: how it is made ---------------------------------------------
-        let output_children = vec![
+        let presets = div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .gap_1()
+            .children(ZinePreset::ALL.map(|preset| {
+                div()
+                    .id(SharedString::from(format!("zine-preset-{preset:?}")))
+                    .flex()
+                    .items_center()
+                    .h(sp(24.0))
+                    .px_2()
+                    .rounded_md()
+                    .text_xs()
+                    .cursor_pointer()
+                    .border_1()
+                    .border_color(theme.border_subtle)
+                    .text_color(theme.text_muted)
+                    .bg(theme.background)
+                    .hover(|el| el.border_color(theme.accent).text_color(theme.text))
+                    .tooltip(rustyedit_ui::tip(preset.description(), &theme))
+                    .child(preset.label())
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                        this.update_zine(cx, |z| preset.apply(&mut z.options))
+                    }))
+                    .into_any_element()
+            }))
+            .into_any_element();
+        let mut output_children = vec![
+            caption(&theme, "Quick set-up"),
+            presets,
+            caption(&theme, "Save as"),
             chips(&theme, &entity, "zine-format", &ZineFormat::ALL, options.format, |f| f.label().to_string(), |o, v| o.format = v),
+            hint(&theme, options.format.description()),
             self.zine_destination(&options, cx),
             slider(&theme, &entity, "zine-quality", "Picture quality", options.quality as f32, 50.0, 100.0, 88.0, |o, v| {
                 o.quality = v.round().clamp(50.0, 100.0) as u8
             }),
         ];
+        if options.format.is_page_pictures() {
+            output_children.push(slider(
+                &theme,
+                &entity,
+                "zine-image-edge",
+                "Size (pixels, long side)",
+                options.image_edge as f32,
+                600.0,
+                4000.0,
+                1600.0,
+                |o, v| o.image_edge = (v / 20.0).round() as u32 * 20,
+            ));
+        }
         let mut layout_children = vec![
             chips(&theme, &entity, "zine-mode", &ZineMode::ALL, options.mode, |m| m.label().to_string(), |o, v| o.mode = v),
             hint(
@@ -431,6 +478,8 @@ impl Workspace {
             }),
         ];
         let zines_children = self.zines_card(cx);
+        let ideas_children = self.suggestions_card(cx);
+        let story_children = self.story_card(cx);
         let designs_children = self.designs_card(cx);
         let arrange_children = self.arrange_card(cx);
         let sections = vec![
@@ -439,6 +488,13 @@ impl Workspace {
                 "Your zines",
                 format!("{}", self.zine_library.zines.len()),
                 zines_children,
+                cx,
+            ),
+            self.export_card(
+                "zine-card-ideas",
+                "Suggested photos",
+                format!("{}", self.zine_suggestions(12).len()),
+                ideas_children,
                 cx,
             ),
             self.export_card(
@@ -469,6 +525,13 @@ impl Workspace {
                 cx,
             ),
             self.export_card(
+                "zine-card-story",
+                "Story",
+                format!("{} words", self.zine.story.split_whitespace().count()),
+                story_children,
+                cx,
+            ),
+            self.export_card(
                 "zine-card-designs",
                 "Templates",
                 format!("{}", self.zine_designs.designs.len()),
@@ -494,10 +557,7 @@ impl Workspace {
                 .text_color(theme.text_muted)
                 .child(format!("Making your zine\u{2026} {done} of {total}"))
         } else if ready {
-            let noun = match options.format {
-                ZineFormat::Pdf => "PDF",
-                ZineFormat::Html => "web page",
-            };
+            let noun = options.format.noun();
             footer_button
                 .bg(theme.accent)
                 .text_color(gpui::white())
@@ -573,6 +633,7 @@ impl Workspace {
         }
         if count == 0 {
             body.push(empty_state(&theme));
+            body.extend(self.start_with_best(cx));
         } else {
             body.push(page_strip(&theme, &layout));
             body.push(self.zine_tiles(cx));
@@ -975,7 +1036,27 @@ fn make_zine(
         }
         ZineFormat::Html => {
             let folder = free_name(destination, &stem, "");
-            rustyedit_io::zine::write_html(&folder, options, layout, &images)?;
+            rustyedit_io::zine_web::write_html(&folder, options, layout, &images)?;
+            folder
+        }
+        ZineFormat::HtmlSingle => {
+            let path = free_name(destination, &stem, "html");
+            rustyedit_io::zine_web::write_html_single(&path, options, layout, &images)?;
+            path
+        }
+        ZineFormat::Epub => {
+            let path = free_name(destination, &stem, "epub");
+            rustyedit_io::zine_web::write_epub(&path, options, layout, &images)?;
+            path
+        }
+        ZineFormat::Png | ZineFormat::Jpeg => {
+            let folder = free_name(destination, &stem, "");
+            let kind = if options.format == ZineFormat::Png {
+                rustyedit_io::zine_raster::PageImage::Png
+            } else {
+                rustyedit_io::zine_raster::PageImage::Jpeg(options.quality)
+            };
+            rustyedit_io::zine_raster::write_page_images(&folder, options, layout, &images, kind)?;
             folder
         }
     };

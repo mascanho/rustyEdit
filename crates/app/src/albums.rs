@@ -482,7 +482,7 @@ impl Workspace {
         let keystroke = &event.keystroke;
         match keystroke.key.as_str() {
             // Shift+Enter starts a new line in a text box on a zine page.
-            "enter" if target == TextTarget::ZineText && keystroke.modifiers.shift => {
+            "enter" if matches!(target, TextTarget::ZineText | TextTarget::ZineStory) && keystroke.modifiers.shift => {
                 draft.push('\n');
             }
             "enter" => {
@@ -557,6 +557,7 @@ impl Workspace {
             TextTarget::ZineTitle | TextTarget::ZineAuthor => self.commit_zine_text(target, text, cx),
             TextTarget::ZineText => self.commit_zine_item_text(text, cx),
             TextTarget::ZineDesignName => self.save_design(text, cx),
+            TextTarget::ZineStory => self.commit_zine_story(text, cx),
             TextTarget::Title
             | TextTarget::Caption
             | TextTarget::Creator

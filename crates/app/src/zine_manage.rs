@@ -214,11 +214,34 @@ impl Workspace {
         if self.zine_ui.arranging || self.zine.photos.is_empty() {
             return;
         }
-        let (by, per_page, headings) = (
+        let (by, per_page, headings, smart) = (
             self.zine_ui.arrange_by,
             self.zine_ui.arrange_per_page,
             self.zine_ui.arrange_headings,
+            self.zine_ui.arrange_smart,
         );
+        // How good each photo looks and what shape it is, for the smart layout.
+        let facts: std::collections::HashMap<rustyedit_core::ZinePhoto, rustyedit_core::ZinePhotoFacts> = self
+            .zine
+            .photos
+            .iter()
+            .filter_map(|photo| {
+                let a = self
+                    .catalog
+                    .assets
+                    .iter()
+                    .find(|a| a.path == photo.path && a.copy_name == photo.copy_name)?;
+                let score = rustyedit_core::zine_photo_score(
+                    a.rating.value(),
+                    a.flag == rustyedit_core::Flag::Picked,
+                    false,
+                    a.sharpness,
+                )
+                .unwrap_or(0.0);
+                let aspect = if a.width > 0 && a.height > 0 { a.width as f32 / a.height as f32 } else { 1.5 };
+                Some((photo.clone(), rustyedit_core::ZinePhotoFacts { score, aspect }))
+            })
+            .collect();
         // What is known without opening files.
         let rows: Vec<(rustyedit_core::ZinePhoto, i64, PathBuf, Option<PathBuf>)> = self
             .zine
@@ -269,7 +292,13 @@ impl Workspace {
                 this.zine_ui.clear_selection();
                 this.zine_ui.page = None;
                 let sections = groups.len();
-                this.update_zine(cx, |z| z.arrange(&groups, per_page, headings));
+                this.update_zine(cx, |z| {
+                    if smart {
+                        z.arrange_smart(&groups, &facts)
+                    } else {
+                        z.arrange(&groups, per_page, headings)
+                    }
+                });
                 this.status_message = Some(
                     format!(
                         "Arranged {} photos in {sections} section{}",
@@ -557,6 +586,28 @@ impl Workspace {
                 .text_size(sp(10.5))
                 .text_color(theme.text_faint)
                 .child(by.description())
+                .into_any_element(),
+            pill(
+                &theme,
+                "zine-arrange-smart".into(),
+                "Smart layout",
+                "Each section opens with its best photo large, the cover is the best of all, and pages are shaped to tall and wide photos",
+                ui.arrange_smart,
+                true,
+            )
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.zine_ui.arrange_smart = !this.zine_ui.arrange_smart;
+                cx.notify();
+            }))
+            .into_any_element(),
+            div()
+                .text_size(sp(10.5))
+                .text_color(theme.text_faint)
+                .child(if ui.arrange_smart {
+                    "The best photo of each section opens it, large, and the pages are shaped to the tall and wide photos."
+                } else {
+                    "Photos fill the pages in order, as many to a page as you choose."
+                })
                 .into_any_element(),
             small_caption(&theme, "Photos per page"),
             per.into_any_element(),
