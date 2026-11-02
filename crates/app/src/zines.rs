@@ -19,12 +19,12 @@ use std::{
 };
 
 use gpui::{
-    div, img, prelude::*, px, relative, AnyElement, App, ClickEvent, Context, Entity, ObjectFit,
+    div, img, prelude::*, px, relative, AnyElement, ClickEvent, Context, ObjectFit,
     Render, SharedString, Window,
 };
 use rustyedit_core::{
-    Asset, Zine, ZineContent, ZineFont, ZineFormat, ZineLayout, ZineMode, ZineOptions,
-    ZinePageLayout, ZinePageSize, ZinePaper, ZinePhoto, ZinePreset, ZineSpot, ZineStyle,
+    Asset, Zine, ZineContent, ZineFormat, ZineLayout, ZineMode, ZineOptions, ZinePageLayout,
+    ZinePhoto, ZineSpot,
 };
 use rustyedit_io::zine::ZineImage;
 use rustyedit_ui::{sp, Icon, Theme};
@@ -176,10 +176,6 @@ impl Workspace {
             eprintln!("Could not save the zine: {error}");
         }
         cx.notify();
-    }
-
-    fn update_zine_options(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut ZineOptions)) {
-        self.update_zine(cx, |zine| change(&mut zine.options));
     }
 
     /// Typing in the title or author field finished.
@@ -336,209 +332,19 @@ impl Workspace {
         self.ensure_export_thumbnails(&wanted, cx);
 
         let theme = self.theme;
-        let entity = cx.entity();
         let options = self.zine.options.clone();
         let count = self.zine.photos.len();
         let layout = self.zine.layout();
         let running = self.zine_run.as_ref().map(ZineRun::progress);
 
-        // --- Left: how it is made ---------------------------------------------
-        let presets = div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap_1()
-            .children(ZinePreset::ALL.map(|preset| {
-                div()
-                    .id(SharedString::from(format!("zine-preset-{preset:?}")))
-                    .flex()
-                    .items_center()
-                    .h(sp(24.0))
-                    .px_2()
-                    .rounded_md()
-                    .text_xs()
-                    .cursor_pointer()
-                    .border_1()
-                    .border_color(theme.border_subtle)
-                    .text_color(theme.text_muted)
-                    .bg(theme.background)
-                    .hover(|el| el.border_color(theme.accent).text_color(theme.text))
-                    .tooltip(rustyedit_ui::tip(preset.description(), &theme))
-                    .child(preset.label())
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                        this.update_zine(cx, |z| preset.apply(&mut z.options))
-                    }))
-                    .into_any_element()
-            }))
-            .into_any_element();
-        let mut output_children = vec![
-            caption(&theme, "Quick set-up"),
-            presets,
-            caption(&theme, "Save as"),
-            chips(&theme, &entity, "zine-format", &ZineFormat::ALL, options.format, |f| f.label().to_string(), |o, v| o.format = v),
-            hint(&theme, options.format.description()),
-            self.zine_destination(&options, cx),
-            slider(&theme, &entity, "zine-quality", "Picture quality", options.quality as f32, 50.0, 100.0, 88.0, |o, v| {
-                o.quality = v.round().clamp(50.0, 100.0) as u8
-            }),
-        ];
-        if options.format.is_page_pictures() {
-            output_children.push(slider(
-                &theme,
-                &entity,
-                "zine-image-edge",
-                "Size (pixels, long side)",
-                options.image_edge as f32,
-                600.0,
-                4000.0,
-                1600.0,
-                |o, v| o.image_edge = (v / 20.0).round() as u32 * 20,
-            ));
+        // Folded cards: what is rarely needed starts out of the way.
+        if !self.zine_ui.panel_ready {
+            self.zine_ui.panel_ready = true;
+            for key in crate::zine_panel::FOLDED_AT_FIRST {
+                self.collapsed_sections.insert(key);
+            }
         }
-        let mut layout_children = vec![
-            chips(&theme, &entity, "zine-mode", &ZineMode::ALL, options.mode, |m| m.label().to_string(), |o, v| o.mode = v),
-            hint(
-                &theme,
-                match options.mode {
-                    ZineMode::Auto => "The photos flow onto the pages in order",
-                    ZineMode::Manual => "Drag each photo onto the page and slot you want",
-                },
-            ),
-            caption(&theme, "Pages"),
-            chips(&theme, &entity, "zine-layout", &ZineLayout::ALL, options.layout, |l| l.label().to_string(), |o, v| o.layout = v),
-            hint(&theme, options.layout.description()),
-            caption(&theme, "Page size"),
-            chips(&theme, &entity, "zine-size", &ZinePageSize::ALL, options.page_size, |s| s.label().to_string(), |o, v| o.page_size = v),
-        ];
-        if options.layout != ZineLayout::FoldedSheet {
-            layout_children.push(chips(&theme, &entity, "zine-orientation", &[false, true], options.landscape, |l| {
-                if l { "Landscape" } else { "Portrait" }.to_string()
-            }, |o, v| o.landscape = v));
-        }
-        layout_children.push(slider(&theme, &entity, "zine-margin", "Margin (mm)", options.margin_mm as f32, 0.0, 30.0, 12.0, |o, v| {
-            o.margin_mm = v.round().clamp(0.0, 30.0) as u8
-        }));
-        layout_children.push(caption(&theme, "Paper"));
-        layout_children.push(chips(&theme, &entity, "zine-paper", &ZinePaper::ALL, options.paper, |p| p.label().to_string(), |o, v| o.paper = v));
-        let style_chips = div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap_1()
-            .p_1()
-            .rounded_lg()
-            .bg(theme.background)
-            .border_1()
-            .border_color(theme.border_subtle)
-            .children(ZineStyle::ALL.map(|style| {
-                let selected = options.style == style;
-                div()
-                    .id(SharedString::from(format!("zine-style-{style:?}")))
-                    .flex()
-                    .flex_1()
-                    .items_center()
-                    .justify_center()
-                    .h(sp(24.0))
-                    .px_2()
-                    .rounded_md()
-                    .text_xs()
-                    .cursor_pointer()
-                    .border_1()
-                    .when(selected, |el| {
-                        el.bg(theme.accent_muted)
-                            .border_color(theme.accent)
-                            .text_color(theme.text)
-                    })
-                    .when(!selected, |el| {
-                        el.border_color(theme.background)
-                            .text_color(theme.text_muted)
-                            .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
-                    })
-                    .tooltip(rustyedit_ui::tip(style.description(), &theme))
-                    .child(style.label())
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                        this.update_zine(cx, |z| z.apply_style(style))
-                    }))
-                    .into_any_element()
-            }))
-            .into_any_element();
-        let text_children = vec![
-            caption(&theme, "Style"),
-            style_chips,
-            hint(&theme, options.style.description()),
-            caption(&theme, "Typeface"),
-            chips(&theme, &entity, "zine-font", &ZineFont::ALL, options.font, |f| f.label().to_string(), |o, v| o.font = v),
-            caption(&theme, "Title"),
-            self.zine_text_field("zine-title", TextTarget::ZineTitle, &options.title, "Untitled zine", cx),
-            caption(&theme, "Author"),
-            self.zine_text_field("zine-author", TextTarget::ZineAuthor, &options.author, "Your name", cx),
-            toggle(&theme, &entity, "zine-cover", "Cover page", options.cover, |o| o.cover = !o.cover),
-            toggle(&theme, &entity, "zine-captions", "File names under photos", options.captions, |o| {
-                o.captions = !o.captions
-            }),
-        ];
-        let zines_children = self.zines_card(cx);
-        let ideas_children = self.suggestions_card(cx);
-        let story_children = self.story_card(cx);
-        let designs_children = self.designs_card(cx);
-        let arrange_children = self.arrange_card(cx);
-        let sections = vec![
-            self.export_card(
-                "zine-card-zines",
-                "Your zines",
-                format!("{}", self.zine_library.zines.len()),
-                zines_children,
-                cx,
-            ),
-            self.export_card(
-                "zine-card-ideas",
-                "Suggested photos",
-                format!("{}", self.zine_suggestions(12).len()),
-                ideas_children,
-                cx,
-            ),
-            self.export_card(
-                "zine-card-output",
-                "Output",
-                options.format.label().to_string(),
-                output_children,
-                cx,
-            ),
-            self.export_card(
-                "zine-card-layout",
-                "Layout",
-                format!(
-                    "{} \u{00B7} {} \u{00B7} {}",
-                    options.mode.label(),
-                    options.layout.label(),
-                    options.page_size.label()
-                ),
-                layout_children,
-                cx,
-            ),
-            self.export_card("zine-card-text", "Text", options.title.clone(), text_children, cx),
-            self.export_card(
-                "zine-card-arrange",
-                "Arrange by theme",
-                self.zine_ui.arrange_by.label().to_string(),
-                arrange_children,
-                cx,
-            ),
-            self.export_card(
-                "zine-card-story",
-                "Story",
-                format!("{} words", self.zine.story.split_whitespace().count()),
-                story_children,
-                cx,
-            ),
-            self.export_card(
-                "zine-card-designs",
-                "Templates",
-                format!("{}", self.zine_designs.designs.len()),
-                designs_children,
-                cx,
-            ),
-        ];
+        let sections = self.zine_panel_sections(cx);
 
         let ready = count > 0 && options.destination.is_some();
         let footer_button = div()
@@ -576,7 +382,23 @@ impl Workspace {
                     "Choose a folder to save in"
                 })
         };
-        let footer = rustyedit_ui::panel_footer(&theme, vec![vec![footer_button.into_any_element()]]);
+        let mut footer_rows = Vec::new();
+        if let Some(message) = &self.zine_message {
+            footer_rows.push(vec![div()
+                .flex_1()
+                .px_2()
+                .py_1p5()
+                .rounded_md()
+                .bg(theme.background)
+                .border_1()
+                .border_color(theme.border_subtle)
+                .text_size(sp(10.5))
+                .text_color(theme.text_muted)
+                .child(message.clone())
+                .into_any_element()]);
+        }
+        footer_rows.push(vec![footer_button.into_any_element()]);
+        let footer = rustyedit_ui::panel_footer(&theme, footer_rows);
         let panel = rustyedit_ui::side_panel(
             "zine-side-panel",
             &theme,
@@ -884,7 +706,7 @@ impl Workspace {
             .and_then(|a| self.export_thumbnail(a))
     }
 
-    fn zine_destination(&self, options: &ZineOptions, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn zine_destination(&self, options: &ZineOptions, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
         let (name, parent) = match options.destination.as_deref() {
             Some(path) => (
@@ -1109,137 +931,6 @@ pub(crate) fn plural(n: usize) -> &'static str {
 
 // --- Drawing helpers ------------------------------------------------------------
 
-pub(crate) fn caption(theme: &Theme, text: &'static str) -> AnyElement {
-    div()
-        .pt_1()
-        .text_size(sp(10.0))
-        .font_weight(gpui::FontWeight::SEMIBOLD)
-        .text_color(theme.text_faint)
-        .child(text.to_uppercase())
-        .into_any_element()
-}
-
-fn hint(theme: &Theme, text: &'static str) -> AnyElement {
-    div()
-        .text_size(sp(10.5))
-        .text_color(theme.text_faint)
-        .child(text)
-        .into_any_element()
-}
-
-/// Chips, one per value; the chosen one is highlighted.
-fn chips<T: Copy + PartialEq + 'static>(
-    theme: &Theme,
-    entity: &Entity<Workspace>,
-    id: &'static str,
-    values: &[T],
-    current: T,
-    label: impl Fn(T) -> String,
-    apply: fn(&mut ZineOptions, T),
-) -> AnyElement {
-    let theme = *theme;
-    div()
-        .flex()
-        .flex_row()
-        .flex_wrap()
-        .gap_1()
-        .p_1()
-        .rounded_lg()
-        .bg(theme.background)
-        .border_1()
-        .border_color(theme.border_subtle)
-        .children(values.iter().enumerate().map(|(i, &value)| {
-            let entity = entity.clone();
-            let selected = value == current;
-            div()
-                .id(SharedString::from(format!("{id}-{i}")))
-                .flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .h(sp(24.0))
-                .px_2()
-                .rounded_md()
-                .text_xs()
-                .cursor_pointer()
-                .border_1()
-                .when(selected, |el| {
-                    el.bg(theme.accent_muted)
-                        .border_color(theme.accent)
-                        .text_color(theme.text)
-                })
-                .when(!selected, |el| {
-                    el.border_color(theme.background)
-                        .text_color(theme.text_muted)
-                        .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
-                })
-                .child(label(value))
-                .on_click(move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
-                    entity.update(cx, |this, cx| this.update_zine_options(cx, |o| apply(o, value)));
-                })
-                .into_any_element()
-        }))
-        .into_any_element()
-}
-
-fn toggle(
-    theme: &Theme,
-    entity: &Entity<Workspace>,
-    id: &'static str,
-    label: &'static str,
-    on: bool,
-    flip: fn(&mut ZineOptions),
-) -> AnyElement {
-    let entity = entity.clone();
-    div()
-        .flex()
-        .flex_row()
-        .items_center()
-        .justify_between()
-        .child(div().text_sm().text_color(theme.text_muted).child(label))
-        .child(rustyedit_ui::toggle_switch(
-            id,
-            on,
-            theme,
-            move |_: &ClickEvent, _w: &mut Window, cx: &mut App| {
-                entity.update(cx, |this, cx| this.update_zine_options(cx, flip));
-            },
-        ))
-        .into_any_element()
-}
-
-#[allow(clippy::too_many_arguments)]
-fn slider(
-    theme: &Theme,
-    entity: &Entity<Workspace>,
-    id: &'static str,
-    label: &'static str,
-    value: f32,
-    min: f32,
-    max: f32,
-    default: f32,
-    apply: fn(&mut ZineOptions, f32),
-) -> AnyElement {
-    let entity = entity.clone();
-    rustyedit_ui::labeled_slider(
-        id,
-        label,
-        value,
-        rustyedit_ui::SliderSpec {
-            min,
-            max,
-            default,
-            signed: false,
-            track: rustyedit_ui::SliderTrack::Amount,
-        },
-        theme,
-        move |v, _w: &mut Window, cx: &mut App| {
-            entity.update(cx, |this, cx| this.update_zine_options(cx, |o| apply(o, v)));
-        },
-    )
-    .into_any_element()
-}
-
 fn empty_state(theme: &Theme) -> AnyElement {
     div()
         .flex()
@@ -1336,7 +1027,13 @@ fn page_strip(theme: &Theme, layout: &rustyedit_core::ZinePageLayout) -> AnyElem
         .flex()
         .flex_col()
         .gap_1()
-        .child(caption(&theme, "Pages"))
+        .child(
+            div()
+                .text_size(sp(10.0))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(theme.text_faint)
+                .child("PAGES"),
+        )
         .child(
             div()
                 .id("zine-pages")

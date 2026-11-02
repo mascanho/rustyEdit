@@ -115,6 +115,8 @@ pub(crate) struct ZineUi {
     pub(crate) pages_selected: Vec<usize>,
     /// Whether the strip of pages across the top is open.
     pub(crate) pages_open: bool,
+    /// Whether the left panel's cards have had their starting folds.
+    pub(crate) panel_ready: bool,
     /// Where the strips of pages and of photos are scrolled to.
     pub(crate) pages_scroll: ScrollHandle,
     pub(crate) photos_scroll: ScrollHandle,
@@ -152,6 +154,7 @@ impl Default for ZineUi {
             style_parts: ZineStyleParts::default(),
             pages_selected: Vec::new(),
             pages_open: true,
+            panel_ready: false,
             pages_scroll: ScrollHandle::new(),
             photos_scroll: ScrollHandle::new(),
             confirm_delete: None,

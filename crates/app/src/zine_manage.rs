@@ -4,15 +4,14 @@
 
 use std::path::PathBuf;
 
-use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString};
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context};
 use rustyedit_core::{
     zine_group_photos, zine_unused_title, Zine, ZineDesign, ZineGroupInput, ZineGrouping,
     ZineStyleParts,
 };
-use rustyedit_ui::{sp, Theme};
 
 use crate::{
-    workspace::{TextTarget, Workspace},
+    workspace::Workspace,
     zine_bar::pill,
     zines::plural,
 };
@@ -168,7 +167,7 @@ impl Workspace {
         cx.notify();
     }
 
-    fn delete_design(&mut self, ix: usize, cx: &mut Context<Self>) {
+    pub(crate) fn delete_design(&mut self, ix: usize, cx: &mut Context<Self>) {
         if ix < self.zine_designs.designs.len() {
             self.zine_designs.designs.remove(ix);
             if let Err(error) = rustyedit_io::zine::save_designs(&self.zine_designs) {
@@ -179,7 +178,7 @@ impl Workspace {
     }
 
     /// A new zine set up as a template is.
-    fn zine_from_design(&mut self, ix: usize, cx: &mut Context<Self>) {
+    pub(crate) fn zine_from_design(&mut self, ix: usize, cx: &mut Context<Self>) {
         if let Some(design) = self.zine_designs.designs.get(ix).cloned() {
             let mut zine = Zine::from_design(&design);
             zine.options.title = design.name.clone();
@@ -189,7 +188,7 @@ impl Workspace {
 
     /// The zine being worked on, set up as a template is, its photos in the
     /// template's frames.
-    fn use_design_here(&mut self, ix: usize, cx: &mut Context<Self>) {
+    pub(crate) fn use_design_here(&mut self, ix: usize, cx: &mut Context<Self>) {
         let Some(design) = self.zine_designs.designs.get(ix).cloned() else {
             return;
         };
@@ -352,291 +351,6 @@ impl Workspace {
         );
     }
 
-    // --- The cards in the options panel --------------------------------------------------------------
-
-    /// The list of zines, and what can be done with them.
-    pub(crate) fn zines_card(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let theme = self.theme;
-        let active = self.zine_library.active;
-        let rows = self.zine_library.zines.iter().enumerate().map(|(ix, zine)| {
-            // The one being worked on has its latest in `self.zine`.
-            let zine = if ix == active { &self.zine } else { zine };
-            let selected = ix == active;
-            let count = zine.photos.len();
-            let confirming = self.zine_ui.confirm_delete == Some(ix);
-            div()
-                .id(SharedString::from(format!("zine-row-{ix}")))
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap_2()
-                .px_2()
-                .py_1p5()
-                .rounded_lg()
-                .cursor_pointer()
-                .border_1()
-                .when(selected, |el| {
-                    el.bg(theme.accent_muted).border_color(theme.accent)
-                })
-                .when(!selected, |el| {
-                    el.bg(theme.background)
-                        .border_color(theme.border_subtle)
-                        .hover(|el| el.border_color(theme.accent))
-                })
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_w(sp(0.0))
-                        .child(
-                            div()
-                                .truncate()
-                                .text_size(sp(12.0))
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(theme.text)
-                                .child(zine.options.title.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_size(sp(10.0))
-                                .text_color(theme.text_faint)
-                                .child(format!(
-                                    "{count} photo{} \u{00B7} {}",
-                                    plural(count),
-                                    zine.options.format.label()
-                                )),
-                        ),
-                )
-                .when(self.zine_library.zines.len() > 1, |el| {
-                    el.child(
-                        div()
-                            .id(SharedString::from(format!("zine-delete-{ix}")))
-                            .flex()
-                            .flex_shrink_0()
-                            .items_center()
-                            .px_1p5()
-                            .h(sp(20.0))
-                            .rounded_md()
-                            .text_size(sp(10.0))
-                            .text_color(if confirming { theme.danger } else { theme.text_faint })
-                            .hover(|el| el.bg(theme.surface).text_color(theme.danger))
-                            .tooltip(rustyedit_ui::tip("Delete this zine (the photos stay in the library)", &theme))
-                            .child(if confirming { "Delete?" } else { "\u{2715}" })
-                            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| this.zine_delete(ix, cx))),
-                    )
-                })
-                .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| this.zine_switch(ix, cx)))
-                .into_any_element()
-        });
-        let actions = div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap_1()
-            .child(
-                pill(&theme, "zine-new".into(), "New zine", "Start another zine", false, true)
-                    .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.zine_create(cx))),
-            )
-            .child(
-                pill(&theme, "zine-copy".into(), "Duplicate", "A copy of this zine, to try another look", false, true)
-                    .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.zine_duplicate_zine(cx))),
-            )
-            .into_any_element();
-        let mut out: Vec<AnyElement> = rows.collect();
-        out.push(actions);
-        out
-    }
-
-    /// Saved templates, and saving this zine's.
-    pub(crate) fn designs_card(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let theme = self.theme;
-        let mut out: Vec<AnyElement> = vec![
-            div()
-                .text_size(sp(10.5))
-                .text_color(theme.text_faint)
-                .child("A template remembers a zine's setup and where its photos and text go.")
-                .into_any_element(),
-            self.zine_text_field(
-                "zine-design-name",
-                TextTarget::ZineDesignName,
-                "",
-                "Name this zine's template, then Enter",
-                cx,
-            ),
-        ];
-        if self.zine_designs.designs.is_empty() {
-            out.push(
-                div()
-                    .text_size(sp(10.5))
-                    .text_color(theme.text_faint)
-                    .child("No templates yet.")
-                    .into_any_element(),
-            );
-        }
-        for (ix, design) in self.zine_designs.designs.iter().enumerate() {
-            out.push(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .p_2()
-                    .rounded_lg()
-                    .bg(theme.background)
-                    .border_1()
-                    .border_color(theme.border_subtle)
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_size(sp(12.0))
-                                    .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(theme.text)
-                                    .child(design.name.clone()),
-                            )
-                            .child(
-                                div()
-                                    .id(SharedString::from(format!("zine-design-delete-{ix}")))
-                                    .px_1p5()
-                                    .text_size(sp(10.0))
-                                    .text_color(theme.text_faint)
-                                    .cursor_pointer()
-                                    .hover(|el| el.text_color(theme.danger))
-                                    .tooltip(rustyedit_ui::tip("Delete the template", &theme))
-                                    .child("\u{2715}")
-                                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| this.delete_design(ix, cx))),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_size(sp(10.0))
-                            .text_color(theme.text_faint)
-                            .child(design.summary()),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .flex_wrap()
-                            .gap_1()
-                            .child(
-                                pill(&theme, SharedString::from(format!("zine-design-new-{ix}")), "New zine", "Start a new zine laid out like this", false, true)
-                                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| this.zine_from_design(ix, cx))),
-                            )
-                            .child(
-                                pill(&theme, SharedString::from(format!("zine-design-use-{ix}")), "Use here", "Lay this zine out like the template, its photos in the frames in order", false, true)
-                                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| this.use_design_here(ix, cx))),
-                            ),
-                    )
-                    .into_any_element(),
-            );
-        }
-        out
-    }
-
-    /// Grouping the photos and laying them out.
-    pub(crate) fn arrange_card(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let theme = self.theme;
-        let ui = &self.zine_ui;
-        let by = ui.arrange_by;
-        let groupings = div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap_1()
-            .children(ZineGrouping::ALL.map(|g| {
-                pill(&theme, SharedString::from(format!("zine-by-{g:?}")), g.label(), g.description(), by == g, true)
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                        this.zine_ui.arrange_by = g;
-                        cx.notify();
-                    }))
-                    .into_any_element()
-            }));
-        let per = div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap_1()
-            .children([1usize, 2, 4].map(|n| {
-                pill(
-                    &theme,
-                    SharedString::from(format!("zine-arrange-per-{n}")),
-                    &format!("{n}"),
-                    "Photos on each page",
-                    ui.arrange_per_page == n,
-                    true,
-                )
-                .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                    this.zine_ui.arrange_per_page = n;
-                    cx.notify();
-                }))
-                .into_any_element()
-            }));
-        let busy = ui.arranging;
-        vec![
-            small_caption(&theme, "Group by"),
-            groupings.into_any_element(),
-            div()
-                .text_size(sp(10.5))
-                .text_color(theme.text_faint)
-                .child(by.description())
-                .into_any_element(),
-            pill(
-                &theme,
-                "zine-arrange-smart".into(),
-                "Smart layout",
-                "Each section opens with its best photo large, the cover is the best of all, and pages are shaped to tall and wide photos",
-                ui.arrange_smart,
-                true,
-            )
-            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
-                this.zine_ui.arrange_smart = !this.zine_ui.arrange_smart;
-                cx.notify();
-            }))
-            .into_any_element(),
-            div()
-                .text_size(sp(10.5))
-                .text_color(theme.text_faint)
-                .child(if ui.arrange_smart {
-                    "The best photo of each section opens it, large, and the pages are shaped to the tall and wide photos."
-                } else {
-                    "Photos fill the pages in order, as many to a page as you choose."
-                })
-                .into_any_element(),
-            small_caption(&theme, "Photos per page"),
-            per.into_any_element(),
-            pill(
-                &theme,
-                "zine-arrange-headings".into(),
-                "A title page for each section",
-                "Open every section with a page naming it",
-                ui.arrange_headings,
-                true,
-            )
-            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
-                this.zine_ui.arrange_headings = !this.zine_ui.arrange_headings;
-                cx.notify();
-            }))
-            .into_any_element(),
-            pill(
-                &theme,
-                "zine-arrange-go".into(),
-                if busy { "Arranging\u{2026}" } else { "Arrange the photos" },
-                "Put the photos in sections and lay the pages out. You can undo it.",
-                false,
-                !busy && !self.zine.photos.is_empty(),
-            )
-            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.arrange_photos(cx)))
-            .into_any_element(),
-        ]
-    }
-
     /// The bar's controls for copying a page's look to other pages.
     pub(crate) fn look_controls(&self, page: usize, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
@@ -697,16 +411,6 @@ impl Workspace {
             )
             .into_any_element()
     }
-}
-
-fn small_caption(theme: &Theme, text: &'static str) -> AnyElement {
-    div()
-        .pt_1()
-        .text_size(sp(10.0))
-        .font_weight(gpui::FontWeight::SEMIBOLD)
-        .text_color(theme.text_faint)
-        .child(text.to_uppercase())
-        .into_any_element()
 }
 
 #[cfg(test)]

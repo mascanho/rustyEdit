@@ -56,6 +56,7 @@ mod zine_edit;
 mod zine_ideas;
 mod zine_manage;
 mod zine_pages;
+mod zine_panel;
 mod zine_visuals;
 mod zines;
 
