@@ -76,10 +76,93 @@ pub(crate) fn pre_blur_sigma(max_radius: f32) -> f32 {
     (max_radius * 0.17).max(0.6)
 }
 
+/// How much to shrink the photo before blurring at `sigma`, to keep the
+/// wide blurs Lens Blur needs at high Amount cheap: at `factor` 2 or 4,
+/// a Gaussian of `sigma / factor` over a quarter or sixteenth of the
+/// pixels costs a fraction of the full-size blur, and the loss of detail
+/// is invisible once something is already blurred this softly. Kept
+/// conservative (downsized sigma stays >= 3) so the result doesn't look
+/// softer than the real blur it stands in for.
+pub(crate) fn downsample_factor(sigma: f32) -> u32 {
+    if sigma < 6.0 {
+        1
+    } else if sigma < 16.0 {
+        2
+    } else {
+        4
+    }
+}
+
 /// How much of a sample comes from the pre-blurred copy for a pixel of
 /// CoC `r`: none for slight blur (kept crisp), all at the full radius.
 pub(crate) fn pre_blur_mix(r: f32, max_radius: f32) -> f32 {
     (r / max_radius.max(1.0) * 1.2).clamp(0.0, 1.0)
+}
+
+/// `image` shrunk by averaging `factor` x `factor` blocks: one pass, no
+/// filter-weight machinery, far cheaper than a general-purpose resize for
+/// the plain box downsampling a pre-blur needs.
+fn box_downsample(image: &RgbImage, factor: u32) -> RgbImage {
+    let (w, h) = image.dimensions();
+    let (sw, sh) = ((w / factor).max(1), (h / factor).max(1));
+    let src = image.as_raw();
+    let area = (factor * factor) as u32;
+    RgbImage::from_fn(sw, sh, |sx, sy| {
+        let (x0, y0) = (sx * factor, sy * factor);
+        let (x1, y1) = ((x0 + factor).min(w), (y0 + factor).min(h));
+        let mut sum = [0u32; 3];
+        for y in y0..y1 {
+            let row = (y * w) as usize * 3;
+            for x in x0..x1 {
+                let at = row + x as usize * 3;
+                sum[0] += src[at] as u32;
+                sum[1] += src[at + 1] as u32;
+                sum[2] += src[at + 2] as u32;
+            }
+        }
+        let n = ((x1 - x0) * (y1 - y0)).max(1);
+        image::Rgb(sum.map(|v| (v / n.min(area).max(1)) as u8))
+    })
+}
+
+/// `small` (( `w`/`factor` ) x ( `h`/`factor` )) stretched back to `w` x
+/// `h` with bilinear sampling: one pass, cheaper than a general-purpose
+/// resize for the plain upscaling a pre-blur needs.
+fn bilinear_upsample(small: &RgbImage, w: u32, h: u32) -> RgbImage {
+    let (sw, sh) = small.dimensions();
+    let (sx_scale, sy_scale) = (sw as f32 / w as f32, sh as f32 / h as f32);
+    let src = small.as_raw();
+    let at = |x: u32, y: u32| {
+        let i = (y.min(sh - 1) * sw + x.min(sw - 1)) as usize * 3;
+        [src[i] as f32, src[i + 1] as f32, src[i + 2] as f32]
+    };
+    RgbImage::from_fn(w, h, |x, y| {
+        // Pixel centres, mapped into the small image's pixel space.
+        let fx = ((x as f32 + 0.5) * sx_scale - 0.5).max(0.0);
+        let fy = ((y as f32 + 0.5) * sy_scale - 0.5).max(0.0);
+        let (x0, y0) = (fx as u32, fy as u32);
+        let (tx, ty) = (fx - x0 as f32, fy - y0 as f32);
+        let (a, b, c, d) = (at(x0, y0), at(x0 + 1, y0), at(x0, y0 + 1), at(x0 + 1, y0 + 1));
+        image::Rgb(std::array::from_fn(|k| {
+            let top = a[k] + (b[k] - a[k]) * tx;
+            let bottom = c[k] + (d[k] - c[k]) * tx;
+            (top + (bottom - top) * ty).round() as u8
+        }))
+    })
+}
+
+/// A Gaussian blur of `image` at `sigma`, downsampled first for large
+/// `sigma` (see `downsample_factor`) and scaled back up. Much cheaper than
+/// blurring at full size, with no visible difference.
+fn fast_blur(image: &RgbImage, sigma: f32) -> RgbImage {
+    let factor = downsample_factor(sigma);
+    if factor <= 1 {
+        return image::imageops::blur(image, sigma);
+    }
+    let (w, h) = image.dimensions();
+    let small = box_downsample(image, factor);
+    let blurred = image::imageops::blur(&small, (sigma / factor as f32).max(0.6));
+    bilinear_upsample(&blurred, w, h)
 }
 
 /// Whether the photo needs a lens blur pass.
@@ -188,13 +271,13 @@ pub(crate) fn apply(image: &mut RgbImage, s: &DevelopSettings) {
         .collect();
     let gain = bokeh_gain((lens.boost / 100.0).clamp(0.0, 1.0));
     let sigma = pre_blur_sigma(max_r);
-    let soft: Vec<[f32; 3]> = image::imageops::blur(&*image, sigma)
+    let soft: Vec<[f32; 3]> = fast_blur(image, sigma)
         .pixels()
         .map(|p| p.0.map(|v| v as f32 / 255.0))
         .collect();
     // The points of light, softened like the colours (none without Boost).
     let lights: Vec<[f32; 3]> = if gain > 0.0 {
-        let around: Vec<f32> = image::imageops::blur(&*image, surround_sigma(max_r))
+        let around: Vec<f32> = fast_blur(image, surround_sigma(max_r))
             .pixels()
             .map(|p| luma(p.0.map(|v| v as f32 / 255.0)))
             .collect();
@@ -203,7 +286,7 @@ pub(crate) fn apply(image: &mut RgbImage, s: &DevelopSettings) {
             let k = highlight(luma(colours[i]), around[i]);
             image::Rgb(colours[i].map(|v| (v * k * 255.0).round() as u8))
         });
-        image::imageops::blur(&lights, sigma)
+        fast_blur(&lights, sigma)
             .pixels()
             .map(|p| p.0.map(|v| v as f32 / 255.0))
             .collect()
@@ -234,62 +317,93 @@ pub(crate) fn apply(image: &mut RgbImage, s: &DevelopSettings) {
     let coc_at = |x: f32, y: f32| coc[index(x, y)];
 
     let table = sample_table(lens.shape);
+
+    // The gather one pixel (`x`, `y`, CoC `r`) does: the costly part, up to
+    // `SAMPLES` lookups. Pulled out so a deeply, evenly blurred pair of
+    // neighbours (see the loop below) can share one call instead of two —
+    // their true gathers would come out within a shade of each other
+    // anyway, since that's exactly what "deeply and evenly blurred" means.
+    let gather_at = |x: u32, y: u32, i: usize, r: f32| -> [u8; 3] {
+        let (cx, cy) = (x as f32 + 0.5, y as f32 + 0.5);
+        let edge = ((cx / wf) * 2.0 - 1.0, (cy / hf) * 2.0 - 1.0);
+        let own = colours[i];
+        let mut sum = own;
+        let mut total = 1.0;
+        let mut glow = [0.0f32; 3];
+        let mut glow_n = 0.0f32;
+        let level = level(r);
+        let start = level_start(level);
+        let mix = pre_blur_mix(r, max_r);
+        for &[ox, oy, shape_w] in &table[start..start + LEVELS[level] as usize] {
+            if lens.shape == BokehShape::CatEye && !cat_eye_keeps(ox, oy, edge) {
+                continue;
+            }
+            let (qx, qy) = (cx + ox * r, cy + oy * r);
+            let distance = (ox * ox + oy * oy).sqrt() * r;
+            glow_n += shape_w;
+            let reach = (coc_at(qx, qy) - distance + 1.0).clamp(0.0, 1.0);
+            if reach <= 0.0 {
+                continue;
+            }
+            if !lights.is_empty() {
+                let light = lights[index(qx, qy)];
+                for k in 0..3 {
+                    glow[k] += light[k] * reach * shape_w;
+                }
+            }
+            // Only the copy that counts is read.
+            let c: [f32; 3] = if mix >= 1.0 {
+                soft[index(qx, qy)]
+            } else {
+                let sharp = bilinear(&colours, qx, qy);
+                let blurred = soft[index(qx, qy)];
+                std::array::from_fn(|k| sharp[k] + (blurred[k] - sharp[k]) * mix)
+            };
+            let weight = reach * shape_w;
+            for k in 0..3 {
+                sum[k] += c[k] * weight;
+            }
+            total += weight;
+        }
+        let glow = glow.map(|g| g / glow_n.max(1.0));
+        let strength = bloom(gain, luma(glow));
+        std::array::from_fn(|k| {
+            let value = sum[k] / total + glow[k] * strength;
+            (value * 255.0).round().clamp(0.0, 255.0) as u8
+        })
+    };
+
+    // Deep enough into the blur, and close enough to its neighbour's, that
+    // sharing one gather between them is invisible: both well past the
+    // detail-losing mix into the softened copy, and close enough in CoC
+    // that their true gathers would barely differ.
+    let pair_min_coc = (max_r * 0.4).max(6.0);
+    let pair_max_diff = (max_r * 0.08).max(0.5);
+
     let raw: &mut [u8] = &mut *image;
     for_row_bands(raw, w as usize * 3, |first_row, band| {
         for (row_i, row) in band.chunks_mut(w as usize * 3).enumerate() {
             let y = first_row + row_i;
-            for (x, px) in row.chunks_exact_mut(3).enumerate() {
-                let i = y * w as usize + x;
+            let mut x = 0u32;
+            while x < w {
+                let i = (y as u32 * w + x) as usize;
                 let r = coc[i];
                 if r < 0.5 {
+                    x += 1;
                     continue;
                 }
-                let (cx, cy) = (x as f32 + 0.5, y as f32 + 0.5);
-                let edge = ((cx / wf) * 2.0 - 1.0, (cy / hf) * 2.0 - 1.0);
-                let own = colours[i];
-                let mut sum = own;
-                let mut total = 1.0;
-                let mut glow = [0.0f32; 3];
-                let mut glow_n = 0.0f32;
-                let level = level(r);
-                let start = level_start(level);
-                let mix = pre_blur_mix(r, max_r);
-                for &[ox, oy, shape_w] in &table[start..start + LEVELS[level] as usize] {
-                    if lens.shape == BokehShape::CatEye && !cat_eye_keeps(ox, oy, edge) {
-                        continue;
-                    }
-                    let (qx, qy) = (cx + ox * r, cy + oy * r);
-                    let distance = (ox * ox + oy * oy).sqrt() * r;
-                    glow_n += shape_w;
-                    let reach = (coc_at(qx, qy) - distance + 1.0).clamp(0.0, 1.0);
-                    if reach <= 0.0 {
-                        continue;
-                    }
-                    if !lights.is_empty() {
-                        let light = lights[index(qx, qy)];
-                        for k in 0..3 {
-                            glow[k] += light[k] * reach * shape_w;
-                        }
-                    }
-                    // Only the copy that counts is read.
-                    let c: [f32; 3] = if mix >= 1.0 {
-                        soft[index(qx, qy)]
-                    } else {
-                        let sharp = bilinear(&colours, qx, qy);
-                        let blurred = soft[index(qx, qy)];
-                        std::array::from_fn(|k| sharp[k] + (blurred[k] - sharp[k]) * mix)
-                    };
-                    let weight = reach * shape_w;
-                    for k in 0..3 {
-                        sum[k] += c[k] * weight;
-                    }
-                    total += weight;
-                }
-                let glow = glow.map(|g| g / glow_n.max(1.0));
-                let strength = bloom(gain, luma(glow));
-                for k in 0..3 {
-                    let value = sum[k] / total + glow[k] * strength;
-                    px[k] = (value * 255.0).round().clamp(0.0, 255.0) as u8;
+                let paired = x + 1 < w && {
+                    let r2 = coc[i + 1];
+                    r >= pair_min_coc && r2 >= pair_min_coc && (r - r2).abs() < pair_max_diff
+                };
+                let value = gather_at(x, y as u32, i, r);
+                let at = x as usize * 3;
+                row[at..at + 3].copy_from_slice(&value);
+                if paired {
+                    row[at + 3..at + 6].copy_from_slice(&value);
+                    x += 2;
+                } else {
+                    x += 1;
                 }
             }
         }

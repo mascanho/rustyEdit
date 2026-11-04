@@ -1429,11 +1429,16 @@ mod detail_tests {
             ("lens blur, amount 30", &small),
         ] {
             let _ = render_preview(&source, s, ClipWarnings::default());
-            let start = std::time::Instant::now();
-            for _ in 0..5 {
+            // Minimum of several runs: robust against background system
+            // noise (which can only add delay, not remove it), unlike a
+            // plain average.
+            let mut best = std::time::Duration::MAX;
+            for _ in 0..20 {
+                let start = std::time::Instant::now();
                 let _ = render_preview(&source, s, ClipWarnings::default());
+                best = best.min(start.elapsed());
             }
-            eprintln!("TIMING {name}: {:?} per preview", start.elapsed() / 5);
+            eprintln!("TIMING {name}: {:?} per preview (best of 20)", best);
         }
     }
 }

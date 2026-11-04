@@ -150,6 +150,12 @@ impl Workspace {
             .or(ui.wb_picker.then_some(PhotoTool::WhiteBalance))
     }
 
+    /// Whether the Remove tool is the one currently picked (so callers
+    /// outside this module don't need `PhotoTool` itself).
+    pub(crate) fn remove_tool_active(&self) -> bool {
+        self.active_photo_tool() == Some(PhotoTool::Remove)
+    }
+
     /// Picks `tool` (putting any other down and opening its section), or
     /// puts it down if it's already picked.
     pub(crate) fn toggle_photo_tool(&mut self, tool: PhotoTool, cx: &mut Context<Self>) {

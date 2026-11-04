@@ -68,6 +68,14 @@ impl Workspace {
         if self.settings.culling.enabled && !previous.culling.enabled {
             self.measure_missing_sharpness(cx);
         }
+        // The remove tool was switched off while it was picked: put it
+        // down instead of leaving a hidden tool active.
+        if !self.settings.develop.remove_tool
+            && previous.develop.remove_tool
+            && self.remove_tool_active()
+        {
+            self.put_down_photo_tool(cx);
+        }
         // Sidecars just switched on (or their contents changed): a save
         // writes every photo's.
         let sidecars = &self.settings.sidecars;
