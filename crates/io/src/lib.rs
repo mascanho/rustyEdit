@@ -12,6 +12,7 @@ mod fuji;
 mod maintenance;
 mod metadata;
 mod pdf;
+mod recovery;
 pub mod zine;
 pub mod zine_raster;
 pub mod zine_web;
@@ -39,6 +40,10 @@ pub use decode::{
 pub use maintenance::{
     build_backup, move_to_trash, optimize_catalog, read_backup, restore_backup, write_backup,
     BackupSidecar, CatalogBackup, OptimizeReport,
+};
+pub use recovery::{
+    begin_session, end_session, had_unclean_exit, latest_auto_backup, list_auto_backups,
+    read_auto_backup, relative_time, write_auto_backup, AutoBackup,
 };
 pub use lens_db::{find_lens_profile, lens_database_size, lensfun_dirs, LensDb};
 pub use preset_store::{

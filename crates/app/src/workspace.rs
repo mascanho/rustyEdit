@@ -80,6 +80,13 @@ fn drop_overlay(theme: &Theme) -> impl IntoElement {
 /// How long after the last edit the catalog is written to disk.
 const CATALOG_SAVE_DEBOUNCE: Duration = Duration::from_millis(750);
 
+/// How often a real catalog save also refreshes the active catalog's
+/// automatic backup (see `rustyedit_io::write_auto_backup`). These stand
+/// in for going back further than Undo reaches, or after a crash, so they
+/// don't need to be frequent; piggybacking on real saves means none is
+/// written while nothing has changed.
+const AUTO_BACKUP_INTERVAL: Duration = Duration::from_secs(30 * 60);
+
 /// Which top-level module the workspace is showing, mirroring Lightroom's
 /// Library (cull/organize) and Develop (edit) modules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -286,6 +293,11 @@ pub struct Workspace {
     pub(crate) catalog_dirty: bool,
     pub(crate) catalog_save_scheduled: bool,
     pub(crate) catalog_save_in_flight: bool,
+    /// When the active catalog's automatic backup (see `rustyedit_io`'s
+    /// `write_auto_backup`) was last refreshed, so it's done again only
+    /// every so often, piggybacking on real catalog saves rather than its
+    /// own timer.
+    pub(crate) last_auto_backup_at: Option<std::time::Instant>,
     _quit_subscription: Subscription,
     /// Sends keystrokes to the Develop sliders (typed values, arrow-key
     /// nudges) before any shortcut sees them.
@@ -383,9 +395,32 @@ pub struct Workspace {
 impl Workspace {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let settings = rustyedit_io::load_settings();
+        // Whether last session's marker is still there, meaning it never
+        // reached a clean shutdown; `end_session` (in the quit handler
+        // below) is what normally clears it. Checked before this session
+        // writes its own marker over it.
+        let had_unclean_exit = rustyedit_io::had_unclean_exit();
+        rustyedit_io::begin_session();
         let zine_library = rustyedit_io::zine::load_library();
         let develop_ui = DevelopUi::new(&settings);
         let (catalog_def, catalog_list) = Self::init_catalogs();
+        // A crash (or a force quit, or power loss) only risks the few
+        // hundred milliseconds of edits not yet written by the debounced
+        // save below; the message just points at the automatic backups
+        // (see `flush_catalog`) in case an earlier point is ever wanted.
+        let crash_notice = had_unclean_exit.then(|| {
+            match rustyedit_io::latest_auto_backup(&catalog_def.id) {
+                Some(backup) => format!(
+                    "RustyEdit didn't close properly last time. An automatic backup from {} is \
+                     available from Catalog \u{25B8} Restore from Automatic Backup\u{2026} if \
+                     you need it.",
+                    rustyedit_io::relative_time(backup.created_at)
+                ),
+                None => "RustyEdit didn't close properly last time, but your catalog is up to \
+                     date."
+                    .to_string(),
+            }
+        });
         // Flush any not-yet-written edits synchronously on quit, since the
         // debounced background save may not have fired yet (or may be cut
         // off mid-write when the process exits).
@@ -403,6 +438,8 @@ impl Workspace {
                     }
                 }
             }
+            // A clean shutdown: the next launch won't offer recovery.
+            rustyedit_io::end_session();
             async {}
         });
         // Bring the GPU device up in the background so the first Develop
@@ -438,7 +475,7 @@ impl Workspace {
             catalog: Catalog::default(),
             thumbnail_cache: None,
             status_message: Some("Import a folder to get started.".into()),
-            post_scan_message: None,
+            post_scan_message: crash_notice.map(Into::into),
             is_importing: false,
             bottom_menu: None,
             context_menu: None,
@@ -522,6 +559,7 @@ impl Workspace {
             catalog_dirty: false,
             catalog_save_scheduled: false,
             catalog_save_in_flight: false,
+            last_auto_backup_at: None,
             _quit_subscription: quit_subscription,
             _slider_keys: slider_keys,
             settings,
@@ -647,6 +685,15 @@ impl Workspace {
         self.catalog_dirty = false;
         self.catalog_save_in_flight = true;
 
+        // An automatic backup, alongside this real save, every so often.
+        let due_for_backup = self
+            .last_auto_backup_at
+            .is_none_or(|at| at.elapsed() >= AUTO_BACKUP_INTERVAL);
+        let backup_def = due_for_backup.then(|| {
+            self.last_auto_backup_at = Some(std::time::Instant::now());
+            self.catalog_def.clone()
+        });
+
         let snapshot = self.catalog.clone();
         // Sidecars are brought up to date in the same background job.
         let sidecars = self
@@ -664,6 +711,9 @@ impl Workspace {
                     &mut known,
                 ))
             });
+            if let Some(def) = &backup_def {
+                let _ = rustyedit_io::write_auto_backup(def);
+            }
             (saved, report)
         });
 
@@ -1252,6 +1302,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::restore_removed_photos))
             .on_action(cx.listener(Self::backup_catalog_action))
             .on_action(cx.listener(Self::restore_catalog_action))
+            .on_action(cx.listener(Self::restore_auto_backup_action))
             .on_action(cx.listener(Self::optimize_catalog_action))
             .on_action(cx.listener(Self::clear_cache_action))
             .on_action(cx.listener(Self::next_image))

@@ -5,7 +5,7 @@
 use gpui::Context;
 
 use crate::{
-    actions::{BackupCatalog, ClearCache, OptimizeCatalog, RestoreCatalog},
+    actions::{BackupCatalog, ClearCache, OptimizeCatalog, RestoreAutoBackup, RestoreCatalog},
     workspace::Workspace,
 };
 
@@ -123,6 +123,72 @@ impl Workspace {
                 }
                 Err(err) => {
                     this.status_message = Some(format!("Couldn't restore catalog: {err}").into());
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Restores the catalog's most recent automatic backup (see
+    /// `workspace.rs`'s periodic calls to `write_auto_backup`), for going
+    /// back further than Undo reaches, or after a crash. Older automatic
+    /// backups are plain timestamped files under the config folder's
+    /// `backups/<catalog id>` if an earlier one is ever needed instead.
+    pub fn restore_auto_backup_action(
+        &mut self,
+        _: &RestoreAutoBackup,
+        _w: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) {
+        let id = self.catalog_def.id.clone();
+        let Some(latest) = rustyedit_io::latest_auto_backup(&id) else {
+            self.status_message = Some("No automatic backup is available yet.".into());
+            cx.notify();
+            return;
+        };
+        let when = rustyedit_io::relative_time(latest.created_at);
+        cx.spawn(async move |this, cx| {
+            let confirmed = cx
+                .background_executor()
+                .spawn({
+                    let when = when.clone();
+                    async move {
+                        rfd::MessageDialog::new()
+                            .set_title("Restore Automatic Backup?")
+                            .set_description(format!(
+                                "The current catalog definition and saved photo edits will be \
+                                 replaced by the automatic backup from {when}. Your original \
+                                 photos are not touched."
+                            ))
+                            .set_buttons(rfd::MessageButtons::YesNo)
+                            .show()
+                            == rfd::MessageDialogResult::Yes
+                    }
+                })
+                .await;
+            if !confirmed {
+                return;
+            }
+            let path = latest.path.clone();
+            let job = cx.background_executor().spawn(async move {
+                let backup = rustyedit_io::read_auto_backup(&path)?;
+                rustyedit_io::restore_backup(&backup)?;
+                anyhow::Ok(backup.def)
+            });
+            let result = job.await;
+            this.update(cx, |this, cx| match result {
+                Ok(def) => {
+                    this.catalog_def = def;
+                    this.save_catalog_def();
+                    this.post_scan_message =
+                        Some(format!("Restored the automatic backup from {when}.").into());
+                    this.open_catalog(None, cx);
+                }
+                Err(err) => {
+                    this.status_message =
+                        Some(format!("Couldn't restore automatic backup: {err}").into());
                     cx.notify();
                 }
             })

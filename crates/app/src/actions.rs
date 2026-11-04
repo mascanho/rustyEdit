@@ -57,6 +57,7 @@ actions!(
         RestoreRemoved,
         BackupCatalog,
         RestoreCatalog,
+        RestoreAutoBackup,
         OptimizeCatalog,
         ClearCache,
         SelectUp,

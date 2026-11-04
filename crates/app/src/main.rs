@@ -70,7 +70,7 @@ use actions::{
     DeleteFromCatalog, DeleteFromDisk, FindDuplicates, FlagPick, FlagReject, FlagUnflag,
     FocusSearch, GoDevelop, GoExport, GoLibrary, ImportFolder, LabelBlue, LabelGreen, LabelRed,
     LabelYellow, NextImage, OpenSettings, OptimizeCatalog, PrevImage, Quit, Rating0, Rating1,
-    Rating2, Rating3, Rating4, Rating5, Redo, RenamePhoto, RestoreCatalog, RestoreRemoved,
+    Rating2, Rating3, Rating4, Rating5, Redo, RenamePhoto, RestoreAutoBackup, RestoreCatalog, RestoreRemoved,
     RevealInFinder, RotateLeft, RotateRight, SelectAll, StackSelected, SyncFolders, ToggleBeforeAfter, ToggleInfo,
     ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
 };
@@ -222,6 +222,7 @@ fn main() {
                     MenuItem::separator(),
                     MenuItem::action("Back Up Catalog…", BackupCatalog),
                     MenuItem::action("Restore Catalog from Backup…", RestoreCatalog),
+                    MenuItem::action("Restore from Automatic Backup…", RestoreAutoBackup),
                     MenuItem::action("Optimize Catalog", OptimizeCatalog),
                     MenuItem::action("Clear Thumbnail & Preview Cache", ClearCache),
                 ],

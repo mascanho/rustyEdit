@@ -132,6 +132,12 @@ pub(crate) fn commands() -> Vec<Command> {
         cmd!("Catalog", "Restore removed photos", RestoreRemoved),
         cmd!("Catalog", "Back up catalog\u{2026}", BackupCatalog),
         cmd!("Catalog", "Restore catalog from backup\u{2026}", RestoreCatalog),
+        cmd!(
+            "Catalog",
+            "Restore from automatic backup\u{2026}",
+            RestoreAutoBackup,
+            "crash recover undo"
+        ),
         cmd!("Catalog", "Optimize catalog", OptimizeCatalog),
         cmd!("Catalog", "Clear thumbnail & preview cache", ClearCache),
     ]
