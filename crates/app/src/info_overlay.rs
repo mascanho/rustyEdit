@@ -207,7 +207,9 @@ impl Workspace {
                         div()
                             .flex()
                             .flex_col()
-                            .gap_0p5()
+                            .gap_1()
+                            .pb_1()
+                            .px_0p5()
                             .child(
                                 div()
                                     .flex()
@@ -263,7 +265,8 @@ impl Workspace {
                     div()
                         .flex()
                         .flex_row()
-                        .gap_1p5()
+                        .gap_2()
+                        .py_1()
                         .children(["Aperture", "Shutter", "ISO", "Focal"].map(|label| {
                             let value = metadata
                                 .headline
@@ -277,15 +280,18 @@ impl Workspace {
                                 .flex()
                                 .flex_col()
                                 .items_center()
-                                .gap_0p5()
-                                .py_1p5()
+                                .gap_1()
+                                .px_1()
+                                .py_2()
                                 .rounded_lg()
                                 .bg(theme.surface.opacity(0.65))
                                 .border_1()
                                 .border_color(theme.border_subtle)
                                 .child(
                                     div()
-                                        .text_size(sp(14.0))
+                                        .max_w_full()
+                                        .truncate()
+                                        .text_size(sp(13.0))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .text_color(if known { theme.text } else { theme.text_faint })
                                         .child(value.unwrap_or_else(|| "\u{2014}".to_string())),
@@ -293,6 +299,7 @@ impl Workspace {
                                 .child(
                                     div()
                                         .text_size(sp(8.0))
+                                        .pt_0p5()
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .text_color(theme.accent.opacity(0.9))
                                         .child(label.to_uppercase()),
@@ -307,15 +314,16 @@ impl Workspace {
                             .flex()
                             .flex_row()
                             .flex_wrap()
-                            .gap_1()
+                            .gap_1p5()
+                            .py_0p5()
                             .children(metadata.chips.iter().map(|(label, value)| {
                                 div()
                                     .flex()
                                     .flex_row()
                                     .items_center()
-                                    .gap_1()
-                                    .h(sp(18.0))
-                                    .px_1p5()
+                                    .gap_1p5()
+                                    .h(sp(20.0))
+                                    .px_2()
                                     .rounded_full()
                                     .bg(theme.surface.opacity(0.65))
                                     .border_1()
@@ -338,7 +346,8 @@ impl Workspace {
                     let mut section = div()
                         .flex()
                         .flex_col()
-                        .px_1p5()
+                        .px_2()
+                        .py_0p5()
                         .rounded_lg()
                         .bg(theme.surface.opacity(0.4))
                         .child(
@@ -373,7 +382,7 @@ impl Workspace {
                     );
                     if !collapsed {
                         section = section.child(
-                            div().flex().flex_col().gap_0p5().pl_3().pb_1().children(
+                            div().flex().flex_col().gap_1().pl_3().pb_1p5().children(
                                 group.rows.iter().map(|(label, value)| {
                                     // One line per fact, cut with an ellipsis
                                     // when too long; the tooltip has it all.
