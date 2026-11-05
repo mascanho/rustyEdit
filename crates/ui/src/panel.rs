@@ -397,7 +397,8 @@ pub fn collapsible_panel_pinned(
 }
 
 /// The fixed strip along the bottom of a side panel: rows of
-/// [`footer_button`]s, side by side.
+/// [`footer_button`]s, side by side, evenly spaced and inset to match the
+/// panel's own content.
 pub fn panel_footer(theme: &Theme, rows: Vec<Vec<AnyElement>>) -> AnyElement {
     let theme = *theme;
     div()
@@ -405,7 +406,7 @@ pub fn panel_footer(theme: &Theme, rows: Vec<Vec<AnyElement>>) -> AnyElement {
         .flex_col()
         .flex_shrink_0()
         .gap_1p5()
-        .px_1()
+        .px_1p5()
         .py_2()
         .bg(theme.background)
         .border_t_1()
@@ -417,8 +418,10 @@ pub fn panel_footer(theme: &Theme, rows: Vec<Vec<AnyElement>>) -> AnyElement {
         .into_any_element()
 }
 
-/// An equal-width button for [`panel_footer`]. Disabled buttons are faded
-/// and ignore clicks.
+/// An equal-width button for [`panel_footer`]. Its label truncates rather
+/// than overflowing or forcing a wider button when the panel is narrow,
+/// so a row of these always divides the width evenly. Disabled buttons
+/// are faded and ignore clicks.
 pub fn footer_button(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
@@ -431,22 +434,30 @@ pub fn footer_button(
     div()
         .id(id)
         .flex_1()
+        .min_w(sp(0.0))
         .flex()
         .items_center()
         .justify_center()
         .h(sp(26.0))
+        .px_1p5()
+        .rounded_md()
         .border_1()
         .border_color(theme.border)
         .bg(theme.surface_elevated.opacity(0.5))
-        .text_size(sp(11.5))
-        .text_color(theme.text)
         .when(enabled, |el| {
             el.cursor_pointer()
                 .hover(|el| el.bg(theme.surface_elevated).border_color(theme.accent))
                 .on_click(on_click)
         })
         .when(!enabled, |el| el.opacity(0.4))
-        .child(label.into())
+        .child(
+            div()
+                .min_w(sp(0.0))
+                .truncate()
+                .text_size(sp(11.5))
+                .text_color(theme.text)
+                .child(label.into()),
+        )
         .tooltip(tip(tooltip, &theme))
         .into_any_element()
 }
