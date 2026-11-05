@@ -34,12 +34,16 @@ impl Workspace {
             .min_w(sp(0.0))
             .overflow_hidden();
         let arrangement = self.settings.layout.preset.arrangement();
-        let center = if self.is_importing {
+        // The full-screen loader is only for the scan, before there is
+        // anything to show; the photos then appear as their thumbnails are
+        // made, under a slim progress bar.
+        let center = if self.is_importing && self.catalog.assets.is_empty() {
             center.child(self.render_import_loader())
         } else if self.catalog.assets.is_empty() {
             center.child(self.render_empty_library(cx))
         } else {
             center
+                .children(self.is_importing.then(|| self.render_import_banner()))
                 .child(self.render_library_toolbar(cx))
                 .child(
                     // The view and anything floating over it (the search chip).
@@ -79,6 +83,46 @@ impl Workspace {
             .children(self.dock_with_rail(DockSide::Right, right, cx));
 
         self.with_filmstrip(main.into_any_element(), cx)
+    }
+
+    /// A slim bar over the library while thumbnails are still being made:
+    /// the photos are already there to browse.
+    fn render_import_banner(&self) -> AnyElement {
+        let theme = self.theme;
+        let (done, total) = self
+            .import_progress
+            .as_ref()
+            .map(|(done, total)| (done.load(Ordering::Relaxed).min(*total), *total))
+            .unwrap_or((0, 0));
+        let fraction = if total == 0 { 0.0 } else { done as f32 / total as f32 };
+        div()
+            .flex()
+            .flex_col()
+            .flex_shrink_0()
+            .bg(theme.surface)
+            .border_b_1()
+            .border_color(theme.border_subtle)
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .h(sp(22.0))
+                    .px_3()
+                    .text_size(sp(10.5))
+                    .text_color(theme.text_muted)
+                    .child("Adding photos \u{2014} they appear here as they are ready")
+                    .child(format!("{done} of {total}")),
+            )
+            .child(
+                div()
+                    .h(sp(2.0))
+                    .w_full()
+                    .bg(theme.border_subtle)
+                    .child(div().h_full().w(gpui::relative(fraction)).bg(theme.accent)),
+            )
+            .into_any_element()
     }
 
     /// Full-area loader shown while a folder is being scanned and its

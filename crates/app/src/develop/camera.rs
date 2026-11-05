@@ -272,6 +272,7 @@ impl Workspace {
         if asset.camera_matched
             || asset.develop.is_edited()
             || !rustyedit_io::is_raw_file(&asset.path)
+            || is_dng(&asset.path)
         {
             return;
         }
@@ -279,9 +280,26 @@ impl Workspace {
     }
 }
 
+/// DNG is an interchange format: the preview inside one is whatever the
+/// converter or phone app wrote, not a maker's colour look, so matching it
+/// automatically can bake a stray colour cast into the Mixer, Grading and
+/// curves, where white balance can't remove it. DNGs start from the
+/// neutral develop; "Match camera" is still there to apply by hand.
+fn is_dng(path: &std::path::Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("dng"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dng_files_are_recognised_by_extension() {
+        assert!(is_dng(std::path::Path::new("a/IMG_1.DNG")));
+        assert!(is_dng(std::path::Path::new("x.dng")));
+        assert!(!is_dng(std::path::Path::new("x.cr3")));
+    }
 
     #[test]
     fn a_known_lens_profile_beats_the_fitted_correction() {

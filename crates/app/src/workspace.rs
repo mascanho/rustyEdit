@@ -292,6 +292,9 @@ pub struct Workspace {
     pub(crate) left_panel_collapsed: bool,
     pub(crate) right_panel_collapsed: bool,
     pub(crate) filmstrip_collapsed: bool,
+    /// The header's black-and-white / colour choice; `None` follows the
+    /// filmstrip style.
+    pub(crate) filmstrip_mono: Option<bool>,
     pub(crate) file_tree: FileTree,
     /// Keys of side-panel disclosure sections the user has collapsed.
     pub(crate) collapsed_sections: HashSet<&'static str>,
@@ -567,6 +570,7 @@ impl Workspace {
             left_panel_collapsed: !settings.library.show_left_panel,
             right_panel_collapsed: !settings.library.show_right_panel,
             filmstrip_collapsed: !settings.filmstrip.show_on_startup,
+            filmstrip_mono: None,
             file_tree: FileTree::new(),
             collapsed_sections: HashSet::new(),
             catalog_dirty: false,

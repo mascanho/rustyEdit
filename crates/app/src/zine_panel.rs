@@ -7,8 +7,8 @@
 //! (Output). What is rarely needed starts folded.
 
 use gpui::{
-    div, img, prelude::*, AnyElement, App, ClickEvent, Context, Entity, ObjectFit, SharedString,
-    Window,
+    div, img, prelude::*, AnyElement, App, ClickEvent, Context, Entity, ObjectFit, ScrollHandle,
+    SharedString, Window,
 };
 use rustyedit_core::{
     ZineFont, ZineFormat, ZineGrouping, ZineLayout, ZineMode, ZineOptions, ZinePageSize, ZinePaper,
@@ -270,7 +270,39 @@ impl Kit {
                     .text_color(theme.text_faint.opacity(0.6))
             })
             .tooltip(rustyedit_ui::tip(tip.to_string(), &theme))
-            .child(label.into())
+            .child(div().min_w(sp(0.0)).truncate().child(label.into()))
+            .into_any_element()
+    }
+
+    /// A list that scrolls when it is longer than `max` pixels, with the
+    /// app's slim scrollbar, so no row is ever cut off.
+    pub(crate) fn scroll_list(
+        &self,
+        id: &'static str,
+        handle: &ScrollHandle,
+        max: f32,
+        rows: Vec<AnyElement>,
+    ) -> AnyElement {
+        div()
+            .relative()
+            .w_full()
+            .child(
+                div()
+                    .id(id)
+                    .track_scroll(handle)
+                    .flex()
+                    .flex_col()
+                    .gap_1p5()
+                    .max_h(sp(max))
+                    .pr_2()
+                    .overflow_y_scroll()
+                    .children(rows),
+            )
+            .child(rustyedit_ui::vertical_scrollbar(
+                format!("{id}-scrollbar"),
+                handle.clone(),
+                &self.theme,
+            ))
             .into_any_element()
     }
 
@@ -450,6 +482,7 @@ impl Workspace {
         let many = self.zine_library.zines.len() > 1;
         let mut out: Vec<AnyElement> = Vec::new();
         if many {
+            let mut rows: Vec<AnyElement> = Vec::new();
             let active = self.zine_library.active;
             for (ix, zine) in self.zine_library.zines.iter().enumerate() {
                 // The one being worked on has its latest in `self.zine`.
@@ -472,7 +505,7 @@ impl Workspace {
                     .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| this.zine_delete(ix, cx)))
                     .into_any_element();
-                out.push(kit.item(
+                rows.push(kit.item(
                     SharedString::from(format!("zine-row-{ix}")),
                     ix == active,
                     None,
@@ -482,6 +515,7 @@ impl Workspace {
                     Some(Box::new(move |this, cx| this.zine_switch(ix, cx))),
                 ));
             }
+            out.push(kit.scroll_list("zine-list", &self.zine_ui.zines_list, 190.0, rows));
         }
         out.push(kit.buttons(vec![
             kit.button("zine-new", "New zine", "Start another zine", false, true, |this, cx| this.zine_create(cx)),
@@ -586,7 +620,8 @@ impl Workspace {
             return vec![kit.hint("Rate or flag photos in the Library and the best of them show up here.")];
         }
         let mut out = vec![kit.hint("The highest rated, picked and sharpest photos not yet in this zine.")];
-        for &ix in ideas.iter().take(6) {
+        let mut rows: Vec<AnyElement> = Vec::new();
+        for &ix in ideas.iter() {
             let asset = &self.catalog.assets[ix];
             let stars = "\u{2605}".repeat(asset.rating.value() as usize);
             let detail = match (asset.flag == rustyedit_core::Flag::Picked, stars.is_empty()) {
@@ -603,7 +638,7 @@ impl Workspace {
                 true,
                 move |this, cx| this.add_suggested(&[ix], cx),
             );
-            out.push(kit.item(
+            rows.push(kit.item(
                 SharedString::from(format!("zine-idea-{ix}")),
                 false,
                 Some(self.display_thumbnail(asset)),
@@ -613,6 +648,7 @@ impl Workspace {
                 None,
             ));
         }
+        out.push(kit.scroll_list("zine-ideas-list", &self.zine_ui.ideas_list, 260.0, rows));
         let all = ideas.clone();
         out.push(kit.buttons(vec![kit.button(
             "zine-idea-add-all",
@@ -685,7 +721,9 @@ impl Workspace {
             .flex_col()
             .min_h(sp(72.0))
             .max_h(sp(160.0))
-            .overflow_hidden()
+            .w_full()
+            .track_scroll(&self.zine_ui.story_list)
+            .overflow_y_scroll()
             .px_2()
             .py_1p5()
             .rounded_md()
@@ -714,6 +752,12 @@ impl Workspace {
                         })
                 }
             })
+            ;
+        let field = div()
+            .relative()
+            .w_full()
+            .child(field)
+            .child(rustyedit_ui::vertical_scrollbar("zine-story-scrollbar", self.zine_ui.story_list.clone(), &self.theme))
             .into_any_element();
         let has_photo_pages = self
             .zine
@@ -757,6 +801,7 @@ impl Workspace {
         if self.zine_designs.designs.is_empty() {
             out.push(kit.hint("No templates yet."));
         }
+        let mut rows: Vec<AnyElement> = Vec::new();
         for (ix, design) in self.zine_designs.designs.iter().enumerate() {
             let theme = self.theme;
             let delete = div()
@@ -770,7 +815,7 @@ impl Workspace {
                 .child("\u{2715}")
                 .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| this.delete_design(ix, cx)))
                 .into_any_element();
-            out.push(kit.item(
+            let item = kit.item(
                 SharedString::from(format!("zine-design-{ix}")),
                 false,
                 None,
@@ -778,8 +823,8 @@ impl Workspace {
                 design.summary(),
                 Some(delete),
                 None,
-            ));
-            out.push(kit.buttons(vec![
+            );
+            let actions = kit.buttons(vec![
                 kit.button(
                     SharedString::from(format!("zine-design-new-{ix}")),
                     "New zine",
@@ -796,7 +841,11 @@ impl Workspace {
                     true,
                     move |this, cx| this.use_design_here(ix, cx),
                 ),
-            ]));
+            ]);
+            rows.push(div().flex().flex_col().gap_1().child(item).child(actions).into_any_element());
+        }
+        if !rows.is_empty() {
+            out.push(kit.scroll_list("zine-designs-list", &self.zine_ui.designs_list, 280.0, rows));
         }
         out
     }

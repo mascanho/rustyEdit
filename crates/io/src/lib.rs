@@ -56,6 +56,6 @@ pub use metadata::{read_gps, read_metadata, read_photo_meta, MetaGroup, Metadata
 pub use scan::scan_folder;
 pub use settings_store::{load as load_settings, save as save_settings, settings_path};
 pub use thumbnails::{
-    cache_size, clear_cache, generate_thumbnails, ThumbInfo, ThumbnailCache, LOUPE_LONG_EDGE,
+    cache_size, clear_cache, generate_thumbnails, generate_thumbnails_in_batches, ThumbInfo, ThumbnailCache, LOUPE_LONG_EDGE,
     THUMBNAIL_LONG_EDGE,
 };

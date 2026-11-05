@@ -123,9 +123,25 @@ fn decode_unoriented(path: &Path) -> anyhow::Result<DynamicImage> {
     if !is_raw(path) {
         return Ok(image::open(path)?);
     }
+    // Demosaiced DNGs (Lightroom's lossy ones) need the app's own handling
+    // of their encoding and white balance; rawler's plain development
+    // leaves them with a strong colour cast.
+    let is_dng = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("dng"));
+    if let Some(raw) = is_dng.then(|| rawler::decode_file(path).ok()).flatten() {
+        if matches!(
+            raw.photometric,
+            rawler::rawimage::RawPhotometricInterpretation::LinearRaw
+        ) {
+            if let Some(source) = rustyedit_processing::DevelopSource::from_raw(raw, 1) {
+                return Ok(DynamicImage::ImageRgb8(source.to_rgb8()));
+            }
+        }
+    }
     let params = rawler::decoders::RawDecodeParams::default();
     let developed = rawler::analyze::raw_to_srgb(path, &params);
-    let preview = || rawler::analyze::extract_preview_pixels(path, &params);
+    let preview =|| rawler::analyze::extract_preview_pixels(path, &params);
     let full = || rawler::analyze::extract_full_pixels(path, &params);
     let img = developed
         .or_else(|_| full())

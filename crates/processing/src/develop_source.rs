@@ -143,6 +143,9 @@ impl DevelopSource {
     /// `None` for layouts the GPU demosaic doesn't handle (non-RGB or
     /// float data), which should be opened as ordinary images instead.
     pub fn from_raw(raw: RawImage, orientation: u8) -> Option<Self> {
+        if matches!(raw.photometric, RawPhotometricInterpretation::LinearRaw) {
+            return Self::from_linear_raw(&raw, orientation);
+        }
         let RawPhotometricInterpretation::Cfa(config) = &raw.photometric else {
             return None;
         };
@@ -159,12 +162,7 @@ impl DevelopSource {
                 pattern[row * cfa.width + col] = cfa.color_at(row, col).min(2) as f32;
             }
         }
-        let wb = if raw.wb_coeffs[0].is_nan() || raw.wb_coeffs[1] <= 0.0 {
-            [1.0; 3]
-        } else {
-            let g = raw.wb_coeffs[1];
-            [raw.wb_coeffs[0] / g, 1.0, raw.wb_coeffs[2] / g]
-        };
+        let wb = as_shot_balance(&raw);
         let (_, matrix) = raw.color_matrix_find_first([
             rawler::imgop::xyz::Illuminant::D65,
             rawler::imgop::xyz::Illuminant::D55,
@@ -185,15 +183,9 @@ impl DevelopSource {
         {
             return None;
         }
-        let orient = match orientation {
-            2 => [false, true, false],
-            3 => [false, true, true],
-            4 => [false, false, true],
-            5 => [true, false, false],
-            6 => [true, false, true],
-            7 => [true, true, true],
-            8 => [true, true, false],
-            _ => [false, false, false],
+        let orient = {
+            let (t, x, y) = orientation_flags(orientation);
+            [t, x, y]
         };
         let (width, height) = if orient[0] {
             (crop[3], crop[2])
@@ -212,6 +204,101 @@ impl DevelopSource {
             raw,
         };
         Some(Self::new(width, height, Pixels::Raw(mosaic)))
+    }
+
+    /// A demosaiced RAW (a "lossy" or "linear" DNG): three camera-RGB
+    /// samples per pixel, not yet white balanced. It's levelled, white
+    /// balanced and cropped here and then developed like any RAW file, so
+    /// white balance and exposure work on the camera's own values.
+    fn from_linear_raw(raw: &RawImage, orientation: u8) -> Option<Self> {
+        let RawImageData::Integer(samples) = &raw.data else {
+            return None;
+        };
+        if raw.cpp != 3 || samples.len() < raw.width * raw.height * 3 {
+            return None;
+        }
+        let wb = as_shot_balance(raw);
+        let (_, matrix) = raw.color_matrix_find_first([
+            rawler::imgop::xyz::Illuminant::D65,
+            rawler::imgop::xyz::Illuminant::D55,
+            rawler::imgop::xyz::Illuminant::D50,
+            rawler::imgop::xyz::Illuminant::Daylight,
+            rawler::imgop::xyz::Illuminant::A,
+        ])?;
+        let matrix = camera_to_working(&matrix)?;
+        let levels = |v: Vec<f32>| -> [f32; 3] {
+            std::array::from_fn(|c| *v.get(c).or(v.first()).unwrap_or(&0.0))
+        };
+        let black = levels(raw.blacklevel.as_vec());
+        let white = levels(raw.whitelevel.as_vec());
+        // Lightroom's lossy DNGs keep only 8 bits per sample and no
+        // linearisation table: the camera's linear values are stored cube
+        // rooted (measured: bright neutral pixels sit at (1/gain)^(1/3) of
+        // green), which spreads the 256 steps over the shadows. Undo that.
+        let encoded = white.iter().all(|w| *w <= 255.0);
+        let decode = |v: f32| if encoded { v * v * v } else { v };
+        let area = raw.crop_area.or(raw.active_area);
+        let [cx, cy, cw, ch] = match area {
+            Some(rect) => [rect.p.x, rect.p.y, rect.d.w, rect.d.h],
+            None => [0, 0, raw.width, raw.height],
+        };
+        if cw == 0 || ch == 0 || cx + cw > raw.width || cy + ch > raw.height {
+            return None;
+        }
+        // Some exporters (Lightroom's lossy DNG among them) write the
+        // demosaiced pixels already white balanced yet still list the
+        // camera's as-shot gains. Applying those again multiplies red and
+        // blue a second time, which is a magenta cast no slider can undo.
+        // So the gains are used only when they bring the picture closer to
+        // neutral than the data already is.
+        let mut sums = [0.0f64; 3];
+        let mut count = 0.0f64;
+        for y in (cy..cy + ch).step_by(8) {
+            for x in (cx..cx + cw).step_by(8) {
+                let at = (y * raw.width + x) * 3;
+                for k in 0..3 {
+                    let range = (white[k] - black[k]).max(1.0);
+                    let v = (samples[at + k] as f32 - black[k]).max(0.0) / range;
+                    sums[k] += decode(v) as f64;
+                }
+                count += 1.0;
+            }
+        }
+        let means = sums.map(|v| (v / count.max(1.0)) as f32);
+        let wb = if gains_help(means, wb) { wb } else { [1.0; 3] };
+        let (transpose, flip_x, flip_y) = orientation_flags(orientation);
+        let (width, height) = if transpose { (ch, cw) } else { (cw, ch) };
+        let mut data = vec![0u32; width * height * 2];
+        for y in 0..height {
+            for x in 0..width {
+                // Where this output pixel sits in the cropped picture.
+                let (mut sx, mut sy) = if transpose { (y, x) } else { (x, y) };
+                if flip_x {
+                    sx = cw - 1 - sx;
+                }
+                if flip_y {
+                    sy = ch - 1 - sy;
+                }
+                let at = ((cy + sy) * raw.width + cx + sx) * 3;
+                let c: [f16; 3] = std::array::from_fn(|k| {
+                    let range = (white[k] - black[k]).max(1.0);
+                    let v = (samples[at + k] as f32 - black[k]).max(0.0) / range;
+                    f16::from_f32(decode(v) * wb[k])
+                });
+                let o = (y * width + x) * 2;
+                data[o] = c[0].to_bits() as u32 | (c[1].to_bits() as u32) << 16;
+                data[o + 1] = c[2].to_bits() as u32;
+            }
+        }
+        let color = RawColor { matrix, clip: wb };
+        Some(Self::new(
+            width as u32,
+            height as u32,
+            Pixels::Half {
+                data,
+                raw: Some(color),
+            },
+        ))
     }
 
     pub fn width(&self) -> u32 {
@@ -261,6 +348,45 @@ impl DevelopSource {
     /// 8-bit working-space pixels, e.g. for picking a spot's source.
     pub fn to_rgb8(&self) -> RgbImage {
         self.cpu_image().to_rgb8()
+    }
+}
+
+/// The as-shot white balance as gains with green = 1 (all 1 when the file
+/// has none).
+fn as_shot_balance(raw: &RawImage) -> [f32; 3] {
+    if raw.wb_coeffs[0].is_nan() || raw.wb_coeffs[1] <= 0.0 {
+        [1.0; 3]
+    } else {
+        let g = raw.wb_coeffs[1];
+        [raw.wb_coeffs[0] / g, 1.0, raw.wb_coeffs[2] / g]
+    }
+}
+
+/// Whether white balance `wb` makes picture whose average camera RGB is
+/// `means` more neutral than leaving it alone (grey world: an average
+/// scene is roughly neutral once balanced).
+fn gains_help(means: [f32; 3], wb: [f32; 3]) -> bool {
+    if means.iter().any(|m| *m <= 1e-6) {
+        return true;
+    }
+    let cast = |g: [f32; 3]| {
+        let c: [f32; 3] = std::array::from_fn(|k| means[k] * g[k]);
+        (c[0] / c[1]).ln().abs() + (c[2] / c[1]).ln().abs()
+    };
+    cast(wb) <= cast([1.0; 3]) * 1.25
+}
+
+/// EXIF orientation as (transpose, flip x, flip y).
+fn orientation_flags(orientation: u8) -> (bool, bool, bool) {
+    match orientation {
+        2 => (false, true, false),
+        3 => (false, true, true),
+        4 => (false, false, true),
+        5 => (true, false, false),
+        6 => (true, false, true),
+        7 => (true, true, true),
+        8 => (true, true, false),
+        _ => (false, false, false),
     }
 }
 
@@ -400,6 +526,98 @@ mod tests {
         raw.color_matrix
             .insert(Illuminant::D65, inverse.iter().flatten().copied().collect());
         raw
+    }
+
+    /// A 3x2 demosaiced file whose red channel counts 1..6 along rows.
+    fn linear_raw(wb: [f32; 3]) -> RawImage {
+        use rawler::{
+            decoders::Camera,
+            imgop::xyz::Illuminant,
+            pixarray::PixU16,
+            rawimage::{BlackLevel, WhiteLevel},
+        };
+        let mut data = Vec::new();
+        for i in 1..=6u16 {
+            data.extend([i * 1000 + 100, 3000, 3000]);
+        }
+        let mut raw = RawImage::new(
+            Camera::default(),
+            PixU16::new_with(data, 9, 2),
+            3,
+            [wb[0], wb[1], wb[2], f32::NAN],
+            RawPhotometricInterpretation::LinearRaw,
+            Some(BlackLevel::new(&[100u16, 100, 100], 1, 1, 3)),
+            Some(WhiteLevel::new(vec![65535])),
+            false,
+        );
+        let m = invert([cms::WORKING_TO_XYZ[0], cms::WORKING_TO_XYZ[1], cms::WORKING_TO_XYZ[2]]).unwrap();
+        raw.color_matrix
+            .insert(Illuminant::D65, m.iter().flatten().copied().collect());
+        raw
+    }
+
+    #[test]
+    fn gains_are_dropped_when_the_data_is_already_balanced() {
+        let wb = [2.0, 1.0, 1.5];
+        // Camera-native data: green strong, red and blue weak.
+        assert!(gains_help([0.2, 0.4, 0.27], wb));
+        // Already balanced: applying the gains again would go magenta.
+        assert!(!gains_help([0.4, 0.4, 0.4], wb));
+        // A warm scene that's native still takes the gains.
+        assert!(gains_help([0.3, 0.4, 0.2], wb));
+    }
+
+    #[test]
+    fn eight_bit_demosaiced_raw_is_cube_root_encoded() {
+        use rawler::{
+            decoders::Camera,
+            imgop::xyz::Illuminant,
+            pixarray::PixU16,
+            rawimage::{BlackLevel, WhiteLevel},
+        };
+        // Neutral light: camera RGB (0.25, 0.5, 0.25) of the as-shot gains
+        // (2, 1, 2) gives equal channels once balanced.
+        let enc = |v: f32| (v.cbrt() * 255.0).round() as u16;
+        let data = [enc(0.5 * 0.5), enc(0.5), enc(0.25)].repeat(4);
+        let mut raw = RawImage::new(
+            Camera::default(),
+            PixU16::new_with(data, 6, 2),
+            3,
+            [2.0, 1.0, 2.0, f32::NAN],
+            RawPhotometricInterpretation::LinearRaw,
+            Some(BlackLevel::new(&[0u16, 0, 0], 1, 1, 3)),
+            Some(WhiteLevel::new(vec![255, 255, 255])),
+            false,
+        );
+        let m = invert([cms::WORKING_TO_XYZ[0], cms::WORKING_TO_XYZ[1], cms::WORKING_TO_XYZ[2]]).unwrap();
+        raw.color_matrix
+            .insert(Illuminant::D65, m.iter().flatten().copied().collect());
+        let source = DevelopSource::from_raw(raw, 1).expect("linear raw");
+        let px = source.to_rgb8();
+        let p = px.get_pixel(0, 0);
+        assert!(p[0].abs_diff(p[1]) <= 3 && p[2].abs_diff(p[1]) <= 3, "{p:?}");
+    }
+
+    #[test]
+    fn a_demosaiced_raw_is_developed_like_any_raw_file() {
+        let source = DevelopSource::from_raw(linear_raw([2.0, 1.0, 1.5]), 1).expect("linear raw");
+        assert!(source.is_raw());
+        assert_eq!((source.width(), source.height()), (3, 2));
+        let reds = |source: &DevelopSource| -> Vec<u8> {
+            source.to_rgb8().pixels().map(|p| p[0]).collect()
+        };
+        let upright = reds(&source);
+        assert!(upright.windows(2).all(|w| w[0] < w[1]), "{upright:?}");
+        // Rotated 90 degrees clockwise (EXIF 6): 2 wide, 3 high, the
+        // first row of the picture becomes the right-hand column.
+        let rotated = DevelopSource::from_raw(linear_raw([2.0, 1.0, 1.5]), 6).unwrap();
+        assert_eq!((rotated.width(), rotated.height()), (2, 3));
+        let r = reds(&rotated);
+        assert_eq!(r, vec![upright[3], upright[0], upright[4], upright[1], upright[5], upright[2]]);
+        // The levels are subtracted and the as-shot gains applied: the
+        // balanced channels of a neutral grey end up equal.
+        let grey = DevelopSource::from_raw(linear_raw([1.0, 1.0, 1.0]), 1).unwrap();
+        assert!(grey.is_raw());
     }
 
     #[test]

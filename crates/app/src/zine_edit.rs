@@ -119,6 +119,12 @@ pub(crate) struct ZineUi {
     pub(crate) panel_ready: bool,
     /// Where the strips of pages and of photos are scrolled to.
     pub(crate) pages_scroll: ScrollHandle,
+    /// The lists in the left panel, and the page of an automatic zine.
+    pub(crate) zines_list: ScrollHandle,
+    pub(crate) ideas_list: ScrollHandle,
+    pub(crate) designs_list: ScrollHandle,
+    pub(crate) story_list: ScrollHandle,
+    pub(crate) auto_scroll: ScrollHandle,
     pub(crate) photos_scroll: ScrollHandle,
     /// A zine whose delete button has been pressed once.
     pub(crate) confirm_delete: Option<usize>,
@@ -156,6 +162,11 @@ impl Default for ZineUi {
             pages_open: true,
             panel_ready: false,
             pages_scroll: ScrollHandle::new(),
+            zines_list: ScrollHandle::new(),
+            ideas_list: ScrollHandle::new(),
+            designs_list: ScrollHandle::new(),
+            story_list: ScrollHandle::new(),
+            auto_scroll: ScrollHandle::new(),
             photos_scroll: ScrollHandle::new(),
             confirm_delete: None,
         }

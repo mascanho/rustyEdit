@@ -462,18 +462,29 @@ impl Workspace {
         }
 
         let center = div()
-            .id("zine-page")
-            .flex()
-            .flex_col()
+            .relative()
             .flex_1()
             .min_w(sp(0.0))
             .min_h(sp(0.0))
-            .overflow_y_scroll()
             .bg(theme.background)
-            .gap_4()
-            .px_6()
-            .py_4()
-            .children(body);
+            .child(
+                div()
+                    .id("zine-page")
+                    .track_scroll(&self.zine_ui.auto_scroll)
+                    .flex()
+                    .flex_col()
+                    .size_full()
+                    .overflow_y_scroll()
+                    .gap_4()
+                    .px_6()
+                    .py_4()
+                    .children(body),
+            )
+            .child(rustyedit_ui::vertical_scrollbar(
+                "zine-page-scrollbar",
+                self.zine_ui.auto_scroll.clone(),
+                &theme,
+            ));
 
         div()
             .flex()

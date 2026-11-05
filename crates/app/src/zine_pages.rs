@@ -136,20 +136,30 @@ impl Workspace {
             .child(self.zine_page_strip(layout, cx))
             .child(
                 div()
-                    .id("zine-pages-scroll")
-                    .track_scroll(&self.zine_ui.scroll)
-                    .flex()
-                    .flex_row()
-                    .flex_wrap()
-                    .content_start()
-                    .items_start()
-                    .gap_6()
+                    .relative()
                     .flex_1()
                     .min_h(sp(0.0))
-                    .overflow_y_scroll()
-                    .px_6()
-                    .py_4()
-                    .children(self.zine_cards(cx)),
+                    .child(
+                        div()
+                            .id("zine-pages-scroll")
+                            .track_scroll(&self.zine_ui.scroll)
+                            .flex()
+                            .flex_row()
+                            .flex_wrap()
+                            .content_start()
+                            .items_start()
+                            .gap_6()
+                            .size_full()
+                            .overflow_y_scroll()
+                            .px_6()
+                            .py_4()
+                            .children(self.zine_cards(cx)),
+                    )
+                    .child(rustyedit_ui::vertical_scrollbar(
+                        "zine-pages-scrollbar",
+                        self.zine_ui.scroll.clone(),
+                        &theme,
+                    )),
             )
             .child(self.zine_photo_strip(cx));
         let workbench = div()

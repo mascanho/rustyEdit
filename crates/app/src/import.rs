@@ -11,6 +11,9 @@ use rustyedit_io::ThumbnailCache;
 
 use crate::workspace::Workspace;
 
+/// How many thumbnails are made before the library is updated with them.
+const THUMBNAIL_BATCH: usize = 24;
+
 impl Workspace {
     /// Opens a native folder picker, then imports the chosen folder.
     pub(crate) fn start_import(&mut self, cx: &mut Context<Self>) {
@@ -122,7 +125,7 @@ impl Workspace {
 
         cx.spawn(async move |this, cx| {
             let scan_folders = folders.clone();
-            let (mut assets, cache) = cx
+            let (assets, cache) = cx
                 .background_executor()
                 .spawn(async move {
                     let mut all = Vec::new();
@@ -181,59 +184,9 @@ impl Workspace {
                 })
                 .await;
 
-            this.update(cx, |this, cx| {
-                this.status_message =
-                    Some(format!("Generating thumbnails for {} photos…", assets.len()).into());
-                cx.notify();
-            })
-            .ok();
-
-            let thumb_assets = assets.clone();
-            let thumb_cache = cache.clone();
-            let done = Arc::new(AtomicUsize::new(0));
-            let worker_done = done.clone();
-            this.update(cx, |this, _| {
-                this.import_progress = Some((done, thumb_assets.len()));
-            })
-            .ok();
-            let job = cx.background_executor().spawn(async move {
-                rustyedit_io::generate_thumbnails(
-                    &thumb_cache,
-                    &thumb_assets,
-                    &worker_done,
-                    measure_sharpness,
-                )
-            });
-            // Repaint a few times a second so the loader's progress bar moves.
-            let ticker = cx.spawn({
-                let this = this.clone();
-                async move |cx| {
-                    while this.update(cx, |_, cx| cx.notify()).is_ok() {
-                        cx.background_executor()
-                            .timer(Duration::from_millis(100))
-                            .await;
-                    }
-                }
-            });
-            let thumbnails = job.await;
-            drop(ticker);
-
-            // Ids are list positions, so look each one up directly instead
-            // of searching (which is O(n²) on big imports).
-            for info in thumbnails {
-                let id = info.id;
-                if let Some(asset) = assets.get_mut(id as usize).filter(|a| a.id == id) {
-                    asset.thumbnail_path = Some(info.thumbnail);
-                    asset.width = info.width;
-                    asset.height = info.height;
-                    asset.orientation = info.orientation;
-                    asset.meta = info.meta;
-                    asset.content_hash = info.content_hash;
-                    asset.phash = info.phash;
-                    asset.sharpness = info.sharpness;
-                }
-            }
-
+            // The photos go on show now, as they are found; their thumbnails
+            // follow batch by batch, so the grid and the filmstrip fill in
+            // while the rest are still being made.
             // Let any background save of the outgoing catalog finish first,
             // so it can't land on disk after the final save below.
             while this
@@ -244,8 +197,9 @@ impl Workspace {
                     .timer(Duration::from_millis(20))
                     .await;
             }
-
-            this.update(cx, |this, cx| {
+            let total = assets.len();
+            let done = Arc::new(AtomicUsize::new(0));
+            let shown = this.update(cx, |this, cx| {
                 let after_paths: HashSet<PathBuf> = assets.iter().map(|a| a.path.clone()).collect();
                 let missing = assets.iter().filter(|a| a.missing).count();
                 let added = after_paths.difference(&before_paths).count();
@@ -264,7 +218,58 @@ impl Workspace {
                 });
                 let kept = after_paths.intersection(&before_paths).count();
                 let catalog = Catalog::new_multi(folders, assets);
-                this.install_catalog(catalog, Some(Arc::new(cache)), select, cx);
+                this.install_catalog(catalog, Some(Arc::new(cache.clone())), select, cx);
+                this.import_progress = Some((done.clone(), total));
+                this.status_message = Some(format!("Generating thumbnails for {total} photos…").into());
+                cx.notify();
+                (added, removed, missing, kept)
+            });
+            let Ok((added, removed, missing, kept)) = shown else {
+                return;
+            };
+
+            // The thumbnails, in batches, in the order of the catalog.
+            let pending: Arc<std::sync::Mutex<Vec<rustyedit_io::ThumbInfo>>> = Default::default();
+            let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let thumb_assets = this
+                .update(cx, |this, _| this.catalog.assets.clone())
+                .unwrap_or_default();
+            let job = cx.background_executor().spawn({
+                let (pending, finished, done) = (pending.clone(), finished.clone(), done.clone());
+                async move {
+                    rustyedit_io::generate_thumbnails_in_batches(
+                        &cache,
+                        &thumb_assets,
+                        &done,
+                        measure_sharpness,
+                        THUMBNAIL_BATCH,
+                        |batch| pending.lock().unwrap().extend(batch),
+                    );
+                    finished.store(true, std::sync::atomic::Ordering::Release);
+                }
+            });
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(150))
+                    .await;
+                // Read this first: what was finished is all in `pending`.
+                let last = finished.load(std::sync::atomic::Ordering::Acquire);
+                let batch = std::mem::take(&mut *pending.lock().unwrap());
+                let alive = this
+                    .update(cx, |this, cx| {
+                        this.apply_thumbnails(batch);
+                        cx.notify();
+                    })
+                    .is_ok();
+                if last || !alive {
+                    break;
+                }
+            }
+            job.await;
+
+            this.update(cx, |this, cx| {
+                this.facets = crate::filters_panel::Facets::build(&this.catalog);
+                this.mark_catalog_dirty(cx);
                 if import_append {
                     this.post_scan_message = Some(
                         if added == 0 && kept == 0 {
@@ -308,6 +313,32 @@ impl Workspace {
             .ok();
         })
         .detach();
+    }
+
+    /// Puts what a batch of thumbnails found (the thumbnail, size, EXIF facts
+    /// and hashes) on the photos in the library, which is already on show.
+    /// Ids are list positions, so each is looked up directly.
+    fn apply_thumbnails(&mut self, batch: Vec<rustyedit_io::ThumbInfo>) {
+        if batch.is_empty() {
+            return;
+        }
+        for info in batch {
+            let id = info.id;
+            if let Some(asset) = self.catalog.assets.get_mut(id as usize).filter(|a| a.id == id) {
+                asset.thumbnail_path = Some(info.thumbnail);
+                asset.width = info.width;
+                asset.height = info.height;
+                asset.orientation = info.orientation;
+                asset.meta = info.meta;
+                asset.content_hash = info.content_hash;
+                asset.phash = info.phash;
+                asset.sharpness = info.sharpness;
+            }
+        }
+        // Dates and sizes arrive with the thumbnails, and the order and
+        // the filters depend on them.
+        let sort = self.catalog.sort();
+        self.catalog.set_sort(sort);
     }
 
     /// Swaps in a freshly loaded catalog, resetting everything keyed by the

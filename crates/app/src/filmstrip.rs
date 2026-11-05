@@ -102,6 +102,14 @@ impl Workspace {
         FilmLook::for_style(self.settings.filmstrip.style, &self.theme)
     }
 
+    /// The roll's look, with the header's black-and-white / colour choice
+    /// (when made) overriding the style's own.
+    fn roll_look(&self) -> FilmLook {
+        let mut look = self.film_look();
+        look.monochrome = self.filmstrip_mono.unwrap_or(look.monochrome);
+        look
+    }
+
     /// Stacks `main` with the filmstrip on whichever edge the layout
     /// settings choose. Shared by Library and Develop.
     pub(crate) fn with_filmstrip(
@@ -122,6 +130,7 @@ impl Workspace {
     /// collapsed; clicking anywhere on it toggles the strip.
     fn render_filmstrip_header(&self, at_top: bool, cx: &mut Context<Self>) -> AnyElement {
         let look = self.film_look();
+        let mono = self.roll_look().monochrome;
         let count = self.catalog.assets.len();
         let position = if count == 0 {
             String::new()
@@ -154,6 +163,27 @@ impl Workspace {
                     .items_center()
                     .gap_2()
                     .child(SharedString::from(position))
+                    .child(
+                        div()
+                            .id("filmstrip-mono")
+                            .px_1p5()
+                            .py_0p5()
+                            .rounded_sm()
+                            .border_1()
+                            .border_color(look.divider)
+                            .when(mono, |el| {
+                                el.bg(look.chrome_text).text_color(look.chrome_bg)
+                            })
+                            .hover(|el| el.bg(look.chrome_hover))
+                            .tooltip(rustyedit_ui::tip("Previews in black & white or colour", &self.theme))
+                            .child(if mono { "B&W" } else { "COLOUR" })
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                let now = this.roll_look().monochrome;
+                                this.filmstrip_mono = Some(!now);
+                                cx.stop_propagation();
+                                cx.notify();
+                            })),
+                    )
                     // Points the way the strip will move when clicked.
                     .child(if self.filmstrip_collapsed != at_top {
                         "\u{25B4}"
@@ -179,7 +209,7 @@ impl Workspace {
     /// precisely.
     fn render_film_roll(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
-        let look = self.film_look();
+        let look = self.roll_look();
         let entity = cx.entity();
         let selected = self.catalog.selected;
 

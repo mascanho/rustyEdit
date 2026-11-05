@@ -55,8 +55,8 @@ impl ThumbnailCache {
             .unwrap_or(0);
 
         let mut hasher = DefaultHasher::new();
-        // Bump when the cached pixels change meaning (v2: EXIF-oriented).
-        2u8.hash(&mut hasher);
+        // Bump when the cached pixels change meaning (v2: EXIF-oriented; v3: demosaiced DNG colour).
+        3u8.hash(&mut hasher);
         path.hash(&mut hasher);
         modified_secs.hash(&mut hasher);
         metadata.len().hash(&mut hasher);
@@ -280,75 +280,106 @@ pub fn generate_thumbnails(
     measure_sharpness: bool,
 ) -> Vec<ThumbInfo> {
     use rayon::prelude::*;
-    use std::sync::atomic::Ordering;
 
     assets
         .par_iter()
-        .filter_map(|asset| {
-            let quarters = asset.rotation_quarters();
-            // Already thumbnailed on a previous run and its size is known:
-            // no need to decode the (possibly RAW) original again; only
-            // fill in EXIF facts an older catalog didn't record.
-            if asset.width > 0 && asset.height > 0 {
-                if let Some(thumb) = cache.cached_rotated(&asset.path, quarters) {
-                    let meta = if asset.meta.captured != 0 {
-                        asset.meta.clone()
-                    } else {
-                        crate::metadata::read_photo_meta(&asset.path)
-                    };
-                    progress.fetch_add(1, Ordering::Relaxed);
-                    // Both come from the thumbnail; decode it only if one
-                    // is still missing.
-                    let (phash, sharpness) = match (asset.phash, asset.sharpness) {
-                        (phash, Some(sharpness)) if phash != 0 => (phash, Some(sharpness)),
-                        (phash, None) if phash != 0 && !measure_sharpness => (phash, None),
-                        (phash, known) => {
-                            let (fresh_hash, fresh_sharpness) = thumbnail_facts(&thumb);
-                            (
-                                if phash != 0 { phash } else { fresh_hash },
-                                known.or(fresh_sharpness.filter(|_| measure_sharpness)),
-                            )
-                        }
-                    };
-                    let content_hash = if asset.content_hash != 0 {
-                        asset.content_hash
-                    } else {
-                        sampled_content_hash(&asset.path)
-                    };
-                    return Some(ThumbInfo {
-                        id: asset.id,
-                        thumbnail: thumb,
-                        width: asset.width,
-                        height: asset.height,
-                        orientation: asset.orientation,
-                        meta,
-                        content_hash,
-                        phash,
-                        sharpness,
-                    });
-                }
-            }
-            let result = cache.ensure_rotated(&asset.path, quarters).ok().map(
-                |(thumbnail, width, height)| {
-                    let (phash, sharpness) = thumbnail_facts(&thumbnail);
-                    let sharpness = sharpness.filter(|_| measure_sharpness).or(asset.sharpness);
-                    ThumbInfo {
-                        id: asset.id,
-                        thumbnail,
-                        width,
-                        height,
-                        orientation: crate::decode::exif_orientation(&asset.path),
-                        meta: crate::metadata::read_photo_meta(&asset.path),
-                        content_hash: sampled_content_hash(&asset.path),
-                        phash,
-                        sharpness,
-                    }
-                },
-            );
-            progress.fetch_add(1, Ordering::Relaxed);
-            result
-        })
+        .filter_map(|asset| thumbnail_one(cache, asset, progress, measure_sharpness))
         .collect()
+}
+
+/// [`generate_thumbnails`] in batches, in order: `sink` gets each batch as
+/// soon as it is done, so the library can show those photos while the rest
+/// are still being made.
+pub fn generate_thumbnails_in_batches(
+    cache: &ThumbnailCache,
+    assets: &[Asset],
+    progress: &std::sync::atomic::AtomicUsize,
+    measure_sharpness: bool,
+    batch: usize,
+    mut sink: impl FnMut(Vec<ThumbInfo>),
+) {
+    use rayon::prelude::*;
+
+    for chunk in assets.chunks(batch.max(1)) {
+        let infos: Vec<ThumbInfo> = chunk
+            .par_iter()
+            .filter_map(|asset| thumbnail_one(cache, asset, progress, measure_sharpness))
+            .collect();
+        sink(infos);
+    }
+}
+
+/// One photo's thumbnail and facts (`None` when it can't be read).
+fn thumbnail_one(
+    cache: &ThumbnailCache,
+    asset: &Asset,
+    progress: &std::sync::atomic::AtomicUsize,
+    measure_sharpness: bool,
+) -> Option<ThumbInfo> {
+    use std::sync::atomic::Ordering;
+
+    let quarters = asset.rotation_quarters();
+    // Already thumbnailed on a previous run and its size is known:
+    // no need to decode the (possibly RAW) original again; only
+    // fill in EXIF facts an older catalog didn't record.
+    if asset.width > 0 && asset.height > 0 {
+        if let Some(thumb) = cache.cached_rotated(&asset.path, quarters) {
+            let meta = if asset.meta.captured != 0 {
+                asset.meta.clone()
+            } else {
+                crate::metadata::read_photo_meta(&asset.path)
+            };
+            progress.fetch_add(1, Ordering::Relaxed);
+            // Both come from the thumbnail; decode it only if one
+            // is still missing.
+            let (phash, sharpness) = match (asset.phash, asset.sharpness) {
+                (phash, Some(sharpness)) if phash != 0 => (phash, Some(sharpness)),
+                (phash, None) if phash != 0 && !measure_sharpness => (phash, None),
+                (phash, known) => {
+                    let (fresh_hash, fresh_sharpness) = thumbnail_facts(&thumb);
+                    (
+                        if phash != 0 { phash } else { fresh_hash },
+                        known.or(fresh_sharpness.filter(|_| measure_sharpness)),
+                    )
+                }
+            };
+            let content_hash = if asset.content_hash != 0 {
+                asset.content_hash
+            } else {
+                sampled_content_hash(&asset.path)
+            };
+            return Some(ThumbInfo {
+                id: asset.id,
+                thumbnail: thumb,
+                width: asset.width,
+                height: asset.height,
+                orientation: asset.orientation,
+                meta,
+                content_hash,
+                phash,
+                sharpness,
+            });
+        }
+    }
+    let result = cache.ensure_rotated(&asset.path, quarters).ok().map(
+        |(thumbnail, width, height)| {
+            let (phash, sharpness) = thumbnail_facts(&thumbnail);
+            let sharpness = sharpness.filter(|_| measure_sharpness).or(asset.sharpness);
+            ThumbInfo {
+                id: asset.id,
+                thumbnail,
+                width,
+                height,
+                orientation: crate::decode::exif_orientation(&asset.path),
+                meta: crate::metadata::read_photo_meta(&asset.path),
+                content_hash: sampled_content_hash(&asset.path),
+                phash,
+                sharpness,
+            }
+        },
+    );
+    progress.fetch_add(1, Ordering::Relaxed);
+    result
 }
 
 /// A 64-bit difference hash (dHash) of an image: resize to 9×8 greyscale and
@@ -463,4 +494,41 @@ pub struct ThumbInfo {
     pub phash: u64,
     /// See `rustyedit_core::culling::sharpness`.
     pub sharpness: Option<f32>,
+}
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+    use rustyedit_core::Asset;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn thumbnails_arrive_in_order_batch_by_batch() {
+        let dir = std::env::temp_dir().join(format!("rustyedit-batches-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let assets: Vec<Asset> = (0..5)
+            .map(|i| {
+                let path = dir.join(format!("p{i}.jpg"));
+                image::RgbImage::from_pixel(64, 48, image::Rgb([i as u8 * 40, 90, 120]))
+                    .save(&path)
+                    .unwrap();
+                Asset::new(i, path)
+            })
+            .collect();
+        let cache = ThumbnailCache::for_folder(&dir);
+        let progress = AtomicUsize::new(0);
+        let mut batches: Vec<Vec<u64>> = Vec::new();
+        generate_thumbnails_in_batches(&cache, &assets, &progress, false, 2, |infos| {
+            // What was finished so far is already counted.
+            assert!(progress.load(Ordering::Relaxed) >= infos.len());
+            batches.push(infos.iter().map(|i| i.id).collect());
+        });
+        assert_eq!(batches, vec![vec![0, 1], vec![2, 3], vec![4]]);
+        assert_eq!(progress.load(Ordering::Relaxed), 5);
+        // The same photos as the all-at-once call gives.
+        let all = generate_thumbnails(&cache, &assets, &AtomicUsize::new(0), false);
+        assert_eq!(all.iter().map(|i| i.id).collect::<Vec<_>>(), vec![0, 1, 2, 3, 4]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
