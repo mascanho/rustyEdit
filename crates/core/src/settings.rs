@@ -865,7 +865,8 @@ pub struct DevelopPreferences {
     /// The editing panel's section order, by `DevelopSection::key`; empty
     /// for the default. See `DevelopSection::arrange`.
     pub section_order: Vec<String>,
-    /// Hovering a preset shows its look on the photo before it's applied.
+    /// Hovering a preset, or a step in the History panel, shows the
+    /// photo's look there before it's applied or stepped to.
     pub preset_hover_preview: bool,
     /// The first time a RAW photo is opened in Develop, start it from the
     /// camera's own colour look (taken from the JPEG preview in the file).
@@ -1858,11 +1859,11 @@ pub static SETTINGS_PAGES: &[SettingsPage] = &[
                 }],
             },
             SettingsSection {
-                title: "Presets",
+                title: "Presets & History",
                 items: &[SettingItem {
                     label: "Preview on hover",
-                    description: "Show a preset's look on the photo while the pointer is over \
-                                  it; click to apply it.",
+                    description: "Show the photo's look while the pointer is over a preset, or \
+                                  a step in the History panel; click either to use it.",
                     control: SettingControl::Toggle {
                         get: |s| s.develop.preset_hover_preview,
                         set: |s, v| s.develop.preset_hover_preview = v,

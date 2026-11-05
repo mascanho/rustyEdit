@@ -66,6 +66,14 @@ impl Workspace {
         .into_any_element()
     }
 
+    /// Moves `adjustment` to `value` on the selected photo (its slider's
+    /// own position), or, with several photos selected, by however far
+    /// that moves the selected photo, applied to every selected photo from
+    /// its own value — so a batch keeps its differences, the same as
+    /// dragging a slider over a multi-selection in Lightroom. A single
+    /// photo behaves exactly as it always has, with the usual (before,
+    /// after) in its history; a batch instead logs how far the slider
+    /// moved, since "before" differs from photo to photo.
     pub(crate) fn apply_adjustment(
         &mut self,
         adjustment: Adjustment,
@@ -88,11 +96,42 @@ impl Workspace {
                 format!("{v:.0}")
             }
         };
-        self.edit_develop(
-            &adjustment.history_label(),
-            |develop| adjustment.set(develop, value),
-            |develop| (format(before), format(adjustment.get(develop))),
+        let targets = self.target_indices();
+        if targets.len() <= 1 {
+            self.edit_develop(
+                &adjustment.history_label(),
+                |develop| adjustment.set(develop, value),
+                |develop| (format(before), format(adjustment.get(develop))),
+                cx,
+            );
+            return;
+        }
+
+        let (min, max) = adjustment.range();
+        let delta = value - before;
+        let updates: Vec<(usize, DevelopSettings)> = targets
+            .into_iter()
+            .map(|ix| {
+                let mut develop = self.catalog.assets[ix].develop;
+                let next = (adjustment.get(&develop) + delta).clamp(min, max);
+                adjustment.set(&mut develop, next);
+                (ix, develop)
+            })
+            .collect();
+        let title = adjustment.history_label();
+        // How far the slider moved, not an absolute value: each photo's
+        // own "before" differs, so there's no single (from, to) to show.
+        let detail = format!("{:+.0}", delta * sign);
+        self.replace_develop_each_and(
+            updates,
+            &title,
+            HistoryNote::Record {
+                title: &title,
+                detail: &detail,
+            },
+            true,
             cx,
+            |_, _| {},
         );
     }
 

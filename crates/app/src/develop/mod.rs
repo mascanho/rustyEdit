@@ -229,6 +229,7 @@ impl Workspace {
                     .gap_2()
                     .child(self.render_histogram_panel(cx))
                     .child(self.render_tool_strip(cx))
+                    .children(self.multi_select_banner())
                     // Stacked layouts keep the Navigator in view here.
                     .when(stacked, |el| el.child(self.render_navigator(cx)))
                     .into_any_element(),
@@ -267,6 +268,26 @@ impl Workspace {
     /// user's order, then "Reset panel order" once it's been changed. The
     /// default order follows how a photo is worked on: retouch, tone, then
     /// colour, then detail and effects.
+    /// With several photos selected, a reminder that every slider now
+    /// moves all of them together (each from its own value, keeping their
+    /// differences), so an edit showing up on photos you didn't mean to
+    /// touch isn't a surprise.
+    fn multi_select_banner(&self) -> Option<AnyElement> {
+        let count = self.target_indices().len();
+        (count > 1).then(|| {
+            div()
+                .mx_2()
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .bg(self.theme.accent_muted.opacity(0.5))
+                .text_size(sp(10.5))
+                .text_color(self.theme.text_muted)
+                .child(format!("Edits apply to all {count} selected photos"))
+                .into_any_element()
+        })
+    }
+
     fn develop_edit_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut sections: Vec<AnyElement> = self
             .develop_section_order()

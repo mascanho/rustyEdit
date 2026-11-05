@@ -391,10 +391,13 @@ pub struct Workspace {
     pub(crate) settings_text_item: Option<usize>,
 
     /// Settings the live preview shows instead of the selected photo's own,
-    /// while a preset is hovered (see `develop/presets.rs`), and which
-    /// preset that is.
+    /// while a preset or a History step is hovered (see
+    /// `develop/presets.rs`, `develop/history.rs`), and which one.
     pub(crate) preview_override: Option<rustyedit_core::DevelopSettings>,
     pub(crate) preset_hover: Option<String>,
+    /// The History entry being hovered: its index, or `usize::MAX` for
+    /// "Original".
+    pub(crate) history_hover: Option<usize>,
 
     /// Pop-up notifications (see `toasts.rs`).
     pub(crate) toasts: crate::toasts::Toasts,
@@ -613,6 +616,7 @@ impl Workspace {
             settings_text_item: None,
             preview_override: None,
             preset_hover: None,
+            history_hover: None,
             toasts: Default::default(),
         };
         this.toasts = crate::toasts::Toasts::starting_with(this.status_message.clone());
@@ -794,9 +798,11 @@ impl Workspace {
             self.loupe_zoom = None;
         }
         self.preview_epoch += 1;
-        // A hovered preset's preview was for the photo being left.
+        // A hovered preset or History step's preview was for the photo
+        // being left.
         self.preview_override = None;
         self.preset_hover = None;
+        self.history_hover = None;
         // Another version of the same file (a virtual copy or its
         // original) can keep the decoded photo and just re-render.
         let selected = self
