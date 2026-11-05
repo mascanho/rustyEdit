@@ -86,9 +86,10 @@ use workspace::Workspace;
 
 const KEY_CONTEXT: &str = "Workspace";
 
-fn main() {
-    Application::new().run(|cx: &mut App| {
-        cx.bind_keys([
+/// Every shortcut's default key, before any of the user's own changes
+/// (see `apply_key_bindings`) are layered on.
+fn default_key_bindings() -> Vec<KeyBinding> {
+    vec![
             KeyBinding::new("secondary-q", Quit, None),
             KeyBinding::new("secondary-o", ImportFolder, Some(KEY_CONTEXT)),
             KeyBinding::new("right", NextImage, Some(KEY_CONTEXT)),
@@ -170,7 +171,47 @@ fn main() {
             KeyBinding::new("secondary-shift-o", RevealInFinder, Some(KEY_CONTEXT)),
             KeyBinding::new("secondary-shift-r", SyncFolders, Some(KEY_CONTEXT)),
             KeyBinding::new("escape", CloseSettings, Some("SettingsModal")),
-        ]);
+    ]
+}
+
+/// A binding the user has given a different key to (see the shortcut
+/// sheet), its action and context kept but its keystroke swapped in.
+/// `None` if the keystroke doesn't parse (left as the default then).
+fn rebind(binding: &KeyBinding, keystroke: &str) -> Option<KeyBinding> {
+    KeyBinding::load(
+        keystroke,
+        binding.action().boxed_clone(),
+        binding.predicate(),
+        false,
+        None,
+        &gpui::DummyKeyboardMapper,
+    )
+    .ok()
+}
+
+/// Rebuilds the whole keymap from the defaults, with the user's own
+/// changes layered on by action name. Safe to call again any time a
+/// shortcut changes (see `commands.rs`'s recorder): it replaces the
+/// keymap outright rather than adding to it, so an old key never lingers
+/// bound to an action it's been moved away from.
+pub(crate) fn apply_key_bindings(cx: &mut App) {
+    let overrides = rustyedit_io::load_shortcut_overrides();
+    let bindings: Vec<KeyBinding> = default_key_bindings()
+        .into_iter()
+        .map(|binding| {
+            match overrides.get(binding.action().name()) {
+                Some(keystroke) => rebind(&binding, keystroke).unwrap_or(binding),
+                None => binding,
+            }
+        })
+        .collect();
+    cx.clear_key_bindings();
+    cx.bind_keys(bindings);
+}
+
+fn main() {
+    Application::new().run(|cx: &mut App| {
+        apply_key_bindings(cx);
 
         cx.on_action(|_: &Quit, cx| quit_prompt::request_quit(cx));
         cx.on_action(|_: &rustyedit_ui::CloseWindow, cx| quit_prompt::request_quit(cx));

@@ -10,8 +10,8 @@
 //! Mac, Ctrl+Shift+S elsewhere).
 
 use gpui::{
-    div, prelude::*, Action, AnyElement, App, ClickEvent, Context, MouseButton, SharedString,
-    Window,
+    div, prelude::*, Action, AnyElement, App, ClickEvent, Context, KeyDownEvent, MouseButton,
+    SharedString, Window,
 };
 use rustyedit_ui::{sp, Theme};
 
@@ -506,6 +506,162 @@ impl Workspace {
         )
     }
 
+    /// One row: the command's name and its shortcut, click to record a new
+    /// one in its place, with a small reset when it's been changed. `None`
+    /// for a command with no shortcut at all (nothing to show or edit).
+    fn shortcut_row(&self, c: &Command, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let theme = self.theme;
+        let action = (c.action)();
+        let name = action.name();
+        let keys = shortcut_label(cx, action.as_ref())?;
+        let recording = self
+            .recording_shortcut
+            .as_ref()
+            .is_some_and(|(n, _)| n == name);
+        let customised = self.shortcut_overrides.contains_key(name);
+        let name_owned = name.to_string();
+        let label = c.label;
+
+        let chip: AnyElement = if recording {
+            div()
+                .flex_shrink_0()
+                .px_1p5()
+                .h(sp(20.0))
+                .flex()
+                .items_center()
+                .rounded_sm()
+                .bg(theme.accent.opacity(0.18))
+                .border_1()
+                .border_color(theme.accent)
+                .text_size(sp(11.0))
+                .text_color(theme.accent)
+                .child("Press a key\u{2026} (Esc to cancel)")
+                .into_any_element()
+        } else {
+            div()
+                .id(SharedString::from(format!("shortcut-edit-{name}")))
+                .cursor_pointer()
+                .child(key_chip(keys, &theme))
+                .tooltip(rustyedit_ui::tip("Click to set a new shortcut", &theme))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                    this.recording_shortcut = Some((name_owned.clone(), label));
+                    cx.notify();
+                }))
+                .into_any_element()
+        };
+
+        Some(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .h(sp(24.0))
+                .child(
+                    div()
+                        .min_w(sp(0.0))
+                        .truncate()
+                        .text_size(sp(12.0))
+                        .text_color(theme.text_muted)
+                        .child(c.label),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap_1()
+                        .child(chip)
+                        .when(customised && !recording, |el| {
+                            let name_owned = name.to_string();
+                            el.child(
+                                div()
+                                    .id(SharedString::from(format!("shortcut-reset-{name}")))
+                                    .cursor_pointer()
+                                    .text_size(sp(10.0))
+                                    .text_color(theme.text_faint)
+                                    .hover(|el| el.text_color(theme.text))
+                                    .child("Reset")
+                                    .tooltip(rustyedit_ui::tip(
+                                        "Back to the default shortcut",
+                                        &theme,
+                                    ))
+                                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                                        this.shortcut_overrides.remove(&name_owned);
+                                        this.save_and_apply_shortcuts(cx);
+                                    })),
+                            )
+                        }),
+                )
+                .into_any_element(),
+        )
+    }
+
+    /// Keys while a shortcut is being recorded (see `shortcut_row`): the
+    /// very next one becomes the action's new shortcut, written the same
+    /// way the keymap itself expects (`ctrl-alt-shift-cmd-fn-key`). Esc
+    /// cancels without changing anything. Takes priority over every other
+    /// key handling while active.
+    pub(crate) fn on_shortcut_recorder_key(
+        &mut self,
+        event: &KeyDownEvent,
+        _w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((name, _)) = self.recording_shortcut.clone() else {
+            return;
+        };
+        cx.stop_propagation();
+        let stroke = &event.keystroke;
+        if stroke.key == "escape" {
+            self.recording_shortcut = None;
+            cx.notify();
+            return;
+        }
+        // A bare modifier press (nothing pressed with it yet) isn't a
+        // shortcut on its own; wait for the key that completes it.
+        if matches!(
+            stroke.key.as_str(),
+            "control" | "alt" | "shift" | "platform" | "cmd" | "fn" | "function"
+        ) {
+            return;
+        }
+        let mut parts = Vec::new();
+        if stroke.modifiers.control {
+            parts.push("ctrl");
+        }
+        if stroke.modifiers.alt {
+            parts.push("alt");
+        }
+        if stroke.modifiers.shift {
+            parts.push("shift");
+        }
+        if stroke.modifiers.platform {
+            parts.push("cmd");
+        }
+        if stroke.modifiers.function {
+            parts.push("fn");
+        }
+        parts.push(stroke.key.as_str());
+        let keystroke = parts.join("-");
+
+        self.recording_shortcut = None;
+        self.shortcut_overrides.insert(name, keystroke);
+        self.save_and_apply_shortcuts(cx);
+    }
+
+    /// Persists `shortcut_overrides` and rebuilds the live keymap from it
+    /// (see `main.rs`'s `apply_key_bindings`), so a change takes effect at
+    /// once, without a restart.
+    fn save_and_apply_shortcuts(&mut self, cx: &mut Context<Self>) {
+        if let Err(err) = rustyedit_io::save_shortcut_overrides(&self.shortcut_overrides) {
+            self.status_message = Some(format!("Couldn't save the shortcut: {err}").into());
+        }
+        crate::apply_key_bindings(cx);
+        cx.notify();
+    }
+
     pub(crate) fn render_shortcut_sheet(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.shortcut_sheet {
             return None;
@@ -518,28 +674,7 @@ impl Workspace {
                 let rows: Vec<AnyElement> = all
                     .iter()
                     .filter(|c| c.group == group)
-                    .filter_map(|c| {
-                        let keys = shortcut_label(cx, (c.action)().as_ref())?;
-                        Some(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .items_center()
-                                .justify_between()
-                                .gap_3()
-                                .h(sp(24.0))
-                                .child(
-                                    div()
-                                        .min_w(sp(0.0))
-                                        .truncate()
-                                        .text_size(sp(12.0))
-                                        .text_color(theme.text_muted)
-                                        .child(c.label),
-                                )
-                                .child(key_chip(keys, &theme))
-                                .into_any_element(),
-                        )
-                    })
+                    .filter_map(|c| self.shortcut_row(c, cx))
                     .collect();
                 (!rows.is_empty()).then(|| {
                     div()

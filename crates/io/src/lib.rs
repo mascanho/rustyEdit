@@ -13,6 +13,7 @@ mod maintenance;
 mod metadata;
 mod pdf;
 mod recovery;
+mod shortcuts_store;
 pub mod zine;
 pub mod zine_raster;
 pub mod zine_web;
@@ -45,6 +46,7 @@ pub use recovery::{
     begin_session, end_session, had_unclean_exit, latest_auto_backup, list_auto_backups,
     read_auto_backup, relative_time, write_auto_backup, AutoBackup,
 };
+pub use shortcuts_store::{load_shortcut_overrides, save_shortcut_overrides};
 pub use lens_db::{find_lens_profile, lens_database_size, lensfun_dirs, LensDb};
 pub use preset_store::{
     export_to as export_presets, import_from as import_presets, load as load_presets,

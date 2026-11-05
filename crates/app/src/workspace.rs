@@ -225,6 +225,14 @@ pub struct Workspace {
     pub(crate) palette: Option<usize>,
     /// Whether the keyboard shortcut sheet is showing.
     pub(crate) shortcut_sheet: bool,
+    /// The user's own shortcuts, by action name (see `main.rs`'s
+    /// `apply_key_bindings`, which this mirrors so the sheet can show and
+    /// edit them without re-reading the file each render).
+    pub(crate) shortcut_overrides: std::collections::HashMap<String, String>,
+    /// Waiting for the next keystroke to become this action's shortcut
+    /// (see `commands.rs`'s recorder): the action's name and its label,
+    /// for showing "Press a key for Undo…" while it waits.
+    pub(crate) recording_shortcut: Option<(String, &'static str)>,
     /// Asset index the rename draft applies to (the selection may move while
     /// the filename is being typed).
     pub(crate) rename_target: Option<usize>,
@@ -513,6 +521,8 @@ impl Workspace {
             text_draft: None,
             palette: None,
             shortcut_sheet: false,
+            shortcut_overrides: rustyedit_io::load_shortcut_overrides(),
+            recording_shortcut: None,
             rename_target: None,
             pending_sync_report: false,
             resizing: None,
@@ -1273,6 +1283,7 @@ impl Render for Workspace {
             })
             // Clicking anywhere applies a slider value being typed.
             .capture_any_mouse_down(|_, window, cx| rustyedit_ui::sliders_pointer_down(window, cx))
+            .on_key_down(cx.listener(Self::on_shortcut_recorder_key))
             .on_key_down(cx.listener(Self::on_text_key))
             .on_key_down(cx.listener(Self::on_context_menu_key))
             .on_key_down(cx.listener(Self::develop_key_down))
