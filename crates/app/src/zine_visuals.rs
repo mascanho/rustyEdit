@@ -4,7 +4,7 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-use gpui::{
+use gpui::{Context, 
     div, img, prelude::*, px, relative, AnyElement, Hsla, RenderImage, SharedString,
     Window,
 };
@@ -28,6 +28,11 @@ const MM_PER_PT: f32 = 25.4 / 72.0;
 pub(crate) struct ComposeCache {
     thumbs: HashMap<PathBuf, Option<Arc<RgbImage>>>,
     composed: HashMap<String, Composed>,
+    /// Larger renders of the photos on the pages the preview shows, by
+    /// their thumbnail's path (which changes with the edits). The
+    /// thumbnails are small, so a big page drawn from them looked soft.
+    hires: HashMap<PathBuf, Option<Arc<RgbImage>>>,
+    hires_pending: std::collections::HashSet<PathBuf>,
 }
 
 struct Composed {
@@ -50,6 +55,11 @@ impl ComposeCache {
                 false
             }
         });
+    }
+
+    /// Lets go of the large renders (the preview was closed).
+    pub(crate) fn drop_hires(&mut self) {
+        self.hires.clear();
     }
 
     fn thumb(&mut self, path: &PathBuf) -> Option<Arc<RgbImage>> {
@@ -102,7 +112,56 @@ impl Workspace {
     /// The decoded thumbnail of a photo of the zine.
     fn zine_thumb_image(&self, photo: &ZinePhoto) -> Option<Arc<RgbImage>> {
         let path = self.zine_thumb(photo)?;
-        self.zine_ui.cache.borrow_mut().thumb(&path)
+        let mut cache = self.zine_ui.cache.borrow_mut();
+        if self.zine_ui.preview.is_some() {
+            if let Some(Some(big)) = cache.hires.get(&path) {
+                return Some(big.clone());
+            }
+        }
+        cache.thumb(&path)
+    }
+
+    /// Starts making sharp renders (long edge `edge`) of the photos with
+    /// these indexes, for the preview to draw instead of the thumbnails.
+    pub(crate) fn request_zine_hires(&self, photos: &[usize], edge: u32, cx: &mut Context<Self>) {
+        for &n in photos {
+            let Some(photo) = self.zine.photos.get(n) else {
+                continue;
+            };
+            let Some(key) = self.zine_thumb(photo) else {
+                continue;
+            };
+            {
+                let mut cache = self.zine_ui.cache.borrow_mut();
+                if cache.hires.contains_key(&key) || !cache.hires_pending.insert(key.clone()) {
+                    continue;
+                }
+            }
+            let Some(asset) = self
+                .catalog
+                .assets
+                .iter()
+                .find(|a| a.path == photo.path && a.copy_name == photo.copy_name)
+                .cloned()
+            else {
+                continue;
+            };
+            let render = cx
+                .background_executor()
+                .spawn(async move { crate::zines::render_photo_rgb(&asset, edge).ok() });
+            cx.spawn(async move |this, cx| {
+                let image = render.await;
+                this.update(cx, |this, cx| {
+                    let mut cache = this.zine_ui.cache.borrow_mut();
+                    cache.hires_pending.remove(&key);
+                    cache.hires.insert(key, image.map(Arc::new));
+                    drop(cache);
+                    cx.notify();
+                })
+                .ok();
+            })
+            .detach();
+        }
     }
 
     /// The shape of a photo of the zine, in pixels.

@@ -148,12 +148,14 @@ impl Workspace {
                             .flex_wrap()
                             .content_start()
                             .items_start()
-                            .gap_6()
+                            .justify_between()
+                            .gap_x_10()
+                            .gap_y_8()
                             .size_full()
                             .overflow_y_scroll()
-                            .px_6()
-                            .py_4()
-                            .children(self.zine_cards(cx)),
+                            .px_8()
+                            .py_6()
+                            .children(self.fill_rows(window, self.zine_stage().width_px, self.zine_cards(cx))),
                     )
                     .child(rustyedit_ui::vertical_scrollbar(
                         "zine-pages-scrollbar",
@@ -173,6 +175,26 @@ impl Workspace {
             .into_any_element();
         self.zine_ui.cache.borrow_mut().prune(window);
         workbench
+    }
+
+    /// Pads the last row of pages with empty places, so the rows spread
+    /// across the whole width like a grid: each row's pages are pushed to
+    /// the edges and the last row's line up beneath them, instead of
+    /// bunching at one side or floating in the middle.
+    fn fill_rows(&self, window: &Window, page_w: f32, mut cards: Vec<AnyElement>) -> Vec<AnyElement> {
+        const GAP: f32 = 40.0;
+        let paired = self.zine_ui.spreads && !self.zine.manual.pages.iter().any(|p| p.is_sheet());
+        let unit = if paired { page_w * 2.0 } else { page_w };
+        let side = if self.zine_ui.sidebar_open { SIDEBAR_W } else { 32.0 };
+        let avail = f32::from(window.viewport_size().width)
+            - self.settings.layout.inspector_width as f32
+            - side
+            - 64.0
+            - 14.0;
+        let columns = (((avail + GAP) / (unit + GAP)).floor() as usize).max(1);
+        let spare = (columns - cards.len() % columns) % columns;
+        cards.extend((0..spare).map(|_| div().flex_shrink_0().w(px(unit)).h(px(1.0)).into_any_element()));
+        cards
     }
 
     // --- Header and the side bar -------------------------------------------------------
@@ -228,6 +250,77 @@ impl Workspace {
     /// the page and the selection, and the pages themselves.
     fn zine_sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
+        let body = vec![
+            side_section(&theme, "View", self.zine_view_controls(cx)),
+            side_section(&theme, "Add to a page", self.zine_add_tools(cx)),
+            self.zine_context_sections(cx),
+        ];
+        self.zine_sidebar_shell(body, cx)
+    }
+
+    /// The side bar's frame, shared by the manual and automatic views: a
+    /// title bar with the fold-away arrow, the tools scrolling in between,
+    /// and the Preview button pinned at the bottom. Folded, it's a thin
+    /// strip with just the arrow to open it again.
+    fn zine_sidebar_shell(&self, body: Vec<AnyElement>, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let open = self.zine_ui.sidebar_open;
+        let toggle = |id: &'static str| {
+            div()
+                .id(id)
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(sp(22.0))
+                .rounded_md()
+                .cursor_pointer()
+                .hover(|el| el.bg(theme.surface_elevated))
+                .tooltip(rustyedit_ui::tip(
+                    if open { "Fold the tools away" } else { "Show the tools" },
+                    &theme,
+                ))
+                .child(rustyedit_ui::icon(
+                    if open { rustyedit_ui::Icon::ChevronRight } else { rustyedit_ui::Icon::ChevronLeft },
+                    12.0,
+                    theme.text_muted,
+                ))
+                .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                    this.zine_ui.sidebar_open = !this.zine_ui.sidebar_open;
+                    cx.notify();
+                }))
+        };
+        if !open {
+            return div()
+                .id("zine-sidebar")
+                .flex()
+                .flex_col()
+                .items_center()
+                .flex_shrink_0()
+                .w(sp(32.0))
+                .h_full()
+                .py_2()
+                .bg(theme.surface)
+                .border_l_1()
+                .border_color(theme.border)
+                .child(toggle("zine-sidebar-toggle"))
+                .into_any_element();
+        }
+        let preview = div()
+            .id("zine-preview")
+            .flex()
+            .items_center()
+            .justify_center()
+            .h(sp(32.0))
+            .rounded_md()
+            .bg(theme.accent)
+            .text_color(gpui::white())
+            .text_size(sp(rustyedit_ui::type_size::LABEL))
+            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .cursor_pointer()
+            .hover(|el| el.opacity(0.92))
+            .tooltip(rustyedit_ui::tip("See the zine as it will print", &theme))
+            .child("Preview")
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.open_zine_preview(cx)));
         div()
             .id("zine-sidebar")
             .flex()
@@ -235,15 +328,43 @@ impl Workspace {
             .flex_shrink_0()
             .w(sp(SIDEBAR_W))
             .h_full()
-            .overflow_y_scroll()
-            .gap_3()
-            .p_3()
             .bg(theme.surface)
             .border_l_1()
             .border_color(theme.border)
-            .child(side_section(&theme, "View", self.zine_view_controls(cx)))
-            .child(side_section(&theme, "Add to a page", self.zine_add_tools(cx)))
-            .child(self.zine_context_sections(cx))
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .flex_shrink_0()
+                    .h(sp(STRIP_HEADER_H + 8.0))
+                    .px_3()
+                    .border_b_1()
+                    .border_color(theme.border_subtle)
+                    .child(rustyedit_ui::caption(&theme, "Tools"))
+                    .child(toggle("zine-sidebar-toggle")),
+            )
+            .child(
+                div()
+                    .id("zine-sidebar-body")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h(sp(0.0))
+                    .overflow_y_scroll()
+                    .gap_3()
+                    .p_3()
+                    .children(body),
+            )
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .p_3()
+                    .border_t_1()
+                    .border_color(theme.border_subtle)
+                    .child(preview),
+            )
             .into_any_element()
     }
 
@@ -278,10 +399,6 @@ impl Workspace {
                                 this.zine_ui.spreads = !this.zine_ui.spreads;
                                 cx.notify();
                             })),
-                    )
-                    .child(
-                        button("zine-preview", "Preview", "See the zine as it will print", false, true)
-                            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.open_zine_preview(cx))),
                     )
                     .child(
                         button("zine-reseed", "Start again", "Throw the pages away and lay the photos out automatically again", false, true)
@@ -1998,12 +2115,14 @@ impl Workspace {
                             .flex_wrap()
                             .content_start()
                             .items_start()
-                            .gap_6()
+                            .justify_between()
+                            .gap_x_10()
+                            .gap_y_8()
                             .size_full()
                             .overflow_y_scroll()
-                            .px_6()
-                            .py_4()
-                            .children(self.zine_auto_cards(layout, cx)),
+                            .px_8()
+                            .py_6()
+                            .children(self.fill_rows(window, self.zine_auto_stage(layout).width_px, self.zine_auto_cards(layout, cx))),
                     )
                     .child(rustyedit_ui::vertical_scrollbar(
                         "zine-pages-scrollbar",
@@ -2368,10 +2487,7 @@ impl Workspace {
                                 cx.notify();
                             })),
                     )
-                    .child(
-                        button("zine-preview", "Preview", "See the zine as it will print", false)
-                            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.open_zine_preview(cx))),
-                    ),
+                    ,
             )
             .child(rustyedit_ui::labeled_slider(
                 "zine-zoom",
@@ -2408,22 +2524,10 @@ impl Workspace {
                     })),
             )
             .into_any_element();
-        div()
-            .id("zine-sidebar")
-            .flex()
-            .flex_col()
-            .flex_shrink_0()
-            .w(sp(SIDEBAR_W))
-            .h_full()
-            .overflow_y_scroll()
-            .gap_3()
-            .p_3()
-            .bg(theme.surface)
-            .border_l_1()
-            .border_color(theme.border)
-            .child(side_section(&theme, "View", view))
-            .child(side_section(&theme, "Edit", by_hand))
-            .into_any_element()
+        self.zine_sidebar_shell(
+            vec![side_section(&theme, "View", view), side_section(&theme, "Edit", by_hand)],
+            cx,
+        )
     }
 
     // --- Preview -------------------------------------------------------------------------
@@ -2462,6 +2566,19 @@ impl Workspace {
             .min((avail_h - 28.0) * pw / ph)
             .max(120.0);
         let stage = Stage { size_mm: layout.size, width_px: width };
+        // Sharp renders of the photos on the pages in view (the thumbnails
+        // are small), at the screen's own resolution.
+        let edge = ((width.max(stage.height_px()) * window.scale_factor()).ceil() as u32).clamp(900, 3000);
+        let visible: Vec<usize> = shown
+            .iter()
+            .filter_map(|&i| layout.pages.get(i))
+            .flat_map(|page| page.cells.iter())
+            .filter_map(|cell| match cell.content {
+                ZineContent::Photo(n) | ZineContent::Cover { photo: Some(n) } => Some(n),
+                _ => None,
+            })
+            .collect();
+        self.request_zine_hires(&visible, edge, cx);
         let pages = shown
             .iter()
             .filter_map(|&i| layout.pages.get(i).map(|page| (i, page)))

@@ -332,6 +332,9 @@ impl Workspace {
         self.ensure_export_thumbnails(&wanted, cx);
 
         let theme = self.theme;
+        if self.zine_ui.preview.is_none() {
+            self.zine_ui.cache.borrow_mut().drop_hires();
+        }
         let options = self.zine.options.clone();
         let count = self.zine.photos.len();
         let layout = self.zine.layout();
@@ -908,9 +911,9 @@ fn make_zine(
     Ok((path, skipped))
 }
 
-/// A photo rendered through its develop settings at up to `edge` pixels,
-/// as a JPEG for the zine.
-fn render_photo(asset: &Asset, options: &ZineOptions, edge: u32) -> anyhow::Result<ZineImage> {
+/// A photo rendered through its develop settings (and frame) at up to
+/// `edge` pixels.
+pub(crate) fn render_photo_rgb(asset: &Asset, edge: u32) -> anyhow::Result<image::RgbImage> {
     let source = rustyedit_io::open_for_develop(&asset.path)?;
     let mut rgb = rustyedit_processing::render_export(
         &source,
@@ -923,6 +926,13 @@ fn render_photo(asset: &Asset, options: &ZineOptions, edge: u32) -> anyhow::Resu
     if frame.is_active() {
         rgb = rustyedit_processing::frame_rgb8(&rgb, &frame);
     }
+    Ok(rgb)
+}
+
+/// A photo rendered through its develop settings at up to `edge` pixels,
+/// as a JPEG for the zine.
+fn render_photo(asset: &Asset, options: &ZineOptions, edge: u32) -> anyhow::Result<ZineImage> {
+    let rgb = render_photo_rgb(asset, edge)?;
     let caption = asset
         .path
         .file_name()
