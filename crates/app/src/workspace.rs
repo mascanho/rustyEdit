@@ -169,6 +169,8 @@ pub struct Workspace {
     /// Message to show once the next catalog scan finishes (e.g. "Restored…").
     pub(crate) post_scan_message: Option<SharedString>,
     pub(crate) is_importing: bool,
+    /// Whether an HDR merge is rendering in the background.
+    pub(crate) hdr_merge_running: bool,
     // Multi-selection, undo, compare and loupe zoom (see their modules).
     pub(crate) bottom_menu: Option<crate::size_menu::BottomMenu>,
     // Right-click menu, and the state its entries use (see `context_menu.rs`).
@@ -491,6 +493,7 @@ impl Workspace {
             status_message: Some("Import a folder to get started.".into()),
             post_scan_message: crash_notice.map(Into::into),
             is_importing: false,
+            hdr_merge_running: false,
             bottom_menu: None,
             context_menu: None,
             card_info: None,
@@ -1352,6 +1355,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::auto_tone_action))
             .on_action(cx.listener(Self::sync_settings_action))
             .on_action(cx.listener(Self::create_virtual_copy))
+            .on_action(cx.listener(Self::merge_to_hdr))
             .on_action(cx.listener(Self::match_look_action))
             .on_action(cx.listener(Self::preset_from_photo_action))
             .on_action(cx.listener(Self::toggle_cull_view))

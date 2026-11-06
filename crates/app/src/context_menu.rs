@@ -336,6 +336,18 @@ impl Workspace {
             .keys(cx, &CreateVirtualCopy)
             .entry(),
         );
+        if multi {
+            entries.push(
+                item(
+                    "ctx-merge-hdr",
+                    Icon::MergeHdr,
+                    "Merge to HDR\u{2026}",
+                    |this, _w, cx| this.merge_selection_to_hdr(cx),
+                )
+                .keys(cx, &crate::actions::MergeToHdr)
+                .entry(),
+            );
+        }
         if assets.iter().any(|a| a.develop.is_edited()) {
             entries.push(
                 item("ctx-reset-edits", Icon::Reset, "Reset edits", |this, _w, cx| {

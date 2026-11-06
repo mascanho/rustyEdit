@@ -107,6 +107,9 @@ pub enum Icon {
     /// A star outline (not a favourite), and filled (a favourite).
     Star,
     StarFilled,
+    /// Two overlapping photo frames with a plus between them: merging a
+    /// bracket of exposures into one.
+    MergeHdr,
 }
 
 /// `icon` drawn `size` pixels square in `color`.
@@ -530,6 +533,12 @@ fn paint_icon(window: &mut Window, bounds: Bounds<Pixels>, icon: Icon, color: Hs
         Icon::Plus => {
             pen.line(&[(3.5, 8.0), (12.5, 8.0)]);
             pen.line(&[(8.0, 3.5), (8.0, 12.5)]);
+        }
+        Icon::MergeHdr => {
+            pen.shape(&[(1.5, 4.0), (9.0, 4.0), (9.0, 11.5), (1.5, 11.5)]);
+            pen.shape(&[(7.0, 6.0), (14.5, 6.0), (14.5, 13.5), (7.0, 13.5)]);
+            pen.line(&[(11.75, 8.3), (11.75, 11.2)]);
+            pen.line(&[(10.3, 9.75), (13.2, 9.75)]);
         }
     }
     pen.paint(window, color);

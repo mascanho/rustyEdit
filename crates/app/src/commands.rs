@@ -117,6 +117,7 @@ pub(crate) fn commands() -> Vec<Command> {
         cmd!("Develop", "Match look to a photo\u{2026}", MatchLook, "reference style"),
         cmd!("Develop", "New preset from a photo\u{2026}", PresetFromPhoto, "reference style"),
         cmd!("Photo", "Create virtual copy", CreateVirtualCopy, "duplicate version"),
+        cmd!("Photo", "Merge to HDR\u{2026}", MergeToHdr, "exposure bracket fusion"),
         cmd!("Photo", "Rename photo\u{2026}", RenamePhoto, "file name"),
         cmd!("Photo", "Rotate left", RotateLeft),
         cmd!("Photo", "Rotate right", RotateRight),

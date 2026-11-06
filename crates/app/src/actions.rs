@@ -93,5 +93,6 @@ actions!(
         ToggleLoupe,
         ToggleShortcuts,
         ToolRemove,
+        MergeToHdr,
     ]
 );

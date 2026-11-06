@@ -23,6 +23,7 @@ mod filmstrip;
 mod filters_panel;
 mod footer_zoom;
 mod grid;
+mod hdr_merge;
 mod histogram;
 mod histogram_panel;
 mod history_panel;
@@ -75,7 +76,7 @@ use actions::{
     ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
 };
 use actions::{
-    AutoTone, CreateVirtualCopy, MatchLook, PickBestOfBursts, PresetFromPhoto, RejectSoftPhotos, RejectBadExposures,
+    AutoTone, CreateVirtualCopy, MatchLook, MergeToHdr, PickBestOfBursts, PresetFromPhoto, RejectSoftPhotos, RejectBadExposures,
     SyncSettings, ToggleCommandPalette, ToggleCullView, ToggleLoupe, ToggleShortcuts, ToolRemove,
     ToolWhiteBalance, ToolCrop,
     CycleGridStyle, GridLarger, GridSmaller, ToolLinearGradient, ToolRadialGradient,
@@ -235,6 +236,7 @@ fn main() {
                     MenuItem::action("Rotate Right", RotateRight),
                     MenuItem::separator(),
                     MenuItem::action("Create Virtual Copy", CreateVirtualCopy),
+                    MenuItem::action("Merge to HDR…", MergeToHdr),
                     MenuItem::action("Sync Settings…", SyncSettings),
                     MenuItem::action("Auto Tone", AutoTone),
                     MenuItem::action("Match Look to a Photo…", MatchLook),
