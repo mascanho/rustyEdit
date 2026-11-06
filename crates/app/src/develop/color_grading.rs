@@ -243,19 +243,14 @@ impl Workspace {
     /// Centres a wheel (its tint), and with `all` its brightness too.
     fn reset_wheel(&mut self, zone: ToneZone, all: bool, cx: &mut Context<Self>) {
         let label = format!("{} wheel", zone.wheel_name());
-        self.edit_develop(
-            &label,
-            |d| {
-                let grade = d.grading.zone_mut(zone);
-                grade.hue = 0.0;
-                grade.saturation = 0.0;
-                if all {
-                    grade.luminance = 0.0;
-                }
-            },
-            |_| (String::new(), "reset".to_string()),
-            cx,
-        );
+        self.edit_develop_shared(&label, "reset", cx, move |d| {
+            let grade = d.grading.zone_mut(zone);
+            grade.hue = 0.0;
+            grade.saturation = 0.0;
+            if all {
+                grade.luminance = 0.0;
+            }
+        });
     }
 
     /// Puts wheel `zone`'s puck where the pointer is.
@@ -270,22 +265,22 @@ impl Workspace {
         let dy = f32::from(position.y - b.origin.y) - h / 2.0;
         let (hue, saturation) = wheel_value(dx, dy, radius);
         let label = format!("{} wheel", zone.wheel_name());
-        self.edit_develop(
-            &label,
-            |d| {
-                let grade = d.grading.zone_mut(zone);
-                // Near the very centre the angle is noise: keep the hue.
-                if let Some(hue) = hue {
-                    grade.hue = hue;
-                }
-                grade.saturation = saturation;
-            },
-            |d| {
-                let g = d.grading.zone(zone);
-                (String::new(), format!("hue {:.0}\u{b0}, saturation {:.0}", g.hue, g.saturation))
-            },
-            cx,
-        );
+        // Near the centre `hue` is None (angle is noise): the detail shows
+        // the selected photo's own retained hue, same as what it'll keep.
+        let shown_hue = hue.unwrap_or_else(|| {
+            self.catalog
+                .selected_asset()
+                .map(|a| a.develop.grading.zone(zone).hue)
+                .unwrap_or(0.0)
+        });
+        let detail = format!("hue {:.0}\u{b0}, saturation {:.0}", shown_hue, saturation);
+        self.edit_develop_shared(&label, detail, cx, move |d| {
+            let grade = d.grading.zone_mut(zone);
+            if let Some(hue) = hue {
+                grade.hue = hue;
+            }
+            grade.saturation = saturation;
+        });
     }
 
     /// Follows a drag on a wheel; `true` while one is in progress.

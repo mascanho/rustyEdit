@@ -174,6 +174,38 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Applies `edit` to every selected photo's own Develop settings (not
+    /// a delta: dragging a curve point, a colour wheel's puck, or a reset
+    /// applies the exact same change to each), as one undo step. Unlike
+    /// `apply_adjustment`'s sliders, a curve or a wheel position isn't a
+    /// single number to "move by", so every target photo gets identically
+    /// edited from its own state rather than shifted by an amount. A
+    /// single photo behaves exactly as it always has.
+    pub(crate) fn edit_develop_shared(
+        &mut self,
+        label: &str,
+        detail: impl Into<String>,
+        cx: &mut Context<Self>,
+        edit: impl Fn(&mut DevelopSettings),
+    ) {
+        let targets = self.target_indices();
+        let detail = detail.into();
+        self.replace_develop(
+            targets,
+            label,
+            HistoryNote::Record {
+                title: label,
+                detail: &detail,
+            },
+            cx,
+            move |d| {
+                let mut d = *d;
+                edit(&mut d);
+                d
+            },
+        );
+    }
+
     /// Replaces the Develop settings of every photo in `targets` as one undo
     /// step named `undo_label`.
     pub(crate) fn replace_develop(

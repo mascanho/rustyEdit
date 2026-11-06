@@ -479,19 +479,14 @@ impl Workspace {
     /// luminance).
     fn reset_mixer_band(&mut self, band: ColorBand, all: bool, cx: &mut Context<Self>) {
         let label = format!("{} mixer", band.label());
-        self.edit_develop(
-            &label,
-            |d| {
-                let adjust = &mut d.mixer[band.index()];
-                adjust.set(MixerProp::Hue, 0.0);
-                adjust.set(MixerProp::Saturation, 0.0);
-                if all {
-                    adjust.set(MixerProp::Luminance, 0.0);
-                }
-            },
-            |_| (String::new(), "reset".to_string()),
-            cx,
-        );
+        self.edit_develop_shared(&label, "reset", cx, move |d| {
+            let adjust = &mut d.mixer[band.index()];
+            adjust.set(MixerProp::Hue, 0.0);
+            adjust.set(MixerProp::Saturation, 0.0);
+            if all {
+                adjust.set(MixerProp::Luminance, 0.0);
+            }
+        });
     }
 
     /// Puts the picked range's puck where the pointer is on the pad.
@@ -506,19 +501,12 @@ impl Workspace {
         let y = f32::from(position.y - b.origin.y);
         let (hue, saturation) = pad_value(x, y, w, h);
         let label = format!("{} mixer", band.label());
-        self.edit_develop(
-            &label,
-            |d| {
-                let adjust = &mut d.mixer[band.index()];
-                adjust.set(MixerProp::Hue, hue);
-                adjust.set(MixerProp::Saturation, saturation);
-            },
-            |d| {
-                let a = d.mixer[band.index()];
-                (String::new(), format!("hue {:+.0}, saturation {:+.0}", a.hue, a.saturation))
-            },
-            cx,
-        );
+        let detail = format!("hue {:+.0}, saturation {:+.0}", hue, saturation);
+        self.edit_develop_shared(&label, detail, cx, move |d| {
+            let adjust = &mut d.mixer[band.index()];
+            adjust.set(MixerProp::Hue, hue);
+            adjust.set(MixerProp::Saturation, saturation);
+        });
     }
 
     /// Follows a drag on the pad; `true` while one is in progress.

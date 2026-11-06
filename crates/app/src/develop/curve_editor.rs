@@ -722,6 +722,11 @@ impl Workspace {
         Some((x, y))
     }
 
+    /// Edits the selected photo's curve for `channel`. With several photos
+    /// selected, the resulting curve is copied onto every other one too
+    /// (not edited independently point-by-point: a point's index might
+    /// land somewhere different on a curve with a different shape, so
+    /// copying the whole, already-edited curve is the one that's exact).
     fn edit_curve(
         &mut self,
         channel: CurveChannel,
@@ -734,15 +739,27 @@ impl Workspace {
             CurveChannel::Green => "Green curve",
             CurveChannel::Blue => "Blue curve",
         };
-        self.edit_develop(
-            label,
-            |develop| edit(develop.curves.get_mut(channel)),
-            |develop| {
-                let points = develop.curves.get(channel).points().len();
-                (String::new(), format!("{points} points"))
-            },
-            cx,
-        );
+        if !self.is_multi_selected() {
+            self.edit_develop(
+                label,
+                |develop| edit(develop.curves.get_mut(channel)),
+                |develop| {
+                    let points = develop.curves.get(channel).points().len();
+                    (String::new(), format!("{points} points"))
+                },
+                cx,
+            );
+            return;
+        }
+        let Some(primary) = self.catalog.selected_asset() else {
+            return;
+        };
+        let mut curve = *primary.develop.curves.get(channel);
+        edit(&mut curve);
+        let detail = format!("{} points", curve.points().len());
+        self.edit_develop_shared(label, detail, cx, move |d| {
+            *d.curves.get_mut(channel) = curve;
+        });
     }
 }
 
