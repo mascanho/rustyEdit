@@ -1,3 +1,5 @@
 /target
 **/*.rs.bk
 .DS_Store
+/assets/icon-*.png
+/assets/icon.iconset
