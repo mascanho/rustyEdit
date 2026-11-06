@@ -671,7 +671,6 @@ impl Workspace {
 
     /// The row under a page: how its photos are arranged, move and delete.
     fn page_controls(&self, page: usize, cx: &mut Context<Self>) -> AnyElement {
-        let theme = self.theme;
         let last = self.zine.manual.pages.len().saturating_sub(1);
         let (slots, free) = self
             .zine
@@ -679,6 +678,24 @@ impl Workspace {
             .pages
             .get(page)
             .map_or((0, false), |p| (p.slots.len(), p.is_free()));
+        self.page_controls_for(page, slots, free, last, false, cx)
+    }
+
+    /// The controls under a page. With `automatic` the page is one of the
+    /// automatic layout's (`page` is the manual page it would be, `slots`
+    /// and `last` read from that layout); using any control hands the
+    /// pages over to manual first, so overriding the automatic layout is
+    /// just a click away and one Undo from being given back.
+    fn page_controls_for(
+        &self,
+        page: usize,
+        slots: usize,
+        free: bool,
+        last: usize,
+        automatic: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = self.theme;
         let small = |id: SharedString, text: &'static str, on: bool, enabled: bool| {
             div()
                 .id(id)
@@ -712,7 +729,12 @@ impl Workspace {
             ))
             .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                 this.zine_ui.clear_selection();
-                this.update_zine(cx, |z| z.set_page_slots(page, n))
+                this.update_zine(cx, move |z| {
+                    if automatic {
+                        hand_over(z);
+                    }
+                    z.set_page_slots(page, n)
+                })
             }))
             .into_any_element()
         });
@@ -727,7 +749,12 @@ impl Workspace {
                     .tooltip(rustyedit_ui::tip("Place and size photos and text anywhere on the page", &theme))
                     .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                         this.zine_ui.clear_selection();
-                        this.update_zine(cx, |z| z.make_page_free(page))
+                        this.update_zine(cx, move |z| {
+                            if automatic {
+                                hand_over(z);
+                            }
+                            z.make_page_free(page)
+                        })
                     })),
             )
             .child(div().w(sp(6.0)))
@@ -736,7 +763,10 @@ impl Workspace {
                     .tooltip(rustyedit_ui::tip("Move the page earlier", &theme))
                     .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                         this.zine_ui.clear_selection();
-                        this.update_zine(cx, |z| {
+                        this.update_zine(cx, move |z| {
+                            if automatic {
+                                hand_over(z);
+                            }
                             z.shift_page(page, -1);
                         })
                     })),
@@ -746,7 +776,10 @@ impl Workspace {
                     .tooltip(rustyedit_ui::tip("Move the page later", &theme))
                     .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                         this.zine_ui.clear_selection();
-                        this.update_zine(cx, |z| {
+                        this.update_zine(cx, move |z| {
+                            if automatic {
+                                hand_over(z);
+                            }
                             z.shift_page(page, 1);
                         })
                     })),
@@ -757,7 +790,12 @@ impl Workspace {
                     .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                         this.zine_ui.clear_selection();
                         this.zine_ui.page = None;
-                        this.update_zine(cx, |z| z.remove_page(page))
+                        this.update_zine(cx, move |z| {
+                            if automatic {
+                                hand_over(z);
+                            }
+                            z.remove_page(page)
+                        })
                     })),
             )
             .into_any_element()
@@ -1699,14 +1737,27 @@ impl Workspace {
     /// The pages in a strip across the top, left to right, the photos'
     /// counterpart along the bottom. The tab in the middle folds it away.
     fn zine_page_strip(&self, layout: &ZinePageLayout, cx: &mut Context<Self>) -> AnyElement {
-        let look = self.film_look();
-        let open = self.zine_ui.pages_open;
+        let thumbs = self.zine_page_thumbs(layout, cx);
         let picked = self.zine_ui.pages_selected.len();
         let hint = if picked > 0 {
             format!("{picked} picked")
         } else {
             "Drag to reorder \u{00B7} Cmd-click to pick".to_string()
         };
+        self.page_strip_with(layout, thumbs, hint, cx)
+    }
+
+    /// The pages strip's frame (header, fold-away tab, arrows) around
+    /// `thumbs`, which the manual and automatic views each build.
+    fn page_strip_with(
+        &self,
+        layout: &ZinePageLayout,
+        thumbs: Vec<AnyElement>,
+        hint: String,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let look = self.film_look();
+        let open = self.zine_ui.pages_open;
         let toggle = div()
             .id("zine-pages-toggle")
             .flex()
@@ -1748,7 +1799,7 @@ impl Workspace {
                 open,
             ))
             .when(open, |el| {
-                el.child(self.strip_roll("zine-pages-list", &handle, ROLL_H, self.zine_page_thumbs(layout, cx), cx))
+                el.child(self.strip_roll("zine-pages-list", &handle, ROLL_H, thumbs, cx))
             })
             .into_any_element()
     }
@@ -1910,6 +1961,471 @@ impl Workspace {
         items
     }
 
+    // --- Automatic mode, laid out like the manual one --------------------------------------
+
+    /// The automatic zine on the same stage as the manual one: pages across
+    /// the top, the pages themselves (drawn exactly as they print, from the
+    /// same layout the export uses), the photos along the bottom and a side
+    /// bar. What's shown can't be dragged about; one button hands the
+    /// pages over to the manual editor.
+    pub(crate) fn render_zine_auto(
+        &self,
+        layout: &ZinePageLayout,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = self.theme;
+        let centre = div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w(sp(0.0))
+            .min_h(sp(0.0))
+            .bg(theme.background)
+            .child(self.zine_auto_header(layout))
+            .child(self.page_strip_with(layout, self.zine_auto_thumbs(layout, cx), "Click a page to go to it".to_string(), cx))
+            .child(
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h(sp(0.0))
+                    .child(
+                        div()
+                            .id("zine-pages-scroll")
+                            .track_scroll(&self.zine_ui.scroll)
+                            .flex()
+                            .flex_row()
+                            .flex_wrap()
+                            .content_start()
+                            .items_start()
+                            .gap_6()
+                            .size_full()
+                            .overflow_y_scroll()
+                            .px_6()
+                            .py_4()
+                            .children(self.zine_auto_cards(layout, cx)),
+                    )
+                    .child(rustyedit_ui::vertical_scrollbar(
+                        "zine-pages-scrollbar",
+                        self.zine_ui.scroll.clone(),
+                        &theme,
+                    )),
+            )
+            .child(self.zine_auto_photos(layout, cx));
+        let workbench = div()
+            .flex()
+            .flex_row()
+            .flex_1()
+            .min_w(sp(0.0))
+            .min_h(sp(0.0))
+            .child(centre)
+            .child(self.zine_auto_sidebar(cx))
+            .into_any_element();
+        self.zine_ui.cache.borrow_mut().prune(window);
+        workbench
+    }
+
+    fn zine_auto_header(&self, layout: &ZinePageLayout) -> AnyElement {
+        let theme = self.theme;
+        let count = self.zine.photos.len();
+        let mut summary = format!(
+            "{count} photo{} \u{00B7} {} page{}",
+            plural(count),
+            layout.pages.len(),
+            plural(layout.pages.len())
+        );
+        if layout.left_out > 0 {
+            summary.push_str(&format!(" \u{00B7} {} didn\u{2019}t fit", layout.left_out));
+        }
+        div()
+            .flex()
+            .flex_row()
+            .items_baseline()
+            .gap_3()
+            .flex_shrink_0()
+            .px_6()
+            .py_2()
+            .bg(theme.surface)
+            .border_b_1()
+            .border_color(theme.border)
+            .child(
+                div()
+                    .truncate()
+                    .text_size(sp(16.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme.text)
+                    .child(self.zine.options.title.clone()),
+            )
+            .child(
+                div()
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
+                    .text_color(if layout.left_out > 0 { theme.accent } else { theme.text_faint })
+                    .child(summary),
+            )
+            .into_any_element()
+    }
+
+    /// How tall the pages are drawn, as the manual view's zoom sets.
+    fn zine_auto_stage(&self, layout: &ZinePageLayout) -> Stage {
+        let zoom = self.zine_ui.zoom.clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
+        Stage {
+            size_mm: layout.size,
+            width_px: zoom * layout.size.0 / layout.size.1.max(1.0),
+        }
+    }
+
+    /// The label under page `ix` of the layout.
+    fn zine_auto_title(&self, layout: &ZinePageLayout, ix: usize) -> String {
+        if layout.pages.len() == 1 && layout.pages[0].cells.len() > 1 {
+            "Folded sheet".to_string()
+        } else if self.zine.options.cover && ix == 0 {
+            "Cover".to_string()
+        } else {
+            format!("Page {}", ix + 1)
+        }
+    }
+
+    /// Every page as a card, drawn by the same code as the preview, so
+    /// what's here is what prints. With spreads on they come two to a
+    /// spread, the first page standing alone on the right.
+    fn zine_auto_cards(&self, layout: &ZinePageLayout, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let theme = self.theme;
+        let stage = self.zine_auto_stage(layout);
+        // The cover and a folded sheet can't be rearranged page by page.
+        let offset = usize::from(self.zine.options.cover);
+        let editable = layout.pages.len() > 1 || layout.pages.first().is_some_and(|p| p.cells.len() <= 1);
+        let total_pages = layout.pages.len();
+        let mut controls: Vec<Option<AnyElement>> = (0..total_pages)
+            .map(|ix| {
+                let manual = ix.checked_sub(offset)?;
+                if !editable {
+                    return None;
+                }
+                let slots = layout.pages[ix].cells.len();
+                let last = total_pages.saturating_sub(offset + 1);
+                Some(self.page_controls_for(manual, slots, false, last, true, cx))
+            })
+            .collect();
+        let mut card = |ix: usize| -> AnyElement {
+            let controls = controls[ix].take();
+            div()
+                .flex()
+                .flex_col()
+                .gap_1p5()
+                .flex_shrink_0()
+                .w(px(stage.width_px))
+                .child(self.layout_page(&layout.pages[ix], stage))
+                .child(
+                    div()
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
+                        .text_color(theme.text_faint)
+                        .child(self.zine_auto_title(layout, ix)),
+                )
+                .children(controls)
+                .into_any_element()
+        };
+        let total = layout.pages.len();
+        if !self.zine_ui.spreads || total < 2 || layout.pages.len() == 1 {
+            return (0..total).map(&mut card).collect();
+        }
+        let blank = || {
+            div()
+                .w(px(stage.width_px))
+                .h(px(stage.height_px()))
+                .border_1()
+                .border_color(theme.border_subtle)
+                .opacity(0.5)
+        };
+        let mut out: Vec<AnyElement> = vec![div()
+            .flex()
+            .flex_row()
+            .items_start()
+            .child(blank())
+            .child(card(0))
+            .into_any_element()];
+        let mut ix = 1;
+        while ix < total {
+            let right = (ix + 1 < total).then(|| card(ix + 1));
+            out.push(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_start()
+                    .child(card(ix))
+                    .children(right)
+                    .into_any_element(),
+            );
+            ix += 2;
+        }
+        out
+    }
+
+    /// Scrolls the pages to page `ix` of the layout.
+    fn scroll_to_auto_page(&self, ix: usize) {
+        let child = if self.zine_ui.spreads { (ix + 1) / 2 } else { ix };
+        self.zine_ui.scroll.scroll_to_top_of_item(child);
+    }
+
+    /// The pages strip's thumbnails: each page drawn small with its photos.
+    fn zine_auto_thumbs(&self, layout: &ZinePageLayout, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let look = self.film_look();
+        layout
+            .pages
+            .iter()
+            .enumerate()
+            .map(|(ix, page)| {
+                let label = if self.zine.options.cover && ix == 0 && layout.pages.len() > 1 {
+                    "Cover".to_string()
+                } else {
+                    format!("{}", ix + 1)
+                };
+                div()
+                    .id(SharedString::from(format!("zine-auto-strip-{ix}")))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap_1()
+                    .flex_shrink_0()
+                    .px_1p5()
+                    .pt_1p5()
+                    .pb_1()
+                    .rounded_lg()
+                    .cursor_pointer()
+                    .border_2()
+                    .border_color(gpui::transparent_black())
+                    .hover(|el| el.bg(look.frame_hover_bg))
+                    .child(
+                        div()
+                            .border_1()
+                            .border_color(look.picture_border)
+                            .shadow_sm()
+                            .child(self.page_mini(page, layout.size, THUMB_H)),
+                    )
+                    .child(
+                        div()
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
+                            .text_color(look.meta_text)
+                            .child(label),
+                    )
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                        this.scroll_to_auto_page(ix);
+                        cx.notify();
+                    }))
+                    .into_any_element()
+            })
+            .collect()
+    }
+
+    /// The photos along the bottom, each with the page it lands on.
+    fn zine_auto_photos(&self, layout: &ZinePageLayout, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let look = self.film_look();
+        let total = self.zine.photos.len();
+        let page_of = |n: usize| {
+            layout.pages.iter().position(|page| {
+                page.cells.iter().any(|cell| {
+                    matches!(cell.content, ZineContent::Photo(i) | ZineContent::Cover { photo: Some(i) } if i == n)
+                })
+            })
+        };
+        let tiles: Vec<AnyElement> = (0..total)
+            .map(|n| {
+                let photo = &self.zine.photos[n];
+                let page = page_of(n);
+                let name = photo
+                    .path
+                    .file_name()
+                    .map(|f| f.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let picture = match self.zine_thumb(photo) {
+                    Some(path) => img(path).object_fit(ObjectFit::Cover).size_full().into_any_element(),
+                    None => div().size_full().bg(theme.surface_elevated).into_any_element(),
+                };
+                div()
+                    .id(SharedString::from(format!("zine-auto-photo-{n}")))
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .flex_shrink_0()
+                    .w(px(PHOTO_W))
+                    .cursor_pointer()
+                    .child(
+                        div()
+                            .relative()
+                            .w(px(PHOTO_W))
+                            .h(px(ROLL_H - 44.0))
+                            .overflow_hidden()
+                            .border_1()
+                            .border_color(look.picture_border)
+                            .child(div().size_full().when(page.is_none(), |el| el.opacity(0.45)).child(picture))
+                            .child({
+                                let photo = photo.clone();
+                                div()
+                                    .id(SharedString::from(format!("zine-auto-remove-{n}")))
+                                    .absolute()
+                                    .top(sp(3.0))
+                                    .right(sp(3.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .size(sp(16.0))
+                                    .rounded_full()
+                                    .bg(gpui::black().opacity(0.55))
+                                    .text_size(sp(rustyedit_ui::type_size::MICRO))
+                                    .text_color(gpui::white())
+                                    .cursor_pointer()
+                                    .hover(|el| el.bg(theme.accent))
+                                    .tooltip(rustyedit_ui::tip("Take this photo out of the zine", &theme))
+                                    .child("\u{2715}")
+                                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                                        cx.stop_propagation();
+                                        let photo = photo.clone();
+                                        this.update_zine(cx, move |z| {
+                                            z.remove(&[photo]);
+                                        });
+                                    }))
+                            }),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .justify_between()
+                            .gap_1()
+                            .text_size(sp(rustyedit_ui::type_size::MICRO))
+                            .child(
+                                div()
+                                    .min_w(sp(0.0))
+                                    .truncate()
+                                    .text_color(look.meta_text)
+                                    .child(name),
+                            )
+                            .child(
+                                div()
+                                    .flex_shrink_0()
+                                    .text_color(if page.is_some() { look.selected } else { theme.accent })
+                                    .child(match page {
+                                        Some(p) => format!("p. {}", p + 1),
+                                        None => "no room".to_string(),
+                                    }),
+                            ),
+                    )
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                        if let Some(page) = page {
+                            this.scroll_to_auto_page(page);
+                            cx.notify();
+                        }
+                    }))
+                    .into_any_element()
+            })
+            .collect();
+        let handle = self.zine_ui.photos_scroll.clone();
+        div()
+            .flex()
+            .flex_col()
+            .flex_shrink_0()
+            .border_t_1()
+            .border_color(look.divider)
+            .child(self.strip_header(
+                format!("Photos \u{00B7} {total}"),
+                None,
+                Some(div().child("CLICK TO FIND ITS PAGE").into_any_element()),
+                true,
+            ))
+            .child(self.strip_roll("zine-photo-list", &handle, ROLL_H, tiles, cx))
+            .into_any_element()
+    }
+
+    /// The side bar: how the pages are shown, and the way into manual.
+    fn zine_auto_sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let entity = cx.entity();
+        let button = |id: &'static str, label: &'static str, tip: &'static str, on: bool| {
+            crate::zine_bar::pill(&theme, id.into(), label, tip, on, true)
+        };
+        let view = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .flex_wrap()
+                    .gap_1()
+                    .child(
+                        button("zine-undo", "\u{21B6} Undo", "Undo the last change to the zine (\u{2318}Z)", false)
+                            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.zine_undo(cx))),
+                    )
+                    .child(
+                        button("zine-redo", "\u{21B7} Redo", "Redo (\u{21E7}\u{2318}Z)", false)
+                            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.zine_redo(cx))),
+                    )
+                    .child(
+                        button("zine-spreads", "Spreads", "Show the pages as left and right pages, as a booklet reads", self.zine_ui.spreads)
+                            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                                this.zine_ui.spreads = !this.zine_ui.spreads;
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        button("zine-preview", "Preview", "See the zine as it will print", false)
+                            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.open_zine_preview(cx))),
+                    ),
+            )
+            .child(rustyedit_ui::labeled_slider(
+                "zine-zoom",
+                "Zoom",
+                self.zine_ui.zoom,
+                rustyedit_ui::SliderSpec {
+                    min: ZOOM_RANGE.0,
+                    max: ZOOM_RANGE.1,
+                    default: crate::zine_edit::ZOOM_DEFAULT,
+                    signed: false,
+                    track: rustyedit_ui::SliderTrack::Accent,
+                },
+                &theme,
+                move |value, _w: &mut Window, cx: &mut gpui::App| {
+                    entity.update(cx, |this, cx| {
+                        this.zine_ui.zoom = value;
+                        cx.notify();
+                    });
+                },
+            ))
+            .into_any_element();
+        let by_hand = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(rustyedit_ui::hint(
+                &theme,
+                "The pages follow the settings on the left. Use the buttons under a page to change its layout, move or delete it, or take a photo out below; that hands the pages over to manual, and Undo gives them back.",
+            ))
+            .child(
+                button("zine-edit-by-hand", "Edit pages by hand", "Switch to manual with these pages as the start", false)
+                    .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                        this.update_zine(cx, hand_over);
+                    })),
+            )
+            .into_any_element();
+        div()
+            .id("zine-sidebar")
+            .flex()
+            .flex_col()
+            .flex_shrink_0()
+            .w(sp(SIDEBAR_W))
+            .h_full()
+            .overflow_y_scroll()
+            .gap_3()
+            .p_3()
+            .bg(theme.surface)
+            .border_l_1()
+            .border_color(theme.border)
+            .child(side_section(&theme, "View", view))
+            .child(side_section(&theme, "Edit", by_hand))
+            .into_any_element()
+    }
+
     // --- Preview -------------------------------------------------------------------------
 
     pub(crate) fn open_zine_preview(&mut self, cx: &mut Context<Self>) {
@@ -1940,12 +2456,36 @@ impl Workspace {
         let avail_h = (f32::from(viewport.height) - 230.0).max(300.0);
         let (pw, ph) = layout.size;
         let across = if spreads { 2.0 } else { 1.0 };
-        let width = (avail_w / across).min(avail_h * pw / ph).max(120.0);
+        // Room between pages, so they read as separate sheets of paper.
+        const PAGE_GAP: f32 = 36.0;
+        let width = ((avail_w - PAGE_GAP * (across - 1.0)) / across)
+            .min((avail_h - 28.0) * pw / ph)
+            .max(120.0);
         let stage = Stage { size_mm: layout.size, width_px: width };
         let pages = shown
             .iter()
-            .filter_map(|&i| layout.pages.get(i))
-            .map(|page| self.layout_page(page, stage))
+            .filter_map(|&i| layout.pages.get(i).map(|page| (i, page)))
+            .map(|(i, page)| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .border_1()
+                            .border_color(gpui::white().opacity(0.14))
+                            .shadow_lg()
+                            .child(self.layout_page(page, stage)),
+                    )
+                    .child(
+                        div()
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
+                            .text_color(gpui::white().opacity(0.45))
+                            .child(self.zine_auto_title(&layout, i)),
+                    )
+                    .into_any_element()
+            })
             .collect::<Vec<_>>();
         let lone_first = spreads && current == 0;
         let nav = |id: &'static str, label: &'static str, enabled: bool| {
@@ -2045,7 +2585,7 @@ impl Workspace {
                     .min_h(sp(0.0))
                     .items_center()
                     .justify_center()
-                    .gap_0()
+                    .gap(px(PAGE_GAP))
                     .when(lone_first, |el| {
                         // The first page sits on the right, as in a booklet.
                         el.child(div().w(px(width)).h(px(stage.height_px())))
@@ -2115,4 +2655,11 @@ fn side_section(theme: &rustyedit_ui::Theme, title: &'static str, content: AnyEl
         )
         .child(content)
         .into_any_element()
+}
+
+/// Starts the manual pages from the automatic layout, as an override of
+/// it begins.
+fn hand_over(zine: &mut rustyedit_core::Zine) {
+    zine.options.mode = rustyedit_core::ZineMode::Manual;
+    zine.seed_manual();
 }

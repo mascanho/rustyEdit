@@ -435,6 +435,18 @@ impl Workspace {
                 .into_any_element();
         }
 
+        // Automatic: the same stage as the manual one, read-only.
+        if count > 0 && !layout.pages.is_empty() {
+            return div()
+                .flex()
+                .flex_row()
+                .flex_1()
+                .min_h(sp(0.0))
+                .child(panel)
+                .child(self.render_zine_auto(&layout, window, cx))
+                .into_any_element();
+        }
+
         // --- Centre: the pages, then the photos ---------------------------------
         let mut body: Vec<AnyElement> = Vec::new();
         body.push(self.zine_header(count, layout.pages.len(), layout.left_out, cx));

@@ -5,7 +5,7 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use gpui::{
-    div, img, prelude::*, px, relative, AnyElement, Hsla, ObjectFit, RenderImage, SharedString,
+    div, img, prelude::*, px, relative, AnyElement, Hsla, RenderImage, SharedString,
     Window,
 };
 use image::RgbImage;
@@ -336,41 +336,15 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// A page drawn small, for the strip of thumbnails: boxes, with the
-    /// photos in them, and bars for text.
+    /// A page drawn small, for the strip of thumbnails: the same drawing
+    /// as the full-size page and the preview, so the strip shows frames,
+    /// captions, the cover's title and the rest as they will print.
     pub(crate) fn page_mini(&self, page: &ZinePage, size_mm: (f32, f32), height: f32) -> AnyElement {
-        let background = page.background.unwrap_or(self.zine.options.paper.rgb());
-        let (w, h) = size_mm;
-        let width = height * w / h;
-        let cells = page.cells.iter().map(|cell| {
-            let r = cell.rect;
-            let base = div()
-                .absolute()
-                .left(relative(r.x / w))
-                .top(relative(r.y / h))
-                .w(relative(r.w / w))
-                .h(relative(r.h / h));
-            match cell.content {
-                ZineContent::Photo(n) | ZineContent::Cover { photo: Some(n) } => {
-                    match self.zine.photos.get(n).and_then(|p| self.zine_thumb(p)) {
-                        Some(path) => base
-                            .child(img(path).object_fit(ObjectFit::Cover).size_full())
-                            .into_any_element(),
-                        None => base.bg(gpui::black().opacity(0.2)).into_any_element(),
-                    }
-                }
-                _ => base.bg(gpui::black().opacity(0.25)).h(relative(r.h.min(8.0) / h)).into_any_element(),
-            }
-        });
-        div()
-            .relative()
-            .flex_shrink_0()
-            .w(px(width))
-            .h(px(height))
-            .overflow_hidden()
-            .bg(hsla(background))
-            .children(cells)
-            .into_any_element()
+        let stage = Stage {
+            size_mm,
+            width_px: height * size_mm.0 / size_mm.1.max(1.0),
+        };
+        self.layout_page(page, stage)
     }
 }
 
