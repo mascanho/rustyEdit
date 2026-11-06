@@ -116,7 +116,7 @@ impl Workspace {
                 .border_1()
                 .border_color(theme.accent)
                 .bg(theme.accent_muted)
-                .text_size(sp(11.5))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text)
                 .when(has_photo, |el| {
@@ -482,7 +482,7 @@ impl Workspace {
             out.push(
                 div()
                     .pt_2()
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .text_color(theme.text_faint)
                     .child("Select a photo to apply presets.")
                     .into_any_element(),
@@ -511,7 +511,7 @@ impl Workspace {
             out.push(
                 div()
                     .pt_3()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.text_faint)
                     .child("No presets.")
                     .into_any_element(),
@@ -597,7 +597,7 @@ impl Workspace {
                                     .child(
                                         div()
                                             .truncate()
-                                            .text_size(sp(10.0))
+                                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                             .font_weight(gpui::FontWeight::BOLD)
                                             .text_color(theme.text_muted)
                                             .child(title.to_uppercase()),
@@ -619,7 +619,7 @@ impl Workspace {
                                     })
                                     .child(
                                         div()
-                                            .text_size(sp(9.5))
+                                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                             .text_color(theme.text_faint)
                                             .child(count.to_string()),
                                     ),
@@ -843,7 +843,7 @@ impl Workspace {
             .pl_2()
             .pr_1()
             .cursor_pointer()
-            .text_size(sp(11.5))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .when(active, |el| {
                 el.bg(theme.accent_muted.opacity(0.6))
                     .text_color(theme.text)
@@ -1273,7 +1273,7 @@ impl Workspace {
 
 fn small_caption(theme: &Theme, text: &str) -> AnyElement {
     div()
-        .text_size(sp(9.5))
+        .text_size(sp(rustyedit_ui::type_size::CAPTION))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .text_color(theme.text_muted)
         .child(text.to_string())

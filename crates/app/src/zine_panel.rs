@@ -32,62 +32,24 @@ impl Kit {
         Self { theme, entity }
     }
 
-    /// A small heading over a control.
-    pub(crate) fn caption(&self, text: impl Into<SharedString>) -> AnyElement {
-        div()
-            .text_size(sp(10.0))
-            .font_weight(gpui::FontWeight::SEMIBOLD)
-            .text_color(self.theme.text_faint)
-            .child(text.into().to_uppercase())
-            .into_any_element()
-    }
-
     /// A line of explanation.
     pub(crate) fn hint(&self, text: impl Into<SharedString>) -> AnyElement {
-        div()
-            .text_size(sp(10.5))
-            .line_height(gpui::relative(1.35))
-            .text_color(self.theme.text_faint)
-            .child(text.into())
-            .into_any_element()
+        rustyedit_ui::hint(&self.theme, text)
     }
 
     /// A control under its caption.
     pub(crate) fn field(&self, label: impl Into<SharedString>, control: AnyElement) -> AnyElement {
-        div()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .child(self.caption(label))
-            .child(control)
-            .into_any_element()
+        rustyedit_ui::field(&self.theme, label, control)
     }
 
     /// A label at the left and a control at the right.
     pub(crate) fn row(&self, label: impl Into<SharedString>, control: AnyElement) -> AnyElement {
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .gap_2()
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(self.theme.text_muted)
-                    .child(label.into()),
-            )
-            .child(control)
-            .into_any_element()
+        rustyedit_ui::row(&self.theme, label, control)
     }
 
     /// A line between groups.
     pub(crate) fn divider(&self) -> AnyElement {
-        div()
-            .h(sp(1.0))
-            .w_full()
-            .bg(self.theme.border_subtle)
-            .into_any_element()
+        rustyedit_ui::divider(&self.theme)
     }
 
     /// Choices in balanced rows that each spread across the width, the
@@ -248,7 +210,7 @@ impl Kit {
             .h(sp(26.0))
             .px_2()
             .rounded_md()
-            .text_size(sp(11.5))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .border_1()
             .when(strong && enabled, |el| {
                 el.bg(theme.accent_muted)
@@ -374,7 +336,7 @@ impl Kit {
                     .child(
                         div()
                             .truncate()
-                            .text_size(sp(12.0))
+                            .text_size(sp(rustyedit_ui::type_size::LABEL))
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(theme.text)
                             .child(title),
@@ -382,7 +344,7 @@ impl Kit {
                     .child(
                         div()
                             .truncate()
-                            .text_size(sp(10.5))
+                            .text_size(sp(rustyedit_ui::type_size::SMALL))
                             .text_color(theme.text_faint)
                             .child(detail),
                     ),
@@ -497,7 +459,7 @@ impl Workspace {
                     .px_1p5()
                     .h(sp(20.0))
                     .rounded_md()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(if confirming { theme.danger } else { theme.text_faint })
                     .hover(|el| el.bg(theme.surface).text_color(theme.danger))
                     .tooltip(rustyedit_ui::tip("Delete this zine (the photos stay in the library)", &theme))
@@ -729,7 +691,7 @@ impl Workspace {
             .rounded_md()
             .bg(theme.background)
             .border_1()
-            .text_size(sp(11.5))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .map(|el| match typing {
                 Some(draft) => el
                     .border_color(theme.accent)
@@ -807,7 +769,7 @@ impl Workspace {
             let delete = div()
                 .id(SharedString::from(format!("zine-design-delete-{ix}")))
                 .px_1p5()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
                 .cursor_pointer()
                 .hover(|el| el.text_color(theme.danger))

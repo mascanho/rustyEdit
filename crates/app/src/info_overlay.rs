@@ -121,7 +121,7 @@ impl Workspace {
         if !asset.keywords.is_empty() {
             header = header.child(
                 div()
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .text_color(theme.accent)
                     .child(asset.keywords.join(" \u{00B7} ")),
             );
@@ -221,7 +221,7 @@ impl Workspace {
                                         div()
                                             .min_w(sp(0.0))
                                             .truncate()
-                                            .text_size(sp(13.5))
+                                            .text_size(sp(rustyedit_ui::type_size::TITLE))
                                             .font_weight(gpui::FontWeight::SEMIBOLD)
                                             .text_color(theme.text)
                                             .child(if metadata.camera.is_empty() {
@@ -233,7 +233,7 @@ impl Workspace {
                                     .children(dimensions.map(|text| {
                                         div()
                                             .flex_shrink_0()
-                                            .text_size(sp(10.0))
+                                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                             .text_color(theme.accent)
                                             .child(text)
                                     })),
@@ -242,7 +242,7 @@ impl Workspace {
                                 el.child(
                                     div()
                                         .truncate()
-                                        .text_size(sp(11.0))
+                                        .text_size(sp(rustyedit_ui::type_size::BODY))
                                         .text_color(theme.text_muted)
                                         .child(metadata.lens.clone()),
                                 )
@@ -250,7 +250,7 @@ impl Workspace {
                             .when(!metadata.taken.is_empty(), |el| {
                                 el.child(
                                     div()
-                                        .text_size(sp(10.0))
+                                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                         .text_color(theme.text_faint)
                                         .child(metadata.taken.clone()),
                                 )
@@ -291,14 +291,14 @@ impl Workspace {
                                     div()
                                         .max_w_full()
                                         .truncate()
-                                        .text_size(sp(13.0))
+                                        .text_size(sp(rustyedit_ui::type_size::TITLE))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .text_color(if known { theme.text } else { theme.text_faint })
                                         .child(value.unwrap_or_else(|| "\u{2014}".to_string())),
                                 )
                                 .child(
                                     div()
-                                        .text_size(sp(8.0))
+                                        .text_size(sp(rustyedit_ui::type_size::MICRO))
                                         .pt_0p5()
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .text_color(theme.accent.opacity(0.9))
@@ -328,7 +328,7 @@ impl Workspace {
                                     .bg(theme.surface.opacity(0.65))
                                     .border_1()
                                     .border_color(theme.border_subtle)
-                                    .text_size(sp(9.5))
+                                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                     .child(
                                         div()
                                             .text_color(theme.text_faint)
@@ -372,7 +372,7 @@ impl Workspace {
                             ))
                             .child(
                                 div()
-                                    .text_size(sp(9.5))
+                                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .child(title.to_uppercase()),
                             )
@@ -398,7 +398,7 @@ impl Workspace {
                                         .w_full()
                                         .min_w(sp(0.0))
                                         .overflow_hidden()
-                                        .text_size(sp(10.5))
+                                        .text_size(sp(rustyedit_ui::type_size::SMALL))
                                         .tooltip(rustyedit_ui::tip(
                                             format!("{label}: {value}"),
                                             &theme,

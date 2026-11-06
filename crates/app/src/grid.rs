@@ -245,7 +245,7 @@ impl Workspace {
                         .justify_center()
                         .bg(theme.danger)
                         .text_color(gpui::white())
-                        .text_size(sp(11.0))
+                        .text_size(sp(rustyedit_ui::type_size::BODY))
                         .child("\u{2326}"),
                 )
             })
@@ -406,7 +406,7 @@ fn card_header(
 ) -> AnyElement {
     let entity = entity.clone();
     let keyword_count = asset.keywords.len();
-    let small = |color| div().text_size(sp(9.0)).text_color(color);
+    let small = |color| div().text_size(sp(rustyedit_ui::type_size::MICRO)).text_color(color);
 
     div()
         .flex()
@@ -478,7 +478,7 @@ fn card_footer(asset: &Asset, grid: &GridSettings, theme: &Theme) -> AnyElement 
                 div()
                     .h(sp(14.0))
                     .line_height(sp(14.0))
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .text_color(theme.text)
                     .child(name),
@@ -489,7 +489,7 @@ fn card_footer(asset: &Asset, grid: &GridSettings, theme: &Theme) -> AnyElement 
                 div()
                     .h(sp(12.0))
                     .line_height(sp(12.0))
-                    .text_size(sp(9.0))
+                    .text_size(sp(rustyedit_ui::type_size::MICRO))
                     .text_color(theme.text_faint)
                     .child(card_facts(asset, &show)),
             ))
@@ -541,7 +541,7 @@ fn minimal_badges(asset: &Asset, show: &GridInfo, theme: &Theme) -> Option<AnyEl
             .px_1p5()
             .rounded_full()
             .bg(theme.background.opacity(0.8))
-            .text_size(sp(9.5))
+            .text_size(sp(rustyedit_ui::type_size::CAPTION))
             .when_some(flag, |el, (glyph, color)| {
                 el.child(div().text_color(color).child(glyph))
             })
@@ -585,7 +585,7 @@ fn stack_badge(
         .bg(theme.background.opacity(0.85))
         .border_1()
         .border_color(theme.border)
-        .text_size(sp(9.5))
+        .text_size(sp(rustyedit_ui::type_size::CAPTION))
         .text_color(theme.text)
         .cursor_pointer()
         .tooltip(rustyedit_ui::tip(
@@ -633,7 +633,7 @@ fn pair_badge(
         .bg(theme.background.opacity(0.85))
         .border_1()
         .border_color(theme.border)
-        .text_size(sp(9.5))
+        .text_size(sp(rustyedit_ui::type_size::CAPTION))
         .text_color(theme.text)
         .cursor_pointer()
         .tooltip(rustyedit_ui::tip(
@@ -802,7 +802,7 @@ fn info_button(asset_ix: usize, entity: &Entity<Workspace>, theme: &Theme) -> An
         .size(sp(14.0))
         .rounded_full()
         .bg(theme.background.opacity(0.7))
-        .text_size(sp(9.0))
+        .text_size(sp(rustyedit_ui::type_size::MICRO))
         .italic()
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .text_color(theme.text_muted)

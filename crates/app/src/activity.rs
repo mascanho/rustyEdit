@@ -190,7 +190,7 @@ impl Workspace {
                             .px_1()
                             .rounded_sm()
                             .bg(theme.accent_muted)
-                            .text_size(sp(10.0))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .text_color(theme.text)
                             .child(format!("+{more}")),
                     )
@@ -232,7 +232,7 @@ impl Workspace {
                         .child(
                             div()
                                 .flex_1()
-                                .text_size(sp(12.0))
+                                .text_size(sp(rustyedit_ui::type_size::LABEL))
                                 .text_color(theme.text)
                                 .child(job.title),
                         )
@@ -246,7 +246,7 @@ impl Workspace {
                                     .items_center()
                                     .rounded_sm()
                                     .cursor_pointer()
-                                    .text_size(sp(10.5))
+                                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                                     .text_color(theme.text_muted)
                                     .hover(|el| el.bg(theme.danger.opacity(0.15)).text_color(theme.danger))
                                     .child("Cancel")
@@ -271,14 +271,14 @@ impl Workspace {
                                 .flex_1()
                                 .min_w(sp(0.0))
                                 .truncate()
-                                .text_size(sp(10.5))
+                                .text_size(sp(rustyedit_ui::type_size::SMALL))
                                 .text_color(theme.text_faint)
                                 .child(job.detail),
                         )
                         .when_some(job.progress, |el, p| {
                             el.child(
                                 div()
-                                    .text_size(sp(10.5))
+                                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                                     .text_color(theme.text_muted)
                                     .child(format!("{:.0}%", p * 100.0)),
                             )
@@ -315,7 +315,7 @@ impl Workspace {
                         .px_3()
                         .pt_1()
                         .pb_0p5()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.text_faint)
                         .child("BACKGROUND ACTIVITY"),

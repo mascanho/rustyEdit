@@ -999,7 +999,7 @@ impl Workspace {
                 .h(sp(24.0))
                 .rounded_md()
                 .cursor_pointer()
-                .text_size(sp(11.0))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .when(on, |el| el.bg(color.opacity(0.18)).text_color(theme.text))
                 .when(!on, |el| {
                     el.text_color(theme.text_muted)
@@ -1175,7 +1175,7 @@ fn header_row(
                     .items_center()
                     .rounded_full()
                     .bg(theme.accent)
-                    .text_size(sp(9.0))
+                    .text_size(sp(rustyedit_ui::type_size::MICRO))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(gpui::white())
                     .child(count.to_string()),
@@ -1199,7 +1199,7 @@ fn header_row(
                 .child(
                     div()
                         .truncate()
-                        .text_size(sp(12.0))
+                        .text_size(sp(rustyedit_ui::type_size::LABEL))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(theme.text)
                         .child(title),
@@ -1207,7 +1207,7 @@ fn header_row(
                 .child(
                     div()
                         .truncate()
-                        .text_size(sp(10.5))
+                        .text_size(sp(rustyedit_ui::type_size::SMALL))
                         .text_color(theme.text_faint)
                         .child(subtitle),
                 ),
@@ -1243,7 +1243,7 @@ fn menu_row(
         .px_2()
         .rounded_md()
         .cursor_pointer()
-        .text_size(sp(12.5))
+        .text_size(sp(rustyedit_ui::type_size::LABEL))
         .when(focused, |el| {
             el.bg(if item.danger {
                 theme.danger.opacity(0.14)
@@ -1264,7 +1264,7 @@ fn menu_row(
         .when_some(detail, |el, detail| {
             el.child(
                 div()
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .text_color(theme.text_faint)
                     .child(detail),
             )
@@ -1273,7 +1273,7 @@ fn menu_row(
             el.child(
                 div()
                     .flex_shrink_0()
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .text_color(theme.text_faint)
                     .child(hint),
             )
@@ -1291,7 +1291,7 @@ fn quick_label(text: &'static str, theme: &Theme) -> impl IntoElement {
     div()
         .w(sp(40.0))
         .flex_shrink_0()
-        .text_size(sp(10.5))
+        .text_size(sp(rustyedit_ui::type_size::SMALL))
         .text_color(theme.text_faint)
         .child(text)
 }
@@ -1306,7 +1306,7 @@ fn clear_chip(id: &'static str, text: &'static str, theme: &Theme) -> gpui::Stat
         .items_center()
         .rounded_sm()
         .cursor_pointer()
-        .text_size(sp(10.5))
+        .text_size(sp(rustyedit_ui::type_size::SMALL))
         .text_color(theme.text_faint)
         .hover(|el| el.bg(theme.surface).text_color(theme.text))
         .child(text)

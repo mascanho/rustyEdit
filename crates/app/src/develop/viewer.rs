@@ -280,7 +280,7 @@ impl Workspace {
             .bg(theme.surface.opacity(0.85))
             .border_1()
             .border_color(theme.border)
-            .text_size(sp(11.0))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .text_color(theme.text)
             .cursor_pointer()
             .hover(|el| el.bg(theme.surface_elevated))

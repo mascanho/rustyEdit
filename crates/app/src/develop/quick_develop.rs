@@ -86,7 +86,7 @@ impl Workspace {
                     .py_1()
                     .rounded_md()
                     .bg(theme.accent_muted.opacity(0.5))
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .text_color(theme.text_muted)
                     .child(format!("Changes apply to all {count} selected photos"))
                     .into_any_element(),
@@ -162,7 +162,7 @@ impl Workspace {
                 div()
                     .pt_2()
                     .pb_0p5()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_faint)
                     .child(title.to_uppercase())
@@ -219,7 +219,7 @@ impl Workspace {
                     .flex_1()
                     .min_w(sp(0.0))
                     .truncate()
-                    .text_size(sp(11.5))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(if changed { theme.text } else { theme.text_muted })
                     .when(changed, |el| {
                         el.cursor_pointer()
@@ -244,7 +244,7 @@ impl Workspace {
                     .w(sp(54.0))
                     .flex()
                     .justify_center()
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .text_color(if changed { theme.text } else { theme.text_faint })
                     .child(if mixed {
                         "mixed".to_string()

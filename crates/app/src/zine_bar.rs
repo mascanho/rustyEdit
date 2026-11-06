@@ -59,7 +59,7 @@ impl Workspace {
             None => sections.push(
                 div()
                     .px_2()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.text_faint)
                     .child(if pages == 0 {
                         "Add a page to begin."
@@ -338,7 +338,7 @@ impl Workspace {
                 .bg(theme.surface)
                 .border_1()
                 .border_color(theme.accent)
-                .text_size(sp(12.0))
+                .text_size(sp(rustyedit_ui::type_size::LABEL))
                 .text_color(theme.text)
                 .child(draft.to_string())
                 .child(div().w(sp(1.0)).h(sp(14.0)).ml(sp(1.0)).bg(theme.accent))
@@ -354,7 +354,7 @@ impl Workspace {
                 .bg(theme.surface)
                 .border_1()
                 .border_color(theme.border)
-                .text_size(sp(12.0))
+                .text_size(sp(rustyedit_ui::type_size::LABEL))
                 .text_color(theme.text)
                 .cursor_text()
                 .hover(|el| el.border_color(theme.accent))
@@ -669,7 +669,7 @@ pub(crate) fn pill(
         .h(sp(24.0))
         .px_2()
         .rounded_md()
-        .text_size(sp(11.0))
+        .text_size(sp(rustyedit_ui::type_size::BODY))
         .border_1()
         .when(on, |el| {
             el.bg(theme.accent_muted)
@@ -712,7 +712,7 @@ fn swatch(
         .when_some(rgb, |el, c| el.bg(rgb_colour(c)))
         .when(rgb.is_none(), |el| {
             el.bg(theme.surface_elevated)
-                .text_size(sp(9.0))
+                .text_size(sp(rustyedit_ui::type_size::MICRO))
                 .text_color(theme.text_muted)
                 .child("A")
         })
@@ -728,7 +728,7 @@ fn labelled(theme: &Theme, label: &str, control: gpui::AnyElement) -> gpui::AnyE
         .gap_1()
         .child(
             div()
-                .text_size(sp(9.5))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text_faint)
                 .child(label.to_uppercase()),
@@ -750,7 +750,7 @@ fn side_block(theme: &Theme, title: &str, content: gpui::AnyElement) -> gpui::An
         .border_color(theme.border_subtle)
         .child(
             div()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text_faint)
                 .child(title.to_uppercase()),

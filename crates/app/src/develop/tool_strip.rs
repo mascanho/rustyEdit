@@ -434,7 +434,7 @@ impl Workspace {
                 .h(sp(26.0))
                 .px_2()
                 .cursor_pointer()
-                .text_size(sp(11.5))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .text_color(if current {
                     theme.text
                 } else {
@@ -490,7 +490,7 @@ impl Workspace {
                             .h(sp(26.0))
                             .px_2()
                             .cursor_pointer()
-                            .text_size(sp(11.5))
+                            .text_size(sp(rustyedit_ui::type_size::BODY))
                             .text_color(theme.text_muted)
                             .hover(|el| el.bg(theme.surface).text_color(theme.text))
                             .child(div().w(sp(12.0)))
@@ -576,7 +576,7 @@ impl Workspace {
                 .h(sp(26.0))
                 .px_2()
                 .cursor_pointer()
-                .text_size(sp(11.5))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .text_color(theme.text_muted)
                 .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                 .child(div().w(sp(12.0)).text_color(theme.accent).child(if on {
@@ -587,7 +587,7 @@ impl Workspace {
                 .child(div().flex_1().child(label))
                 .child(
                     div()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text_faint)
                         .child(hint),
                 )
@@ -651,7 +651,7 @@ impl Workspace {
                 div()
                     .px_2()
                     .pb_1()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_faint)
                     .child("BACKGROUND (B)"),
@@ -672,7 +672,7 @@ impl Workspace {
                     .h(sp(26.0))
                     .px_2()
                     .cursor_pointer()
-                    .text_size(sp(11.5))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(if current {
                         theme.text
                     } else {

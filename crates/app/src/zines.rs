@@ -89,7 +89,7 @@ impl Render for ZineDrag {
             .border_1()
             .border_color(theme.accent)
             .shadow_lg()
-            .text_size(sp(11.5))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .text_color(theme.text)
             .child(self.label.clone())
     }
@@ -355,7 +355,7 @@ impl Workspace {
             .justify_center()
             .h(sp(32.0))
             .rounded_md()
-            .text_size(sp(12.0))
+            .text_size(sp(rustyedit_ui::type_size::LABEL))
             .font_weight(gpui::FontWeight::SEMIBOLD);
         let footer_button = if let Some((done, total)) = running {
             footer_button
@@ -392,7 +392,7 @@ impl Workspace {
                 .bg(theme.background)
                 .border_1()
                 .border_color(theme.border_subtle)
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .text_color(theme.text_muted)
                 .child(message.clone())
                 .into_any_element()]);
@@ -447,7 +447,7 @@ impl Workspace {
                     .bg(theme.surface)
                     .border_1()
                     .border_color(theme.border)
-                    .text_size(sp(11.5))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.text)
                     .child(message.clone())
                     .into_any_element(),
@@ -525,7 +525,7 @@ impl Workspace {
                     )
                     .child(
                         div()
-                            .text_size(sp(11.5))
+                            .text_size(sp(rustyedit_ui::type_size::BODY))
                             .text_color(if left_out > 0 { theme.star } else { theme.text_faint })
                             .child(summary),
                     ),
@@ -538,7 +538,7 @@ impl Workspace {
                         .py_1()
                         .rounded_md()
                         .cursor_pointer()
-                        .text_size(sp(11.0))
+                        .text_size(sp(rustyedit_ui::type_size::BODY))
                         .text_color(theme.text_muted)
                         .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                         .child("Preview")
@@ -551,7 +551,7 @@ impl Workspace {
                         .py_1()
                         .rounded_md()
                         .cursor_pointer()
-                        .text_size(sp(11.0))
+                        .text_size(sp(rustyedit_ui::type_size::BODY))
                         .text_color(theme.text_muted)
                         .hover(|el| el.bg(theme.surface_elevated).text_color(theme.danger))
                         .child("Clear all")
@@ -589,7 +589,7 @@ impl Workspace {
                     .justify_center()
                     .size(sp(22.0))
                     .rounded_md()
-                    .text_size(sp(12.0))
+                    .text_size(sp(rustyedit_ui::type_size::LABEL))
                     .when(enabled, |el| {
                         el.cursor_pointer()
                             .text_color(theme.text_muted)
@@ -628,7 +628,7 @@ impl Workspace {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .text_size(sp(10.0))
+                                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                 .text_color(theme.text_faint)
                                 .child(if asset.is_none() { "Not in the library" } else { "" })
                                 .into_any_element(),
@@ -644,7 +644,7 @@ impl Workspace {
                                 .items_center()
                                 .rounded_full()
                                 .bg(theme.background.opacity(0.85))
-                                .text_size(sp(9.5))
+                                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                 .text_color(theme.text)
                                 .child(format!("{}", n + 1)),
                         ),
@@ -660,7 +660,7 @@ impl Workspace {
                                 .flex_1()
                                 .min_w(sp(0.0))
                                 .truncate()
-                                .text_size(sp(10.5))
+                                .text_size(sp(rustyedit_ui::type_size::SMALL))
                                 .text_color(theme.text_muted)
                                 .child(name),
                         )
@@ -752,7 +752,7 @@ impl Workspace {
                     .child(
                         div()
                             .truncate()
-                            .text_size(sp(12.5))
+                            .text_size(sp(rustyedit_ui::type_size::LABEL))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.text)
                             .child(name),
@@ -760,7 +760,7 @@ impl Workspace {
                     .child(
                         div()
                             .truncate()
-                            .text_size(sp(10.5))
+                            .text_size(sp(rustyedit_ui::type_size::SMALL))
                             .text_color(theme.text_faint)
                             .child(parent),
                     ),
@@ -768,7 +768,7 @@ impl Workspace {
             .child(
                 div()
                     .flex_shrink_0()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.accent)
                     .child(if chosen { "Change" } else { "Choose\u{2026}" }),
             )
@@ -796,7 +796,7 @@ impl Workspace {
             .rounded_md()
             .bg(theme.background)
             .border_1()
-            .text_size(sp(12.0))
+            .text_size(sp(rustyedit_ui::type_size::LABEL))
             .overflow_hidden();
         match self.draft_for(target) {
             Some(draft) => field
@@ -952,7 +952,7 @@ fn empty_state(theme: &Theme) -> AnyElement {
         .child(rustyedit_ui::icon(Icon::Sidecar, 36.0, theme.text_faint))
         .child(
             div()
-                .text_size(sp(14.0))
+                .text_size(sp(rustyedit_ui::type_size::TITLE))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text)
                 .child("Your zine is empty"),
@@ -961,7 +961,7 @@ fn empty_state(theme: &Theme) -> AnyElement {
             div()
                 .max_w(sp(380.0))
                 .text_center()
-                .text_size(sp(12.0))
+                .text_size(sp(rustyedit_ui::type_size::LABEL))
                 .text_color(theme.text_muted)
                 .child(
                     "Right-click a photo, or a selection of them, in the Library and choose \
@@ -1002,7 +1002,7 @@ fn page_strip(theme: &Theme, layout: &rustyedit_core::ZinePageLayout) -> AnyElem
                 .bg(fill)
                 .border_1()
                 .border_color(theme.accent.opacity(0.5))
-                .text_size(sp(8.5))
+                .text_size(sp(rustyedit_ui::type_size::MICRO))
                 .text_color(theme.text)
                 // The top row of a folded sheet prints upside down.
                 .child(if cell.rotated { format!("{label} \u{21BB}") } else { label })
@@ -1025,7 +1025,7 @@ fn page_strip(theme: &Theme, layout: &rustyedit_core::ZinePageLayout) -> AnyElem
             )
             .child(
                 div()
-                    .text_size(sp(9.5))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text_faint)
                     .child(if layout.pages.len() == 1 && page.cells.len() > 1 {
                         "Print, cut and fold".to_string()
@@ -1040,7 +1040,7 @@ fn page_strip(theme: &Theme, layout: &rustyedit_core::ZinePageLayout) -> AnyElem
         .gap_1()
         .child(
             div()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text_faint)
                 .child("PAGES"),
@@ -1060,7 +1060,7 @@ fn page_strip(theme: &Theme, layout: &rustyedit_core::ZinePageLayout) -> AnyElem
                             .flex()
                             .items_center()
                             .flex_shrink_0()
-                            .text_size(sp(11.0))
+                            .text_size(sp(rustyedit_ui::type_size::BODY))
                             .text_color(theme.text_faint)
                             .child(format!("+ {} more", layout.pages.len() - SHOWN)),
                     )

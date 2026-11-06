@@ -192,7 +192,7 @@ impl Workspace {
             .border_1()
             .border_color(theme.border_subtle)
             .cursor_pointer()
-            .text_size(sp(11.0))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .text_color(theme.text_muted)
             .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
             .tooltip(rustyedit_ui::tip(
@@ -206,7 +206,7 @@ impl Workspace {
             tools.into_any_element(),
             blur_button,
             div()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
                 .child(hint)
                 .into_any_element(),
@@ -237,7 +237,7 @@ impl Workspace {
             .rounded_md()
             .border_1()
             .cursor_pointer()
-            .text_size(sp(11.5))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .when(active, |el| {
                 el.bg(theme.accent_muted)
                     .border_color(theme.accent)
@@ -292,7 +292,7 @@ impl Workspace {
             .flex_row()
             .justify_between()
             .pt_1()
-            .text_size(sp(10.0))
+            .text_size(sp(rustyedit_ui::type_size::CAPTION))
             .text_color(theme.text_faint)
             .child(format!("LAYERS \u{00B7} {count} of {MAX_GRADIENTS}"))
             .child(
@@ -328,7 +328,7 @@ impl Workspace {
                         .id((id, ix))
                         .flex_shrink_0()
                         .px_1()
-                        .text_size(sp(10.5))
+                        .text_size(sp(rustyedit_ui::type_size::SMALL))
                         .text_color(theme.text_faint)
                         .cursor_pointer()
                         .hover(|el| el.text_color(if danger { theme.danger } else { theme.text }))
@@ -399,7 +399,7 @@ impl Workspace {
                     .h(sp(28.0))
                     .px_1()
                     .cursor_pointer()
-                    .text_size(sp(11.5))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .when(selected, |el| {
                         el.bg(theme.accent_muted).text_color(theme.text)
                     })
@@ -439,7 +439,7 @@ impl Workspace {
                         el.child(
                             div()
                                 .flex_shrink_0()
-                                .text_size(sp(9.5))
+                                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                 .text_color(theme.text_faint)
                                 .child(note.join(" \u{00B7} ")),
                         )
@@ -527,7 +527,7 @@ impl Workspace {
             .items_center()
             .justify_between()
             .pt_2()
-            .text_size(sp(11.0))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .text_color(theme.text_muted)
             .child(format!(
                 "{} {} \u{00B7} invert",
@@ -542,7 +542,7 @@ impl Workspace {
                 .flex_row()
                 .items_center()
                 .justify_between()
-                .text_size(sp(11.0))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .text_color(theme.text_muted)
                 .child("Show mask")
                 .child(rustyedit_ui::mini_toggle_switch(
@@ -705,7 +705,7 @@ impl Workspace {
         rows.push(
             div()
                 .pt_2()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.text_faint)
                 .child("COLOUR GRADING")
@@ -716,7 +716,7 @@ impl Workspace {
             let (entity_h, entity_s) = (cx.entity(), cx.entity());
             rows.push(
                 div()
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .text_color(theme.text_muted)
                     .child(zone.label())
                     .into_any_element(),
@@ -862,7 +862,7 @@ impl Workspace {
             .flex()
             .flex_row()
             .justify_between()
-            .text_size(sp(10.0))
+            .text_size(sp(rustyedit_ui::type_size::CAPTION))
             .text_color(theme.text_faint)
             .child(format!("{used} of {MAX_DABS} dabs"))
             .child(
@@ -907,7 +907,7 @@ impl Workspace {
             .pt_2()
             .child(
                 div()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_faint)
                     .child("RANGE"),
@@ -950,7 +950,7 @@ impl Workspace {
                 .items_center()
                 .justify_between()
                 .pt_1()
-                .text_size(sp(11.0))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .text_color(theme.text_muted)
                 .child(
                     div()
@@ -1115,7 +1115,7 @@ impl Workspace {
                                 .bg(theme.surface.opacity(0.9))
                                 .border_1()
                                 .border_color(theme.border)
-                                .text_size(sp(11.0))
+                                .text_size(sp(rustyedit_ui::type_size::BODY))
                                 .text_color(theme.text)
                                 .child(rustyedit_ui::icon(rustyedit_ui::Icon::Eyedropper, 12.0, theme.accent))
                                 .child(format!("Click a {what} to select \u{00B7} Esc to cancel")),

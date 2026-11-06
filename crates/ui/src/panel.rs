@@ -39,7 +39,7 @@ fn section_header(theme: &Theme, title: SharedString, chevron: Option<bool>) -> 
         .gap_2()
         .h(px(SECTION_HEADER_HEIGHT))
         .px_2()
-        .text_size(sp(12.0))
+        .text_size(sp(crate::type_size::LABEL))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .when(open, |el| {
             el.bg(theme.surface_elevated).text_color(theme.text)
@@ -454,7 +454,7 @@ pub fn footer_button(
             div()
                 .min_w(sp(0.0))
                 .truncate()
-                .text_size(sp(11.5))
+                .text_size(sp(crate::type_size::BODY))
                 .text_color(theme.text)
                 .child(label.into()),
         )

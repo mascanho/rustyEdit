@@ -79,7 +79,7 @@ impl Render for NewItemDrag {
             .border_1()
             .border_color(theme.accent)
             .shadow_lg()
-            .text_size(sp(11.5))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .text_color(theme.text)
             .child(match self.kind {
                 NewItem::Text => "Text box",
@@ -108,7 +108,7 @@ impl Render for PageDrag {
             .border_1()
             .border_color(theme.accent)
             .shadow_lg()
-            .text_size(sp(11.5))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .text_color(theme.text)
             .child(format!("Page {}", self.page + 1))
     }
@@ -217,7 +217,7 @@ impl Workspace {
             )
             .child(
                 div()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(if unplaced > 0 { theme.accent } else { theme.text_faint })
                     .child(summary),
             )
@@ -338,11 +338,11 @@ impl Workspace {
                 .on_drag(drag, |drag, _offset, _window, cx| cx.new(|_| drag.clone()))
                 .child(
                     div()
-                        .text_size(sp(14.0))
+                        .text_size(sp(rustyedit_ui::type_size::TITLE))
                         .text_color(theme.text)
                         .child(if kind == NewItem::Text { "T" } else { "\u{25A2}" }),
                 )
-                .child(div().text_size(sp(10.0)).text_color(theme.text_muted).child(label))
+                .child(div().text_size(sp(rustyedit_ui::type_size::CAPTION)).text_color(theme.text_muted).child(label))
         };
         div()
             .flex()
@@ -599,7 +599,7 @@ impl Workspace {
                     .justify_between()
                     .child(
                         div()
-                            .text_size(sp(11.0))
+                            .text_size(sp(rustyedit_ui::type_size::BODY))
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(if focused { theme.accent } else { theme.text_muted })
                             .child(title.to_string()),
@@ -621,7 +621,7 @@ impl Workspace {
                 .h(sp(26.0))
                 .w(sp(150.0))
                 .rounded_md()
-                .text_size(sp(11.0))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .text_color(theme.text_muted)
                 .cursor_pointer()
                 .border_1()
@@ -657,7 +657,7 @@ impl Workspace {
             .border_color(theme.border_subtle)
             .child(
                 div()
-                    .text_size(sp(12.0))
+                    .text_size(sp(rustyedit_ui::type_size::LABEL))
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .text_color(theme.text_muted)
                     .child("Add a page"),
@@ -689,7 +689,7 @@ impl Workspace {
                 .min_w(sp(20.0))
                 .px_1()
                 .rounded_md()
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .when(on, |el| el.bg(theme.accent_muted).text_color(theme.text))
                 .when(!on && enabled, |el| {
                     el.text_color(theme.text_muted)
@@ -809,7 +809,7 @@ impl Workspace {
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_size(sp(9.0))
+                .text_size(sp(rustyedit_ui::type_size::MICRO))
                 .text_color(gpui::black().opacity(0.45))
                 .child(label.unwrap_or_default())
                 .into_any_element();
@@ -857,7 +857,7 @@ impl Workspace {
                             .size(sp(16.0))
                             .rounded_full()
                             .bg(gpui::black().opacity(0.6))
-                            .text_size(sp(8.0))
+                            .text_size(sp(rustyedit_ui::type_size::MICRO))
                             .text_color(gpui::white())
                             .cursor_pointer()
                             .hover(|el| el.bg(theme.danger))
@@ -873,7 +873,7 @@ impl Workspace {
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_size(sp(9.0))
+                .text_size(sp(rustyedit_ui::type_size::MICRO))
                 .text_color(gpui::black().opacity(0.45))
                 .child(match (label, rotated) {
                     (Some(label), _) => label,
@@ -954,10 +954,10 @@ impl Workspace {
                     .items_center()
                     .justify_center()
                     .gap_1()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(gpui::black().opacity(0.4))
                     .child("Drag photos or text here")
-                    .child(div().text_size(sp(10.0)).child("or pick a template above"))
+                    .child(div().text_size(sp(rustyedit_ui::type_size::CAPTION)).child("or pick a template above"))
                     .into_any_element(),
             );
         }
@@ -1036,7 +1036,7 @@ impl Workspace {
             .bg(theme.accent.opacity(0.08))
             .border_1()
             .border_color(if selected { theme.accent } else { theme.accent.opacity(0.5) })
-            .text_size(sp(10.0))
+            .text_size(sp(rustyedit_ui::type_size::CAPTION))
             .text_color(gpui::black().opacity(0.5))
             .drag_over::<ZineDrag>(move |style, _, _, _| {
                 style.bg(theme.accent.opacity(0.25)).border_color(theme.accent)
@@ -1222,7 +1222,7 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(sp(9.0))
+                    .text_size(sp(rustyedit_ui::type_size::MICRO))
                     .text_color(theme.accent)
                     .child("\u{21BB}")
                     .tooltip(rustyedit_ui::tip("Drag to turn", &theme))
@@ -1386,7 +1386,7 @@ impl Workspace {
                 .h(sp(16.0))
                 .px_2()
                 .rounded_sm()
-                .text_size(sp(9.0))
+                .text_size(sp(rustyedit_ui::type_size::MICRO))
                 .cursor_pointer()
                 .when(on, |el| el.bg(look.chrome_hover).text_color(look.selected))
                 .when(!on, |el| {
@@ -1458,7 +1458,7 @@ impl Workspace {
                                     .px_1()
                                     .rounded_sm()
                                     .bg(theme.background.opacity(0.8))
-                                    .text_size(sp(9.0))
+                                    .text_size(sp(rustyedit_ui::type_size::MICRO))
                                     .text_color(theme.text)
                                     .child(format!("{}", n + 1)),
                             )
@@ -1471,7 +1471,7 @@ impl Workspace {
                                         .px_1()
                                         .rounded_sm()
                                         .bg(theme.accent)
-                                        .text_size(sp(9.0))
+                                        .text_size(sp(rustyedit_ui::type_size::MICRO))
                                         .text_color(gpui::white())
                                         .child(format!("\u{2713}{}", if placed > 1 { placed.to_string() } else { String::new() })),
                                 )
@@ -1488,7 +1488,7 @@ impl Workspace {
                                     .flex_1()
                                     .min_w(sp(0.0))
                                     .truncate()
-                                    .text_size(sp(10.0))
+                                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                     .text_color(if placed == 0 { theme.accent } else { theme.text_muted })
                                     .child(name),
                             )
@@ -1501,7 +1501,7 @@ impl Workspace {
                                     .justify_center()
                                     .size(sp(16.0))
                                     .rounded_md()
-                                    .text_size(sp(9.0))
+                                    .text_size(sp(rustyedit_ui::type_size::MICRO))
                                     .text_color(theme.text_faint)
                                     .cursor_pointer()
                                     .hover(|el| el.bg(theme.surface).text_color(theme.danger))
@@ -1539,7 +1539,7 @@ impl Workspace {
             .into_any_element();
         let content = if tiles.is_empty() {
             vec![div()
-                .text_size(sp(11.0))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .text_color(look.chrome_text)
                 .child("Every photo is on a page.")
                 .into_any_element()]
@@ -1599,7 +1599,7 @@ impl Workspace {
             .when(border_below, |el| el.border_b_1())
             .border_color(look.divider)
             .when(look.monospace, |el| el.font_family(crate::filmstrip::EDGE_PRINT_FONT))
-            .text_size(sp(9.0))
+            .text_size(sp(rustyedit_ui::type_size::MICRO))
             .text_color(look.chrome_text)
             .child(div().flex_1().min_w(sp(0.0)).truncate().child(title.to_uppercase()))
             .children(centre)
@@ -1633,7 +1633,7 @@ impl Workspace {
             .w(px(30.0))
             .h_full()
             .bg(look.chrome_bg)
-            .text_size(sp(12.0))
+            .text_size(sp(rustyedit_ui::type_size::LABEL))
             .when(!forward, |el| el.border_r_1())
             .when(forward, |el| el.border_l_1())
             .border_color(look.divider)
@@ -1801,7 +1801,7 @@ impl Workspace {
                     )
                     .child(
                         div()
-                            .text_size(sp(9.5))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .text_color(if focused { look.selected } else { look.meta_text })
                             .child(label),
                     )
@@ -1817,7 +1817,7 @@ impl Workspace {
                                 .size(sp(14.0))
                                 .rounded_full()
                                 .bg(look.selected)
-                                .text_size(sp(8.5))
+                                .text_size(sp(rustyedit_ui::type_size::MICRO))
                                 .text_color(gpui::white())
                                 .child("\u{2713}"),
                         )
@@ -1896,7 +1896,7 @@ impl Workspace {
                                 .child("+"),
                         ),
                     )
-                    .child(div().text_size(sp(9.5)).child("New page"))
+                    .child(div().text_size(sp(rustyedit_ui::type_size::CAPTION)).child("New page"))
                     .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
                         this.update_zine(cx, |z| z.add_free_page());
                         let last = this.zine.manual.pages.len().saturating_sub(1);
@@ -1957,7 +1957,7 @@ impl Workspace {
                 .h(sp(30.0))
                 .px_3()
                 .rounded_md()
-                .text_size(sp(12.0))
+                .text_size(sp(rustyedit_ui::type_size::LABEL))
                 .border_1()
                 .when(enabled, |el| {
                     el.border_color(theme.border)
@@ -2004,14 +2004,14 @@ impl Workspace {
                             .flex_col()
                             .child(
                                 div()
-                                    .text_size(sp(14.0))
+                                    .text_size(sp(rustyedit_ui::type_size::TITLE))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.text)
                                     .child(format!("Preview \u{2014} {}", self.zine.options.title)),
                             )
                             .child(
                                 div()
-                                    .text_size(sp(11.0))
+                                    .text_size(sp(rustyedit_ui::type_size::BODY))
                                     .text_color(theme.text_faint)
                                     .child("As it will print. The type is set a touch differently on screen."),
                             ),
@@ -2070,7 +2070,7 @@ impl Workspace {
                                 }
                             })),
                     )
-                    .child(div().text_size(sp(12.0)).text_color(theme.text_muted).child(label))
+                    .child(div().text_size(sp(rustyedit_ui::type_size::LABEL)).text_color(theme.text_muted).child(label))
                     .child(
                         nav("zine-preview-next", "Next \u{25B6}", current + 1 < total)
                             .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
@@ -2108,7 +2108,7 @@ fn side_section(theme: &rustyedit_ui::Theme, title: &'static str, content: AnyEl
         .border_color(theme.border_subtle)
         .child(
             div()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text_faint)
                 .child(title.to_uppercase()),

@@ -36,7 +36,7 @@ impl Workspace {
             .child(rustyedit_ui::icon(icon, 12.0, theme.accent))
             .child(
                 div()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_muted)
                     .child(text.to_uppercase()),
@@ -59,7 +59,7 @@ impl Workspace {
             .w_full()
             .min_w(sp(0.0))
             .overflow_hidden()
-            .text_size(sp(11.0))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .tooltip(rustyedit_ui::tip(format!("{label}: {value}"), &theme))
             .child(
                 div()
@@ -107,7 +107,7 @@ impl Workspace {
                     .flex_1()
                     .min_w(sp(0.0))
                     .truncate()
-                    .text_size(sp(13.0))
+                    .text_size(sp(rustyedit_ui::type_size::TITLE))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(theme.text)
                     .child(asset.file_name()),
@@ -116,7 +116,7 @@ impl Workspace {
                 div()
                     .flex_shrink_0()
                     .px_1p5()
-                    .text_size(sp(9.5))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_muted)
                     .bg(theme.surface_elevated)

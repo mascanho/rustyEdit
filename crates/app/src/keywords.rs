@@ -56,7 +56,7 @@ impl Workspace {
                 .pb_1()
                 .child(
                     div()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.accent)
                         .child("KEYWORDS"),
@@ -64,7 +64,7 @@ impl Workspace {
                 .when(target_count > 1, |el| {
                     el.child(
                         div()
-                            .text_size(sp(10.0))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .text_color(theme.accent)
                             .child(format!("{target_count} selected")),
                     )
@@ -136,7 +136,7 @@ impl Workspace {
                         .h(sp(22.0))
                         .px_2()
                         .cursor_pointer()
-                        .text_size(sp(11.5))
+                        .text_size(sp(rustyedit_ui::type_size::BODY))
                         .text_color(theme.text_muted)
                         .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                         .child(div().text_color(theme.accent).child("#"))
@@ -160,7 +160,7 @@ impl Workspace {
         out.push(
             div()
                 .pt_2()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
                 .child(if target_count > 1 {
                     "Keywords apply to every selected photo."
@@ -175,7 +175,7 @@ impl Workspace {
             div()
                 .pt_3()
                 .pb_1()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.text_faint)
                 .child("ON THIS PHOTO")
@@ -206,7 +206,7 @@ impl Workspace {
                         .pr_1()
                         .rounded_full()
                         .bg(theme.accent_muted)
-                        .text_size(sp(10.5))
+                        .text_size(sp(rustyedit_ui::type_size::SMALL))
                         .text_color(theme.text)
                         .child(keyword)
                         .child(
@@ -243,7 +243,7 @@ impl Workspace {
                 div()
                     .pt_3()
                     .pb_1()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_faint)
                     .child("KEYWORD SETS")
@@ -272,19 +272,19 @@ impl Workspace {
                                 .flex_row()
                                 .items_center()
                                 .justify_between()
-                                .text_size(sp(11.5))
+                                .text_size(sp(rustyedit_ui::type_size::BODY))
                                 .text_color(theme.text)
                                 .child(set.name.clone())
                                 .child(
                                     div()
-                                        .text_size(sp(9.5))
+                                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                         .text_color(theme.accent)
                                         .child("APPLY"),
                                 ),
                         )
                         .child(
                             div()
-                                .text_size(sp(10.0))
+                                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                 .text_color(theme.text_faint)
                                 .child(label),
                         )
@@ -303,7 +303,7 @@ impl Workspace {
                 div()
                     .pt_3()
                     .pb_1()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_faint)
                     .child("ALL KEYWORDS")
@@ -324,7 +324,7 @@ impl Workspace {
                         .h(sp(24.0))
                         .px_2()
                         .cursor_pointer()
-                        .text_size(sp(11.5))
+                        .text_size(sp(rustyedit_ui::type_size::BODY))
                         .when(is_active, |el| {
                             el.bg(theme.accent_muted).text_color(theme.text)
                         })
@@ -336,7 +336,7 @@ impl Workspace {
                         .child(div().flex_1().min_w(sp(0.0)).overflow_hidden().child(value))
                         .child(
                             div()
-                                .text_size(sp(10.0))
+                                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                 .text_color(theme.text_faint)
                                 .child(count.to_string()),
                         )

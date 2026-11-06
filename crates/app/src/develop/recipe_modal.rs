@@ -118,7 +118,7 @@ impl Workspace {
                     )
                     .child(
                         div()
-                            .text_size(sp(10.5))
+                            .text_size(sp(rustyedit_ui::type_size::SMALL))
                             .text_color(theme.text_faint)
                             .child("Enter a recipe to turn it into a preset"),
                     ),
@@ -399,7 +399,7 @@ impl Workspace {
             .child(caption(&theme, "RECIPE"))
             .child(
                 div()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.text_muted)
                     .children(
                         recipe
@@ -419,14 +419,14 @@ impl Workspace {
                             .flex()
                             .flex_row()
                             .justify_between()
-                            .text_size(sp(11.0))
+                            .text_size(sp(rustyedit_ui::type_size::BODY))
                             .child(div().text_color(theme.text_muted).child(label))
                             .child(div().text_color(theme.text).child(format!("{value:+.0}")))
                     })),
             )
             .child(
                 div()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text_faint)
                     .child(
                         "The film simulation is built from curves, colour mixer and \
@@ -578,7 +578,7 @@ fn tone(v: f32) -> String {
 
 fn caption(theme: &Theme, text: &'static str) -> AnyElement {
     div()
-        .text_size(sp(10.0))
+        .text_size(sp(rustyedit_ui::type_size::CAPTION))
         .font_weight(gpui::FontWeight::BOLD)
         .text_color(theme.text_faint)
         .child(text)
@@ -593,7 +593,7 @@ fn field(theme: &Theme, label: &'static str, control: AnyElement) -> AnyElement 
         .gap_1()
         .child(
             div()
-                .text_size(sp(11.0))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text_muted)
                 .child(label),
@@ -619,7 +619,7 @@ fn text_value(
         .bg(theme.background)
         .border_1()
         .border_color(theme.border)
-        .text_size(sp(11.5))
+        .text_size(sp(rustyedit_ui::type_size::BODY))
         .text_color(if value.is_empty() {
             theme.text_faint
         } else {
@@ -714,7 +714,7 @@ fn stepper_row(
         .justify_between()
         .child(
             div()
-                .text_size(sp(11.0))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.text_muted)
                 .child(label),
@@ -730,7 +730,7 @@ fn stepper_row(
                     div()
                         .w(sp(64.0))
                         .text_center()
-                        .text_size(sp(12.0))
+                        .text_size(sp(rustyedit_ui::type_size::LABEL))
                         .text_color(theme.text)
                         .child(value),
                 )

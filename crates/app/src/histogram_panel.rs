@@ -134,7 +134,7 @@ impl Workspace {
                 .justify_center()
                 .h(sp(20.0))
                 .cursor_pointer()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .when(active, |el| {
                     el.bg(theme.accent_muted).text_color(theme.text)
@@ -179,7 +179,7 @@ impl Workspace {
                 .h(sp(18.0))
                 .px_1()
                 .cursor_pointer()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(if active {
                     channel_tint(channel, &theme)
@@ -221,7 +221,7 @@ impl Workspace {
                         .items_center()
                         .border_1()
                         .cursor_pointer()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .when(log, |el| {
                             el.border_color(theme.accent)
                                 .text_color(theme.accent)
@@ -351,7 +351,7 @@ impl Workspace {
                 .flex_row()
                 .justify_between()
                 .gap_2()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
         };
         let Some(histogram) = histogram else {
@@ -429,7 +429,7 @@ impl Workspace {
             div()
                 .overflow_hidden()
                 .whitespace_nowrap()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(self.theme.text_faint)
                 .child(parts.join("  \u{00B7}  "))
                 .into_any_element(),

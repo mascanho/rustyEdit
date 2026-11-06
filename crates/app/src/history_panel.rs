@@ -32,14 +32,14 @@ impl Workspace {
                     .min_w(sp(0.0))
                     .overflow_hidden()
                     .whitespace_nowrap()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.text)
                     .child(asset.display_name()),
             )
             .child(
                 div()
                     .flex_shrink_0()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text_faint)
                     .child(match count {
                         0 => "no changes".to_string(),
@@ -115,7 +115,7 @@ pub(crate) fn history_row(
         .gap_2()
         .h(sp(20.0))
         .px_2()
-        .text_size(sp(11.0))
+        .text_size(sp(rustyedit_ui::type_size::BODY))
         .when(current, |el| {
             el.bg(theme.accent_muted).text_color(theme.text)
         })
@@ -136,7 +136,7 @@ pub(crate) fn history_row(
                 .flex_shrink_0()
                 .overflow_hidden()
                 .whitespace_nowrap()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(if current {
                     theme.text_muted
                 } else {

@@ -81,7 +81,7 @@ impl Workspace {
                 .pb_1()
                 .child(
                     div()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.accent)
                         .child("DUPLICATES"),
@@ -143,7 +143,7 @@ impl Workspace {
         out.push(
             div()
                 .pb_2()
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .text_color(theme.text_faint)
                 .child(format!(
                     "{exact} exact group{} \u{00B7} {similar} similar group{}",
@@ -210,14 +210,14 @@ impl Workspace {
                     .justify_between()
                     .child(
                         div()
-                            .text_size(sp(9.5))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .font_weight(gpui::FontWeight::BOLD)
                             .text_color(color)
                             .child(title),
                     )
                     .child(
                         div()
-                            .text_size(sp(10.0))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .text_color(theme.text_faint)
                             .child(format!("{count} photos")),
                     ),

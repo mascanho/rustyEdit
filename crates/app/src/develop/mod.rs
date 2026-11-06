@@ -285,7 +285,7 @@ impl Workspace {
                 .py_1()
                 .rounded_md()
                 .bg(self.theme.accent_muted.opacity(0.5))
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .text_color(self.theme.text_muted)
                 .child(format!("Edits apply to all {count} selected photos"))
                 .into_any_element()

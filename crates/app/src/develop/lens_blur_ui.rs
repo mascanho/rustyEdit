@@ -23,7 +23,7 @@ impl Workspace {
         let focus_ix = develop.gradients.as_slice().iter().position(|g| g.lens_focus);
 
         let mut rows = vec![div()
-            .text_size(sp(10.0))
+            .text_size(sp(rustyedit_ui::type_size::CAPTION))
             .text_color(theme.text_faint)
             .child("Keeps the focus sharp and melts the rest into a fast lens's blur, highlights blooming into bokeh.")
             .into_any_element()];
@@ -161,7 +161,7 @@ impl Workspace {
         if !lens.is_active() {
             rows.push(
                 div()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text_faint)
                     .child("Raise Amount to start.")
                     .into_any_element(),
@@ -301,7 +301,7 @@ fn chip(id: SharedString, label: &str, on: bool, theme: &Theme) -> gpui::Statefu
         .rounded_md()
         .border_1()
         .cursor_pointer()
-        .text_size(sp(10.5))
+        .text_size(sp(rustyedit_ui::type_size::SMALL))
         .when(on, |el| {
             el.bg(theme.accent_muted)
                 .border_color(theme.accent)
@@ -337,7 +337,7 @@ fn labelled(label: &'static str, control: AnyElement, theme: &Theme) -> AnyEleme
                 .w(sp(48.0))
                 .flex_shrink_0()
                 .pt(sp(3.0))
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .text_color(theme.text_muted)
                 .child(label),
         )

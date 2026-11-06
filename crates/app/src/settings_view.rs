@@ -596,7 +596,7 @@ fn check_badge(theme: &Theme) -> impl IntoElement {
         .bg(theme.accent)
         .border_2()
         .border_color(theme.surface)
-        .text_size(sp(10.0))
+        .text_size(sp(rustyedit_ui::type_size::CAPTION))
         .font_weight(gpui::FontWeight::BOLD)
         .text_color(theme.background)
         .child("\u{2713}")

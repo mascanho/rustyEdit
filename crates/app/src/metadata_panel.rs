@@ -74,7 +74,7 @@ impl Workspace {
             children.push(
                 div()
                     .pt_1()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.accent)
                     .child(format!("Changes apply to all {count} selected photos."))
                     .into_any_element(),
@@ -152,7 +152,7 @@ impl Workspace {
             .when(editing, |el| {
                 el.child(
                     div()
-                        .text_size(sp(9.5))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text_faint)
                         .child("Enter to apply \u{00B7} Esc to cancel"),
                 )

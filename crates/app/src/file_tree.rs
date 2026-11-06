@@ -532,7 +532,7 @@ fn tree_row(
         .children(photos.map(|count| {
             div()
                 .flex_shrink_0()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
                 .child(count.to_string())
         }))
@@ -541,7 +541,7 @@ fn tree_row(
                 .id(("folder-tree-remove", ix))
                 .flex_shrink_0()
                 .px_1()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
                 .invisible()
                 .group_hover("folder-tree-row", |s| s.visible())

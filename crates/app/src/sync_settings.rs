@@ -170,7 +170,7 @@ impl Workspace {
             )
             .child(
                 div()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.text_muted)
                     .child(format!(
                         "From {source_name} to {targets} other photo{}",
@@ -286,7 +286,7 @@ fn section_row(
         .border_1()
         .border_color(if checked { theme.accent } else { theme.border })
         .when(checked, |el| el.bg(theme.accent))
-        .text_size(sp(10.0))
+        .text_size(sp(rustyedit_ui::type_size::CAPTION))
         .text_color(theme.surface)
         .when(checked, |el| el.child("\u{2713}"));
     div()
@@ -303,14 +303,14 @@ fn section_row(
         .child(
             div()
                 .flex_1()
-                .text_size(sp(12.0))
+                .text_size(sp(rustyedit_ui::type_size::LABEL))
                 .text_color(if checked { theme.text } else { theme.text_muted })
                 .child(section.label()),
         )
         .when(edited, |el| {
             el.child(
                 div()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text_faint)
                     .child("edited"),
             )

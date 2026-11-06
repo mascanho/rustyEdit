@@ -141,7 +141,7 @@ fn caption_buttons(theme: &Theme) -> impl IntoElement {
                 el.on_click(move |_: &ClickEvent, window, cx| action(window, cx))
             })
     };
-    let glyph = |text: &'static str| div().text_size(sp(12.0)).child(text).into_any_element();
+    let glyph = |text: &'static str| div().text_size(sp(crate::type_size::LABEL)).child(text).into_any_element();
     div()
         .id("title-bar-caption")
         // Like the button groups: these aren't part of the drag area.

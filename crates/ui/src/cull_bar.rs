@@ -111,7 +111,7 @@ pub fn cull_button(
                 .border_color(gpui::transparent_black())
                 .hover(|el| el.bg(theme.surface_elevated).text_color(color))
         })
-        .child(div().text_size(sp(14.0)).child(glyph))
+        .child(div().text_size(sp(crate::type_size::TITLE)).child(glyph))
         .child(label.into())
         .tooltip(crate::tooltip::tip(tooltip, &theme))
         .on_click(on_click)

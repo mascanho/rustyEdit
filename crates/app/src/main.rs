@@ -197,7 +197,39 @@ fn rebind(binding: &KeyBinding, keystroke: &str) -> Option<KeyBinding> {
 /// bound to an action it's been moved away from.
 pub(crate) fn apply_key_bindings(cx: &mut App) {
     let overrides = rustyedit_io::load_shortcut_overrides();
-    let bindings: Vec<KeyBinding> = default_key_bindings()
+    let defaults = default_key_bindings();
+    // Commands that ship without a key can be given one from the shortcut
+    // sheet; they join the keymap in the app's own key context.
+    let template = defaults
+        .iter()
+        .find(|b| b.predicate().is_some())
+        .cloned();
+    let added: Vec<KeyBinding> = match template {
+        Some(template) => commands::commands()
+            .iter()
+            .filter_map(|command| {
+                let action = (command.action)();
+                let keystroke = overrides.get(action.name())?;
+                let has_default = defaults
+                    .iter()
+                    .any(|b| b.action().name() == action.name());
+                if has_default {
+                    return None;
+                }
+                KeyBinding::load(
+                    keystroke,
+                    action,
+                    template.predicate(),
+                    false,
+                    None,
+                    &gpui::DummyKeyboardMapper,
+                )
+                .ok()
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+    let bindings: Vec<KeyBinding> = defaults
         .into_iter()
         .map(|binding| {
             match overrides.get(binding.action().name()) {
@@ -205,6 +237,7 @@ pub(crate) fn apply_key_bindings(cx: &mut App) {
                 None => binding,
             }
         })
+        .chain(added)
         .collect();
     cx.clear_key_bindings();
     cx.bind_keys(bindings);
@@ -310,4 +343,35 @@ fn main() {
 
         cx.activate(true);
     });
+}
+
+#[cfg(test)]
+mod keymap_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// Two actions on one key in one context would make one of them
+    /// unreachable, so the defaults must never share a keystroke.
+    #[test]
+    fn no_default_shortcut_is_bound_twice() {
+        let mut seen: HashMap<String, String> = HashMap::new();
+        for binding in default_key_bindings() {
+            let key = format!("{:?}|{:?}", binding.keystrokes(), binding.predicate());
+            let action = binding.action().name().to_string();
+            if let Some(other) = seen.insert(key.clone(), action.clone()) {
+                assert_eq!(other, action, "{key} is bound to {other} and {action}");
+            }
+        }
+    }
+
+    /// Every command can be run from its row in the sheet, so the sheet
+    /// shows each one once.
+    #[test]
+    fn every_command_has_a_distinct_action() {
+        let mut names = std::collections::HashSet::new();
+        for command in commands::commands() {
+            let name = (command.action)().name();
+            assert!(names.insert(name), "{name} is listed twice");
+        }
+    }
 }

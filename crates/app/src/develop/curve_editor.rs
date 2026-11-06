@@ -45,7 +45,7 @@ impl Workspace {
             rows.extend(self.adjustment_sliders(&Adjustment::PARAMETRIC, cx));
             rows.push(
                 div()
-                    .text_size(sp(9.5))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(self.theme.text_faint)
                     .child(if self.settings.develop.parametric_points {
                         "Drag a point or the line up or down \u{00B7} double-click a point to reset it \u{00B7} applies before the point curve"
@@ -71,7 +71,7 @@ impl Workspace {
                 .child(self.curve_target_button(channel, cx))
                 .child(
                     div()
-                        .text_size(sp(9.5))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(self.theme.text_faint)
                         .child(
                             "Click to add a point \u{00B7} drag to move \u{00B7} double-click to remove",
@@ -94,7 +94,7 @@ impl Workspace {
                 .justify_center()
                 .h(sp(22.0))
                 .cursor_pointer()
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .when(active, |el| {
                     el.bg(theme.accent_muted).text_color(theme.text)
                 })
@@ -139,7 +139,7 @@ impl Workspace {
                     .border_1()
                     .border_color(theme.border_subtle)
                     .bg(theme.background)
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text_muted)
                     .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                     .child(preset.label())
@@ -159,7 +159,7 @@ impl Workspace {
             .gap_1()
             .child(
                 div()
-                    .text_size(sp(9.5))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text_faint)
                     .child("COLOUR LOOKS (all three channels)"),
             )
@@ -180,7 +180,7 @@ impl Workspace {
                             .border_1()
                             .border_color(theme.border_subtle)
                             .bg(theme.background)
-                            .text_size(sp(10.0))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .text_color(theme.text_muted)
                             .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                             .child(look.label())
@@ -316,7 +316,7 @@ impl Workspace {
                         .flex_1()
                         .flex()
                         .justify_center()
-                        .text_size(sp(9.0))
+                        .text_size(sp(rustyedit_ui::type_size::MICRO))
                         .text_color(if active_band == Some(band) {
                             theme.text_muted
                         } else {
@@ -342,7 +342,7 @@ impl Workspace {
             .bg(theme.background.opacity(0.8))
             .border_1()
             .border_color(theme.border_subtle)
-            .text_size(sp(9.5))
+            .text_size(sp(rustyedit_ui::type_size::CAPTION))
             .text_color(if show_points { theme.text } else { theme.text_faint })
             .hover(|el| el.text_color(theme.text).border_color(theme.border))
             .child(
@@ -498,7 +498,7 @@ impl Workspace {
                 .px_2()
                 .rounded_sm()
                 .cursor_pointer()
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .when(active, |el| {
                     el.bg(theme.surface_elevated).text_color(theme.text)
                 })
@@ -542,7 +542,7 @@ impl Workspace {
                 el.child(
                     div()
                         .id("curve-reset")
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text_muted)
                         .cursor_pointer()
                         .hover(|el| el.text_color(theme.accent))
@@ -826,7 +826,7 @@ impl Workspace {
             .rounded_md()
             .border_1()
             .cursor_pointer()
-            .text_size(sp(10.5))
+            .text_size(sp(rustyedit_ui::type_size::SMALL))
             .when(active, |el| {
                 el.bg(theme.accent_muted)
                     .border_color(theme.accent)
@@ -893,7 +893,7 @@ impl Workspace {
                                 .bg(theme.surface.opacity(0.9))
                                 .border_1()
                                 .border_color(theme.border)
-                                .text_size(sp(11.0))
+                                .text_size(sp(rustyedit_ui::type_size::BODY))
                                 .text_color(theme.text)
                                 .child(rustyedit_ui::icon(rustyedit_ui::Icon::Eyedropper, 12.0, theme.accent))
                                 .child("Click a tone to add a curve point for it \u{00B7} Esc to cancel"),

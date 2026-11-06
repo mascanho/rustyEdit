@@ -189,7 +189,7 @@ impl Workspace {
         let mut rows = vec![
             tools.into_any_element(),
             div()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
                 .child(hint)
                 .into_any_element(),
@@ -212,7 +212,7 @@ impl Workspace {
             .rounded_md()
             .border_1()
             .cursor_pointer()
-            .text_size(sp(11.5))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .when(active, |el| {
                 el.bg(theme.accent_muted)
                     .border_color(theme.accent)
@@ -289,7 +289,7 @@ impl Workspace {
             .flex_row()
             .justify_between()
             .pt_1()
-            .text_size(sp(10.0))
+            .text_size(sp(rustyedit_ui::type_size::CAPTION))
             .text_color(theme.text_faint)
             .child(format!("{} of {MAX_SPOTS} spots", spots.len()))
             .child(

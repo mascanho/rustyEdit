@@ -630,7 +630,7 @@ impl Workspace {
             .justify_center()
             .h(sp(32.0))
             .rounded_md()
-            .text_size(sp(12.0))
+            .text_size(sp(rustyedit_ui::type_size::LABEL))
             .font_weight(gpui::FontWeight::SEMIBOLD);
         let footer_button = if running {
             footer_button
@@ -912,7 +912,7 @@ impl Workspace {
                             )
                             .child(
                                 div()
-                                    .text_size(sp(13.0))
+                                    .text_size(sp(rustyedit_ui::type_size::TITLE))
                                     .text_color(theme.text_muted)
                                     .child(format!(
                                         "photo{} to export",
@@ -929,7 +929,7 @@ impl Workspace {
                                         .items_center()
                                         .rounded_full()
                                         .bg(theme.accent.opacity(0.12))
-                                        .text_size(sp(11.0))
+                                        .text_size(sp(rustyedit_ui::type_size::BODY))
                                         .text_color(theme.accent)
                                         .child(format!("\u{2248} {}", fmt_bytes(bytes))),
                                 )
@@ -938,7 +938,7 @@ impl Workspace {
                     .child(
                         div()
                             .truncate()
-                            .text_size(sp(11.5))
+                            .text_size(sp(rustyedit_ui::type_size::BODY))
                             .text_color(theme.text_faint)
                             .child(summary.join("  \u{00B7}  ")),
                     ),
@@ -982,7 +982,7 @@ impl Workspace {
                             .child(
                                 div()
                                     .truncate()
-                                    .text_size(sp(12.0))
+                                    .text_size(sp(rustyedit_ui::type_size::LABEL))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.text)
                                     .child(folder_name),
@@ -991,7 +991,7 @@ impl Workspace {
                                 el.child(
                                     div()
                                         .truncate()
-                                        .text_size(sp(10.0))
+                                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                         .text_color(theme.text_faint)
                                         .child("Click to change"),
                                 )
@@ -1026,7 +1026,7 @@ impl Workspace {
                     .max_w(sp(170.0))
                     .truncate()
                     .text_right()
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .font_weight(gpui::FontWeight::NORMAL)
                     .text_color(theme.text_faint)
                     .child(summary)
@@ -1105,7 +1105,7 @@ impl Workspace {
                     .child(
                         div()
                             .truncate()
-                            .text_size(sp(12.5))
+                            .text_size(sp(rustyedit_ui::type_size::LABEL))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.text)
                             .child(name),
@@ -1113,7 +1113,7 @@ impl Workspace {
                     .child(
                         div()
                             .truncate()
-                            .text_size(sp(10.5))
+                            .text_size(sp(rustyedit_ui::type_size::SMALL))
                             .text_color(theme.text_faint)
                             .child(parent),
                     ),
@@ -1121,7 +1121,7 @@ impl Workspace {
             .child(
                 div()
                     .flex_shrink_0()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.accent)
                     .child(if chosen { "Change" } else { "Choose\u{2026}" }),
             )
@@ -1450,7 +1450,7 @@ fn dot_count(theme: &Theme, value: usize, label: &'static str, colour: gpui::Hsl
 fn caption(theme: &Theme, text: &'static str) -> AnyElement {
     div()
         .pt_1()
-        .text_size(sp(10.0))
+        .text_size(sp(rustyedit_ui::type_size::CAPTION))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .text_color(theme.text_faint)
         .child(text.to_uppercase())
@@ -1670,7 +1670,7 @@ fn tile_view(
             .h(px(crate::filmstrip::EDGE_PRINT_HEIGHT))
             .px(sp(6.0))
             .when(look.monospace, |el| el.font_family(crate::filmstrip::EDGE_PRINT_FONT))
-            .text_size(sp(8.0))
+            .text_size(sp(rustyedit_ui::type_size::MICRO))
             .text_color(edge.color)
             .child(SharedString::from(left))
             .child(SharedString::from(right))
@@ -1758,7 +1758,7 @@ fn tile_view(
                     .justify_center()
                     .bg(colour)
                     .text_color(theme.background)
-                    .text_size(sp(12.0))
+                    .text_size(sp(rustyedit_ui::type_size::LABEL))
                     .font_weight(gpui::FontWeight::BOLD)
                     .child(glyph)
                     .with_animation(
@@ -1792,7 +1792,7 @@ fn tile_view(
                 .cursor_pointer()
                 .bg(hsla(0.0, 0.0, 0.0, 0.72))
                 .text_color(gpui::white())
-                .text_size(sp(12.0))
+                .text_size(sp(rustyedit_ui::type_size::LABEL))
                 .opacity(0.0)
                 .group_hover(hover_group, |el| el.opacity(1.0))
                 .hover(|el| el.bg(theme.danger))

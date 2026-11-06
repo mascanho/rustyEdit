@@ -74,14 +74,14 @@ impl Workspace {
             .pb_1p5()
             .child(
                 div()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(theme.text_muted)
                     .child("NAVIGATOR"),
             )
             .child(
                 div()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text)
                     .child(self.develop_zoom_label()),
             );

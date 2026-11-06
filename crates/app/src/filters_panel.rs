@@ -243,7 +243,7 @@ impl Workspace {
             div()
                 .pt_3()
                 .pb_1()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.accent)
                 .child("SEARCH")
@@ -255,7 +255,7 @@ impl Workspace {
                 .items_center()
                 .justify_between()
                 .pt_2()
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .text_color(theme.text_faint)
                 .child(if self.catalog.filters().search.trim().is_empty() {
                     format!("{total} photos")
@@ -277,7 +277,7 @@ impl Workspace {
                 .into_any_element(),
             div()
                 .pt_2()
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .text_color(theme.text_faint)
                 .child(
                     "Every word must appear in the file name, camera, lens, file type, \
@@ -348,7 +348,7 @@ impl Workspace {
                 .pb_1()
                 .child(
                     div()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.accent)
                         .child(if filters.has_facets() {
@@ -732,7 +732,7 @@ impl Workspace {
                     .px_2()
                     .py_1()
                     .bg(theme.surface_elevated)
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text_muted)
                     .child(title),
@@ -787,7 +787,7 @@ impl Workspace {
             .h(sp(24.0))
             .px_2()
             .cursor_pointer()
-            .text_size(sp(11.5))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .when(active, |el| {
                 el.bg(theme.accent_muted).text_color(theme.text)
             })
@@ -807,7 +807,7 @@ impl Workspace {
             )
             .child(
                 div()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text_faint)
                     .child(count.to_string()),
             )

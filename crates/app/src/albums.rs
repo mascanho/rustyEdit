@@ -25,7 +25,7 @@ impl Workspace {
             .pb_1()
             .child(
                 div()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.accent)
                     .child("ALBUMS"),
@@ -66,7 +66,7 @@ impl Workspace {
                     )
                     .child(
                         div()
-                            .text_size(sp(10.0))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .text_color(theme.text_faint)
                             .child(
                                 "Name the album \u{00B7} Enter to create \u{00B7} Esc to cancel",
@@ -120,7 +120,7 @@ impl Workspace {
                 .pb_1()
                 .child(
                     div()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.accent)
                         .child("SMART COLLECTIONS"),
@@ -163,7 +163,7 @@ impl Workspace {
                     )
                     .child(
                         div()
-                            .text_size(sp(10.0))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .text_color(theme.text_faint)
                             .child("Name it · it saves the current filters and rating · Enter to create · Esc to cancel"),
                     )
@@ -222,14 +222,14 @@ impl Workspace {
             .child(
                 div()
                     .flex_shrink_0()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.accent)
                     .child("\u{2699}"),
             )
             .child(div().flex_1().min_w(sp(0.0)).overflow_hidden().child(name))
             .child(
                 div()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text_faint)
                     .child(count.to_string()),
             )
@@ -312,7 +312,7 @@ impl Workspace {
             .when_some(count, |el, n| {
                 el.child(
                     div()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text_faint)
                         .child(n.to_string()),
                 )

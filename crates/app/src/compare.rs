@@ -249,7 +249,7 @@ impl Workspace {
                     .px_1()
                     .rounded_sm()
                     .cursor_pointer()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.text)
                     .hover(|el| el.bg(theme.surface_elevated))
                     .child(label)
@@ -279,7 +279,7 @@ impl Workspace {
                 .child(
                     div()
                         .px_1()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text_muted)
                         .child(if zoom <= 1.001 {
                             "Linked zoom: scroll to zoom".to_string()
@@ -449,7 +449,7 @@ impl Workspace {
                     .px_2()
                     .h(sp(20.0))
                     .bg(theme.background.opacity(0.7))
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text_muted)
                     .child(asset.display_name())
                     .child(rustyedit_ui::flag_badge(asset.flag, &theme)),

@@ -98,7 +98,7 @@ impl Workspace {
             .rounded_md()
             .border_1()
             .cursor_pointer()
-            .text_size(sp(11.0))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .when(active, |el| {
                 el.bg(theme.accent_muted)
                     .border_color(theme.accent)

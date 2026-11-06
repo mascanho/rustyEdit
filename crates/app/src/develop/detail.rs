@@ -15,7 +15,7 @@ impl Workspace {
         let heading = |text: &'static str| {
             div()
                 .pt_2()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.text_faint)
                 .child(text)
@@ -32,7 +32,7 @@ impl Workspace {
         );
         rows.push(
             div()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
                 .child("Masking holds sharpening back from flat areas, so only edges are sharpened and noise isn't.")
                 .into_any_element(),
@@ -46,7 +46,7 @@ impl Workspace {
         ));
         rows.push(
             div()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
                 .child("Removes the purple and green halos along high-contrast edges. Only edges are touched.")
                 .into_any_element(),
@@ -87,7 +87,7 @@ impl Workspace {
             .gap_1()
             .child(
                 div()
-                    .text_size(sp(11.0))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.text_muted)
                     .child(lens_line),
             )
@@ -112,13 +112,13 @@ impl Workspace {
                         .hover(|el| el.bg(theme.accent.opacity(0.16)).border_color(theme.accent))
                         .child(
                             div()
-                                .text_size(sp(11.5))
+                                .text_size(sp(rustyedit_ui::type_size::BODY))
                                 .text_color(theme.accent)
                                 .child("Apply lens profile"),
                         )
                         .child(
                             div()
-                                .text_size(sp(10.0))
+                                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                 .text_color(theme.text_faint)
                                 .child(if profile.exact {
                                     profile.name.clone()
@@ -144,7 +144,7 @@ impl Workspace {
             }
             None => rows.push(
                 div()
-                    .text_size(sp(10.0))
+                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                     .text_color(theme.text_faint)
                     .child("No lens or focal length in the photo's EXIF, so there's no profile to apply. Set the sliders by hand.")
                     .into_any_element(),
@@ -167,13 +167,13 @@ impl Workspace {
                     .hover(|el| el.bg(theme.surface_elevated).border_color(theme.accent))
                     .child(
                         div()
-                            .text_size(sp(11.5))
+                            .text_size(sp(rustyedit_ui::type_size::BODY))
                             .text_color(theme.text)
                             .child("Match the camera's corrections"),
                     )
                     .child(
                         div()
-                            .text_size(sp(10.0))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .text_color(theme.text_faint)
                             .child("Distortion and vignetting as the camera corrected them in its preview"),
                     )
@@ -225,7 +225,7 @@ impl Workspace {
         );
         rows.push(
             div()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
                 .child("Distortion: positive straightens bulging edges. Vignetting: positive brightens the corners. Profiles are approximate; adjust to taste.")
                 .into_any_element(),

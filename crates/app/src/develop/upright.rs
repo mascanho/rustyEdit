@@ -75,7 +75,7 @@ impl Workspace {
                 } else {
                     theme.background
                 })
-                .text_size(sp(11.0))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .text_color(if action == UprightAction::Auto {
                     theme.text
                 } else {

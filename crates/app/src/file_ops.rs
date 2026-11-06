@@ -518,7 +518,7 @@ impl Workspace {
                 .text_color(theme.text)
                 .child(
                     div()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text_faint)
                         .child("RENAME PHOTO"),
                 )
@@ -540,7 +540,7 @@ impl Workspace {
                 )
                 .child(
                     div()
-                        .text_size(sp(9.5))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text_faint)
                         .child("Enter to rename \u{00B7} Esc to cancel"),
                 )
@@ -675,7 +675,7 @@ impl Workspace {
                 .pb_1()
                 .child(
                     div()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.reject)
                         .child(format!("MISSING FILES ({})", missing.len())),
@@ -746,7 +746,7 @@ impl Workspace {
                             .min_w(sp(0.0))
                             .overflow_hidden()
                             .whitespace_nowrap()
-                            .text_size(sp(9.0))
+                            .text_size(sp(rustyedit_ui::type_size::MICRO))
                             .text_color(theme.text_faint)
                             .child(folder),
                     )
@@ -756,7 +756,7 @@ impl Workspace {
         rows.push(
             div()
                 .pt_1()
-                .text_size(sp(9.0))
+                .text_size(sp(rustyedit_ui::type_size::MICRO))
                 .text_color(theme.text_faint)
                 .child("Use the arrow to locate a moved file, or remove it from this catalog.")
                 .into_any_element(),

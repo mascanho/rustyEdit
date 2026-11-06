@@ -187,7 +187,7 @@ pub(super) fn list_row(
         .h(sp(24.0))
         .px_2()
         .cursor_pointer()
-        .text_size(sp(11.5))
+        .text_size(sp(rustyedit_ui::type_size::BODY))
         .when(active, |el| {
             el.bg(theme.accent_muted).text_color(theme.text)
         })
@@ -206,7 +206,7 @@ pub(super) fn list_row(
         .children(note.map(|note| {
             div()
                 .flex_shrink_0()
-                .text_size(sp(9.5))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
                 .child(note)
         }))
@@ -215,7 +215,7 @@ pub(super) fn list_row(
                 .id("delete")
                 .flex_shrink_0()
                 .px_1()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .text_color(theme.text_faint)
                 .invisible()
                 .group_hover("develop-list-row", |s| s.visible())
@@ -248,7 +248,7 @@ pub(super) fn add_row(
         .h(sp(24.0))
         .px_2()
         .cursor_pointer()
-        .text_size(sp(11.0))
+        .text_size(sp(rustyedit_ui::type_size::BODY))
         .text_color(theme.accent)
         .hover(|el| el.bg(theme.surface_elevated))
         .child("+")
@@ -268,7 +268,7 @@ pub(super) fn name_field(theme: &Theme, draft: &str, placeholder: &str) -> AnyEl
         .bg(theme.background)
         .border_1()
         .border_color(theme.accent)
-        .text_size(sp(11.5))
+        .text_size(sp(rustyedit_ui::type_size::BODY))
         .child(
             div()
                 .text_color(if draft.is_empty() {

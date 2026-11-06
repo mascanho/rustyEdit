@@ -81,7 +81,7 @@ impl Workspace {
                 .gap_1()
                 .pt_1()
                 .cursor_pointer()
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .text_color(theme.text_faint)
                 .hover(|el| el.text_color(theme.text))
                 .child(rustyedit_ui::icon(
@@ -105,7 +105,7 @@ impl Workspace {
                 rows.push(
                     div()
                         .pt_1()
-                        .text_size(sp(10.5))
+                        .text_size(sp(rustyedit_ui::type_size::SMALL))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(theme.text_muted)
                         .child(zone.wheel_name())
@@ -139,7 +139,7 @@ impl Workspace {
             .w(size)
             .child(
                 div()
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(theme.text_muted)
                     .child(zone.wheel_name().to_uppercase()),
@@ -208,13 +208,13 @@ impl Workspace {
                 .items_center()
                 .child(
                     div()
-                        .text_size(sp(8.5))
+                        .text_size(sp(rustyedit_ui::type_size::MICRO))
                         .text_color(theme.text_faint)
                         .child(label),
                 )
                 .child(
                     div()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text)
                         .child(value),
                 )

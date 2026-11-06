@@ -433,7 +433,7 @@ impl Workspace {
             .justify_between()
             .h(sp(40.0))
             .px_4()
-            .text_size(sp(12.0))
+            .text_size(sp(rustyedit_ui::type_size::LABEL))
             .text_color(gpui::white().opacity(0.85))
             .child(
                 div()
@@ -465,7 +465,7 @@ impl Workspace {
             .justify_center()
             .h(sp(32.0))
             .items_center()
-            .text_size(sp(11.0))
+            .text_size(sp(rustyedit_ui::type_size::BODY))
             .text_color(gpui::white().opacity(0.45))
             .child(
                 "P pick \u{00B7} X reject \u{00B7} U unflag \u{00B7} 0\u{2013}5 rate \u{00B7} \
@@ -526,7 +526,7 @@ fn cull_pill(text: &str, color: gpui::Hsla, _theme: &Theme) -> AnyElement {
         .rounded_sm()
         .border_1()
         .border_color(color.opacity(0.8))
-        .text_size(sp(10.0))
+        .text_size(sp(rustyedit_ui::type_size::CAPTION))
         .text_color(color)
         .child(text.to_string())
         .into_any_element()
@@ -550,7 +550,7 @@ pub(crate) fn corner_badges(
             .bg(theme.background.opacity(0.85))
             .border_1()
             .border_color(color.opacity(0.7))
-            .text_size(sp(9.0))
+            .text_size(sp(rustyedit_ui::type_size::MICRO))
             .text_color(theme.text)
             .child(text)
             .into_any_element()

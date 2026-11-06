@@ -233,7 +233,7 @@ fn menu_heading(theme: &Theme, text: &'static str) -> AnyElement {
         .px_2()
         .pt_1()
         .pb_1()
-        .text_size(sp(10.0))
+        .text_size(sp(rustyedit_ui::type_size::CAPTION))
         .font_weight(gpui::FontWeight::BOLD)
         .text_color(theme.text_faint)
         .child(text)
@@ -256,7 +256,7 @@ fn menu_row(
         .h(sp(26.0))
         .px_2()
         .cursor_pointer()
-        .text_size(sp(11.5))
+        .text_size(sp(rustyedit_ui::type_size::BODY))
         .text_color(if on { theme.text } else { theme.text_muted })
         .hover(|el| el.bg(theme.surface).text_color(theme.text))
         .child(

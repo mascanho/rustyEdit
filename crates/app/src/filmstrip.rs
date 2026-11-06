@@ -151,7 +151,7 @@ impl Workspace {
             .when(!at_top, |el| el.border_t_1())
             .border_color(look.divider)
             .when(look.monospace, |el| el.font_family(EDGE_PRINT_FONT))
-            .text_size(sp(9.0))
+            .text_size(sp(rustyedit_ui::type_size::MICRO))
             .text_color(look.chrome_text)
             .cursor_pointer()
             .hover(|el| el.bg(look.chrome_hover))
@@ -382,7 +382,7 @@ impl Workspace {
             .w(px(ARROW_WIDTH))
             .h_full()
             .bg(look.chrome_bg)
-            .text_size(sp(12.0))
+            .text_size(sp(rustyedit_ui::type_size::LABEL))
             .when(direction < 0.0, |el| el.border_r_1())
             .when(direction > 0.0, |el| el.border_l_1())
             .border_color(look.divider)
@@ -573,7 +573,7 @@ fn film_frame(
                 .h(px(EDGE_PRINT_HEIGHT))
                 .px(sp(8.0))
                 .when(look.monospace, |el| el.font_family(EDGE_PRINT_FONT))
-                .text_size(sp(8.0))
+                .text_size(sp(rustyedit_ui::type_size::MICRO))
                 .text_color(if is_selected {
                     edge.selected_color
                 } else {
@@ -628,7 +628,7 @@ fn film_stars(value: u8, look: &FilmLook) -> impl IntoElement {
     div()
         .flex()
         .flex_row()
-        .text_size(sp(10.0))
+        .text_size(sp(rustyedit_ui::type_size::CAPTION))
         .children((1..=5u8).map(move |star| {
             let filled = star <= value;
             div()

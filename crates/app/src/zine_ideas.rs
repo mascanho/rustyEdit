@@ -79,7 +79,7 @@ impl Workspace {
                 .gap_2()
                 .child(
                     div()
-                        .text_size(sp(12.0))
+                        .text_size(sp(rustyedit_ui::type_size::LABEL))
                         .text_color(theme.text_muted)
                         .child("Or begin with the best of your library:"),
                 )
@@ -94,7 +94,7 @@ impl Workspace {
                         .cursor_pointer()
                         .bg(theme.accent)
                         .text_color(gpui::white())
-                        .text_size(sp(12.0))
+                        .text_size(sp(rustyedit_ui::type_size::LABEL))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .shadow_md()
                         .hover(|el| el.opacity(0.92))

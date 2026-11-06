@@ -205,7 +205,7 @@ impl Workspace {
                 .child(div().flex_1().child(mode.label()))
                 .child(
                     div()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text_faint)
                         .child(count.to_string()),
                 )
@@ -236,7 +236,7 @@ impl Workspace {
                 .px_2()
                 .pt_2()
                 .pb_1()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.text_faint)
                 .child("RATING")
@@ -290,7 +290,7 @@ impl Workspace {
                     .child(div().flex_1().child(option.label()))
                     .child(
                         div()
-                            .text_size(sp(10.0))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .text_color(theme.text_faint)
                             .child(count.to_string()),
                     )
@@ -452,7 +452,7 @@ impl Workspace {
                 .px_2()
                 .pt_2()
                 .pb_1()
-                .text_size(sp(10.0))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.text_faint)
                 .child("ORDER")

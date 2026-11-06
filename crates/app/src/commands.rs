@@ -385,14 +385,14 @@ impl Workspace {
                             .flex_1()
                             .min_w(sp(0.0))
                             .truncate()
-                            .text_size(sp(13.0))
+                            .text_size(sp(rustyedit_ui::type_size::TITLE))
                             .text_color(theme.text)
                             .child(command.label),
                     )
                     .child(
                         div()
                             .flex_shrink_0()
-                            .text_size(sp(11.0))
+                            .text_size(sp(rustyedit_ui::type_size::BODY))
                             .text_color(theme.text_faint)
                             .child(command.group),
                     )
@@ -421,7 +421,7 @@ impl Workspace {
                     .items_center()
                     .flex_1()
                     .min_w(sp(0.0))
-                    .text_size(sp(14.0))
+                    .text_size(sp(rustyedit_ui::type_size::TITLE))
                     .when(query.is_empty(), |el| {
                         el.child(div().w(sp(1.5)).h(sp(16.0)).bg(theme.accent)).child(
                             div()
@@ -445,7 +445,7 @@ impl Workspace {
             .px_4()
             .border_t_1()
             .border_color(theme.border_subtle)
-            .text_size(sp(10.5))
+            .text_size(sp(rustyedit_ui::type_size::SMALL))
             .text_color(theme.text_faint)
             .child("\u{2191}\u{2193} choose \u{00B7} \u{21A9} run \u{00B7} Esc close")
             .child(if total > MAX_SHOWN {
@@ -508,13 +508,13 @@ impl Workspace {
     }
 
     /// One row: the command's name and its shortcut, click to record a new
-    /// one in its place, with a small reset when it's been changed. `None`
-    /// for a command with no shortcut at all (nothing to show or edit).
+    /// one in its place, with a small reset when it's been changed. A
+    /// command with no shortcut shows an "Add" chip that records one.
     fn shortcut_row(&self, c: &Command, cx: &mut Context<Self>) -> Option<AnyElement> {
         let theme = self.theme;
         let action = (c.action)();
         let name = action.name();
-        let keys = shortcut_label(cx, action.as_ref())?;
+        let keys = shortcut_label(cx, action.as_ref());
         let recording = self
             .recording_shortcut
             .as_ref()
@@ -534,7 +534,7 @@ impl Workspace {
                 .bg(theme.accent.opacity(0.18))
                 .border_1()
                 .border_color(theme.accent)
-                .text_size(sp(11.0))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .text_color(theme.accent)
                 .child("Press a key\u{2026} (Esc to cancel)")
                 .into_any_element()
@@ -542,8 +542,24 @@ impl Workspace {
             div()
                 .id(SharedString::from(format!("shortcut-edit-{name}")))
                 .cursor_pointer()
-                .child(key_chip(keys, &theme))
-                .tooltip(rustyedit_ui::tip("Click to set a new shortcut", &theme))
+                .child(match keys {
+                    Some(keys) => key_chip(keys, &theme),
+                    None => div()
+                        .flex_shrink_0()
+                        .px_1p5()
+                        .h(sp(20.0))
+                        .flex()
+                        .items_center()
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(theme.border_subtle)
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
+                        .text_color(theme.text_faint)
+                        .hover(|el| el.text_color(theme.text).border_color(theme.border))
+                        .child("Add")
+                        .into_any_element(),
+                })
+                .tooltip(rustyedit_ui::tip("Click to set a shortcut", &theme))
                 .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                     this.recording_shortcut = Some((name_owned.clone(), label));
                     cx.notify();
@@ -563,7 +579,7 @@ impl Workspace {
                     div()
                         .min_w(sp(0.0))
                         .truncate()
-                        .text_size(sp(12.0))
+                        .text_size(sp(rustyedit_ui::type_size::LABEL))
                         .text_color(theme.text_muted)
                         .child(c.label),
                 )
@@ -580,7 +596,7 @@ impl Workspace {
                                 div()
                                     .id(SharedString::from(format!("shortcut-reset-{name}")))
                                     .cursor_pointer()
-                                    .text_size(sp(10.0))
+                                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                     .text_color(theme.text_faint)
                                     .hover(|el| el.text_color(theme.text))
                                     .child("Reset")
@@ -647,9 +663,40 @@ impl Workspace {
         parts.push(stroke.key.as_str());
         let keystroke = parts.join("-");
 
+        // A key that already runs another command would leave one of the
+        // two unreachable, so it's refused with a note of who has it.
+        if let Some(taken) = self.command_using(&keystroke, &name, cx) {
+            self.status_message = Some(
+                format!("That key already runs \u{201C}{taken}\u{201D}. Pick another.").into(),
+            );
+            cx.notify();
+            return;
+        }
+
         self.recording_shortcut = None;
         self.shortcut_overrides.insert(name, keystroke);
         self.save_and_apply_shortcuts(cx);
+    }
+
+    /// The label of the command (other than `except`) whose live shortcut
+    /// is `keystroke`, if any.
+    fn command_using(&self, keystroke: &str, except: &str, cx: &App) -> Option<&'static str> {
+        let wanted = gpui::Keystroke::parse(keystroke).ok()?;
+        let keymap = cx.key_bindings();
+        let keymap = keymap.borrow();
+        commands().into_iter().find_map(|command| {
+            let action = (command.action)();
+            if action.name() == except {
+                return None;
+            }
+            let used = keymap
+                .bindings_for_action(action.as_ref())
+                .any(|binding| {
+                    matches!(binding.keystrokes(), [stroke]
+                        if stroke.key() == wanted.key && *stroke.modifiers() == wanted.modifiers)
+                });
+            used.then_some(command.label)
+        })
     }
 
     /// Persists `shortcut_overrides` and rebuilds the live keymap from it
@@ -686,7 +733,7 @@ impl Workspace {
                         .child(
                             div()
                                 .pb_1()
-                                .text_size(sp(10.5))
+                                .text_size(sp(rustyedit_ui::type_size::SMALL))
                                 .font_weight(gpui::FontWeight::BOLD)
                                 .text_color(theme.accent)
                                 .child(group.to_uppercase()),
@@ -696,6 +743,44 @@ impl Workspace {
                 })
             })
             .collect();
+
+        // Keys and gestures that aren't commands, so the sheet is the one
+        // place that lists them.
+        let mut groups = groups;
+        groups.push(
+            div()
+                .flex()
+                .flex_col()
+                .w(sp(260.0))
+                .gap_0p5()
+                .child(
+                    div()
+                        .pb_1()
+                        .text_size(sp(rustyedit_ui::type_size::SMALL))
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(theme.accent)
+                        .child("MOUSE & MODIFIERS"),
+                )
+                .children(ALSO_WORKS.iter().map(|(label, keys)| {
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .h(sp(24.0))
+                        .child(
+                            div()
+                                .min_w(sp(0.0))
+                                .truncate()
+                                .text_size(sp(rustyedit_ui::type_size::LABEL))
+                                .text_color(theme.text_muted)
+                                .child(*label),
+                        )
+                        .child(key_chip(keys.to_string(), &theme))
+                }))
+                .into_any_element(),
+        );
 
         let card = div()
             .id("shortcuts-card")
@@ -729,7 +814,7 @@ impl Workspace {
                     )
                     .child(
                         div()
-                            .text_size(sp(11.0))
+                            .text_size(sp(rustyedit_ui::type_size::BODY))
                             .text_color(theme.text_faint)
                             .child(format!(
                                 "Everything else: {} \u{00B7} ? or Esc to close",
@@ -773,6 +858,18 @@ impl Workspace {
     }
 }
 
+/// Gestures and keys handled outside the keymap (see `develop/zoom.rs`,
+/// the sliders and the Navigator), shown in the sheet beside the commands.
+const ALSO_WORKS: [(&str, &str); 7] = [
+    ("Pan a zoomed photo", "Space + drag"),
+    ("Zoom in or out", "Ctrl + scroll"),
+    ("Finish crop, spots or masks", "Enter"),
+    ("Reset a slider", "Double-click"),
+    ("Select a range of photos", "Shift + click"),
+    ("Add to the selection", "\u{2318} / Ctrl + click"),
+    ("Jump to 100% at a spot", "Click Navigator"),
+];
+
 /// A shortcut drawn as a small keycap.
 fn key_chip(keys: String, theme: &Theme) -> AnyElement {
     div()
@@ -785,7 +882,7 @@ fn key_chip(keys: String, theme: &Theme) -> AnyElement {
         .bg(theme.background)
         .border_1()
         .border_color(theme.border)
-        .text_size(sp(11.0))
+        .text_size(sp(rustyedit_ui::type_size::BODY))
         .text_color(theme.text)
         .child(keys)
         .into_any_element()

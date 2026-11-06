@@ -102,14 +102,14 @@ impl Workspace {
                 div()
                     .min_w(sp(0.0))
                     .truncate()
-                    .text_size(sp(11.5))
+                    .text_size(sp(rustyedit_ui::type_size::BODY))
                     .text_color(theme.text)
                     .child(name),
             )
             .children(position.map(|p| {
                 div()
                     .flex_shrink_0()
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .text_color(theme.text_faint)
                     .child(p)
             }));
@@ -135,7 +135,7 @@ impl Workspace {
                 .h(sp(22.0))
                 .px_2p5()
                 .rounded_sm()
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .when(current, |el| {
                     el.bg(if option == BaMode::Off {
                         theme.surface_elevated
@@ -204,7 +204,7 @@ impl Workspace {
                         .rounded_sm()
                         .cursor_pointer()
                         .border_1()
-                        .text_size(sp(10.5))
+                        .text_size(sp(rustyedit_ui::type_size::SMALL))
                         .when(jpeg, |el| {
                             el.bg(theme.accent_muted)
                                 .border_color(theme.accent)
@@ -238,7 +238,7 @@ impl Workspace {
                 div()
                     .min_w(sp(0.0))
                     .truncate()
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .text_color(if alert { theme.accent } else { theme.text_faint })
                     .child(showing),
             )
@@ -250,7 +250,7 @@ impl Workspace {
                         .rounded_sm()
                         .border_1()
                         .border_color(theme.border_subtle)
-                        .text_size(sp(9.5))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text_faint)
                         .child("\\"),
                 )

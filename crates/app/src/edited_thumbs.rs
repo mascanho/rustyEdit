@@ -129,10 +129,11 @@ impl Workspace {
     pub(crate) fn display_thumbnail(&self, asset: &Asset) -> Option<PathBuf> {
         let settings = thumbnail_settings(asset);
         if settings.is_edited() {
-            if let Some((done_stamp, path)) = self.edited_thumbs.done.get(&asset.id) {
-                if *done_stamp == self.edited_thumbs.version(asset.id, false, &settings, None) {
-                    return Some(path.clone());
-                }
+            // While a new render for changed settings is still being made,
+            // the previous one stays up. Dropping back to the untouched
+            // thumbnail in between made the strip flash on every tweak.
+            if let Some((_, path)) = self.edited_thumbs.done.get(&asset.id) {
+                return Some(path.clone());
             }
         }
         asset.thumbnail_path.clone()
@@ -152,6 +153,11 @@ impl Workspace {
                 if *done_stamp == wanted {
                     return Some(path.clone());
                 }
+            }
+            // Not ready for these settings yet: the last framed render
+            // (if any) stays up rather than flashing back to the plain one.
+            if let Some((_, path)) = self.edited_thumbs.framed.get(&asset.id) {
+                return Some(path.clone());
             }
         }
         self.display_thumbnail(asset)

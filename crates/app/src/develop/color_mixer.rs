@@ -106,7 +106,7 @@ impl Workspace {
         // --- The spectrum, before and after ---------------------------------
         let caption = |text: &'static str| {
             div()
-                .text_size(sp(8.5))
+                .text_size(sp(rustyedit_ui::type_size::MICRO))
                 .text_color(theme.text_faint)
                 .child(text)
         };
@@ -229,7 +229,7 @@ impl Workspace {
                         .child(div().size(sp(9.0)).rounded_full().bg(band_colour))
                         .child(
                             div()
-                                .text_size(sp(11.0))
+                                .text_size(sp(rustyedit_ui::type_size::BODY))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(theme.text)
                                 .child(band.label().to_uppercase()),
@@ -332,7 +332,7 @@ impl Workspace {
                     .absolute()
                     .top(sp(3.0))
                     .left(sp(5.0))
-                    .text_size(sp(8.5))
+                    .text_size(sp(rustyedit_ui::type_size::MICRO))
                     .text_color(gpui::white().opacity(0.8))
                     .child("+ SAT"),
             )
@@ -341,7 +341,7 @@ impl Workspace {
                     .absolute()
                     .bottom(sp(3.0))
                     .left(sp(5.0))
-                    .text_size(sp(8.5))
+                    .text_size(sp(rustyedit_ui::type_size::MICRO))
                     .text_color(gpui::white().opacity(0.8))
                     .child("\u{2212} SAT"),
             )
@@ -350,7 +350,7 @@ impl Workspace {
                     .absolute()
                     .top(sp(3.0))
                     .right(sp(5.0))
-                    .text_size(sp(8.5))
+                    .text_size(sp(rustyedit_ui::type_size::MICRO))
                     .text_color(gpui::white().opacity(0.8))
                     .child("HUE \u{25B6}"),
             )
@@ -375,10 +375,10 @@ impl Workspace {
                 .flex()
                 .flex_col()
                 .items_center()
-                .child(div().text_size(sp(8.5)).text_color(theme.text_faint).child(label))
+                .child(div().text_size(sp(rustyedit_ui::type_size::MICRO)).text_color(theme.text_faint).child(label))
                 .child(
                     div()
-                        .text_size(sp(10.5))
+                        .text_size(sp(rustyedit_ui::type_size::SMALL))
                         .text_color(if value == 0.0 { theme.text_muted } else { theme.text })
                         .child(format!("{value:+.0}")),
                 )
@@ -405,7 +405,7 @@ impl Workspace {
                 .gap_1()
                 .pt_2()
                 .cursor_pointer()
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .text_color(theme.text_faint)
                 .hover(|el| el.text_color(theme.text))
                 .child(rustyedit_ui::icon(
@@ -445,7 +445,7 @@ impl Workspace {
                 .items_center()
                 .rounded_sm()
                 .cursor_pointer()
-                .text_size(sp(10.5))
+                .text_size(sp(rustyedit_ui::type_size::SMALL))
                 .when(active, |el| el.bg(theme.surface_elevated).text_color(theme.text))
                 .when(!active, |el| {
                     el.text_color(theme.text_muted)

@@ -19,7 +19,7 @@ pub fn flag_badge(flag: Flag, theme: &Theme) -> impl IntoElement {
         .items_center()
         .justify_center()
         .size(sp(16.0))
-        .text_size(sp(12.0))
+        .text_size(sp(crate::type_size::LABEL))
         .text_color(color)
         .child(glyph)
 }

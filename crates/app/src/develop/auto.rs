@@ -260,7 +260,7 @@ impl Workspace {
                                 .bg(theme.surface.opacity(0.9))
                                 .border_1()
                                 .border_color(theme.border)
-                                .text_size(sp(11.0))
+                                .text_size(sp(rustyedit_ui::type_size::BODY))
                                 .text_color(theme.text)
                                 .child(rustyedit_ui::icon(Icon::Eyedropper, 12.0, theme.accent))
                                 .child(hint),
@@ -475,7 +475,7 @@ pub(super) fn small_button(
         .border_1()
         .border_color(if active { theme.accent } else { theme.border })
         .when(active, |el| el.bg(theme.accent_muted))
-        .text_size(sp(11.0))
+        .text_size(sp(rustyedit_ui::type_size::BODY))
         .text_color(color)
         .child(rustyedit_ui::icon(icon, 11.0, color))
         .child(label)

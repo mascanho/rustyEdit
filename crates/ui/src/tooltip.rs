@@ -20,7 +20,7 @@ impl Render for Tip {
             .border_1()
             .border_color(theme.border)
             .shadow_md()
-            .text_size(sp(11.0))
+            .text_size(sp(crate::type_size::BODY))
             .text_color(theme.text)
             .child(self.text.clone())
     }

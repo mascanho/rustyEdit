@@ -165,7 +165,7 @@ impl Workspace {
                         .bg(theme.background)
                         .border_1()
                         .border_color(theme.accent)
-                        .text_size(sp(12.0))
+                        .text_size(sp(rustyedit_ui::type_size::LABEL))
                         .text_color(theme.text)
                         .child(draft.to_string())
                         .child(div().w(sp(1.0)).h(sp(13.0)).ml(sp(1.0)).bg(theme.accent)),
@@ -206,7 +206,7 @@ impl Workspace {
                     .h(sp(26.0))
                     .px_1()
                     .cursor_pointer()
-                    .text_size(sp(12.0))
+                    .text_size(sp(rustyedit_ui::type_size::LABEL))
                     .when(active, |el| {
                         el.bg(theme.accent_muted.opacity(0.5)).text_color(theme.text)
                     })
@@ -294,7 +294,7 @@ impl Workspace {
                     .child(
                         div()
                             .flex_shrink_0()
-                            .text_size(sp(10.0))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .text_color(theme.text_faint)
                             .child(count),
                     )
@@ -348,7 +348,7 @@ impl Workspace {
                         .pl(sp(26.0))
                         .pr_1()
                         .cursor_pointer()
-                        .text_size(sp(11.5))
+                        .text_size(sp(rustyedit_ui::type_size::BODY))
                         .text_color(theme.text_muted)
                         .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                         .tooltip(rustyedit_ui::tip(folder.display().to_string(), &theme))
@@ -402,7 +402,7 @@ impl Workspace {
                         .children(photos.map(|n| {
                             div()
                                 .flex_shrink_0()
-                                .text_size(sp(10.0))
+                                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                                 .text_color(theme.text_faint)
                                 .child(n.to_string())
                         }))
@@ -433,7 +433,7 @@ impl Workspace {
                         .h(sp(22.0))
                         .flex()
                         .items_center()
-                        .text_size(sp(11.0))
+                        .text_size(sp(rustyedit_ui::type_size::BODY))
                         .text_color(theme.text_faint)
                         .child("No folders")
                         .into_any_element(),
@@ -452,7 +452,7 @@ impl Workspace {
                 .h(sp(24.0))
                 .px_2()
                 .cursor_pointer()
-                .text_size(sp(11.5))
+                .text_size(sp(rustyedit_ui::type_size::BODY))
                 .text_color(theme.text_muted)
                 .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
                 .child(rustyedit_ui::icon(icon, 12.0, theme.text_muted))
@@ -501,7 +501,7 @@ impl Workspace {
                 .pt_2()
                 .pb_0p5()
                 .px_2()
-                .text_size(sp(9.5))
+                .text_size(sp(rustyedit_ui::type_size::CAPTION))
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.text_faint)
                 .child(text)
@@ -516,7 +516,7 @@ impl Workspace {
                 .h(sp(26.0))
                 .px_2()
                 .cursor_pointer()
-                .text_size(sp(12.0))
+                .text_size(sp(rustyedit_ui::type_size::LABEL))
                 .when(active, |el| {
                     el.bg(theme.accent_muted).text_color(theme.text)
                 })
@@ -680,7 +680,7 @@ impl Workspace {
                             .flex_row()
                             .items_center()
                             .gap_1()
-                            .text_size(sp(10.0))
+                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
                             .text_color(theme.text_faint)
                             .child(rustyedit_ui::icon(Icon::Folder, 11.0, theme.text_faint))
                             .child(def.folders.len().to_string()),
@@ -788,7 +788,7 @@ impl Workspace {
                 .child(
                     div()
                         .flex_shrink_0()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text_faint)
                         .child(count.to_string()),
                 ),

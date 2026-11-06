@@ -110,7 +110,7 @@ impl Workspace {
                     .justify_between()
                     .h(sp(22.0))
                     .px_3()
-                    .text_size(sp(10.5))
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
                     .text_color(theme.text_muted)
                     .child("Adding photos \u{2014} they appear here as they are ready")
                     .child(format!("{done} of {total}")),
@@ -776,7 +776,7 @@ impl Workspace {
                 .child(
                     div()
                         .flex_shrink_0()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(theme.text_muted)
                         .child("NAVIGATOR"),
@@ -786,7 +786,7 @@ impl Workspace {
                         .min_w(sp(0.0))
                         .overflow_hidden()
                         .whitespace_nowrap()
-                        .text_size(sp(10.0))
+                        .text_size(sp(rustyedit_ui::type_size::CAPTION))
                         .text_color(theme.text_faint)
                         .child(name),
                 )
@@ -910,7 +910,7 @@ pub(crate) fn panel_group_heading(theme: &Theme, label: &'static str) -> AnyElem
         .gap_2()
         .pt_3()
         .pb_1()
-        .text_size(sp(10.0))
+        .text_size(sp(rustyedit_ui::type_size::CAPTION))
         .font_weight(gpui::FontWeight::BOLD)
         .text_color(theme.accent)
         .child(label.to_uppercase())
