@@ -82,6 +82,9 @@ pub(crate) struct DevelopUi {
     /// positions on the photo.
     pub(crate) navigator_bounds: Rc<Cell<Bounds<Pixels>>>,
     pub(crate) navigator_dragging: bool,
+    /// Where inside the frame the Navigator was grabbed, as photo
+    /// fractions from the frame's centre, so dragging doesn't jump.
+    pub(crate) navigator_grab: (f32, f32),
     /// The user's saved presets (the built-in ones aren't stored).
     pub(crate) presets: Presets,
     /// The Presets panel's filter, strength and other view state.
@@ -149,6 +152,7 @@ impl DevelopUi {
             zoom: DevelopZoom::default(),
             navigator_bounds: Rc::new(Cell::new(Bounds::default())),
             navigator_dragging: false,
+            navigator_grab: (0.0, 0.0),
             presets: rustyedit_io::load_presets(),
             preset_ui: presets::PresetUi::default(),
             view_menu_open: false,

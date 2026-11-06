@@ -133,6 +133,9 @@ impl Workspace {
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, _w, cx| {
                     this.develop_ui.navigator_dragging = true;
+                    // Grabbing the frame itself keeps the spot under the
+                    // pointer; anywhere else centres the view there.
+                    this.develop_ui.navigator_grab = this.navigator_grab_at(event.position);
                     this.pan_navigator_to(event.position, cx);
                 }),
             );
@@ -145,20 +148,56 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// Centres the zoomed view on the photo point under `position`, zooming
-    /// to 100% first if the photo is fitted.
-    pub(super) fn pan_navigator_to(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+    /// The photo fraction under `position` on the Navigator picture.
+    fn navigator_point(&self, position: Point<Pixels>) -> Option<(f32, f32)> {
         let bounds = self.develop_ui.navigator_bounds.get();
         let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
         if bw <= 0.0 || bh <= 0.0 {
-            return;
+            return None;
         }
-        let fx = (f32::from(position.x - bounds.origin.x) / bw).clamp(0.0, 1.0);
-        let fy = (f32::from(position.y - bounds.origin.y) / bh).clamp(0.0, 1.0);
+        Some((
+            (f32::from(position.x - bounds.origin.x) / bw).clamp(0.0, 1.0),
+            (f32::from(position.y - bounds.origin.y) / bh).clamp(0.0, 1.0),
+        ))
+    }
+
+    /// How far `position` is from the frame's centre when it's inside the
+    /// frame, otherwise no offset.
+    fn navigator_grab_at(&self, position: Point<Pixels>) -> (f32, f32) {
+        let (Some((fx, fy)), Some((left, top, fw, fh))) =
+            (self.navigator_point(position), self.develop_visible_region())
+        else {
+            return (0.0, 0.0);
+        };
+        if fx >= left && fx <= left + fw && fy >= top && fy <= top + fh {
+            (fx - (left + fw / 2.0), fy - (top + fh / 2.0))
+        } else {
+            (0.0, 0.0)
+        }
+    }
+
+    /// Moves the zoomed view so the grabbed spot is under `position`
+    /// (centring on it when the frame wasn't grabbed), zooming to 100%
+    /// first if the photo is fitted.
+    pub(super) fn pan_navigator_to(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let Some((px_, py_)) = self.navigator_point(position) else {
+            return;
+        };
+        let (gx, gy) = self.develop_ui.navigator_grab;
+        let (fx, fy) = ((px_ - gx).clamp(0.0, 1.0), (py_ - gy).clamp(0.0, 1.0));
         if self.develop_ui.zoom.scale.is_none() {
             self.zoom_develop_to_actual(fx, fy, cx);
         } else {
+            // A zoom still waiting for its first layout has no sizes to
+            // place the view by yet, so that one is left to the viewer.
+            let laid_out = self.develop_ui.zoom.anchor.get().is_none();
             self.develop_ui.zoom.centre_on(fx, fy);
+            if laid_out {
+                // Placed now, from the last render's sizes, so the frame
+                // drawn with this very update already shows the new
+                // position instead of trailing the pointer by a frame.
+                self.develop_ui.zoom.apply_anchor();
+            }
             cx.notify();
         }
     }

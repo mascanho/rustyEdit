@@ -50,16 +50,19 @@ impl Workspace {
             track: slider_track(adjustment, &develop),
         };
         let entity = cx.entity();
+        // Tint is stored with positive as green but its slider runs green
+        // to magenta, so the slider shows (and reports) the opposite sign.
+        let sign = adjustment.display_sign();
 
         rustyedit_ui::labeled_slider(
             gpui::SharedString::from(format!("adjustment-{:?}", adjustment)),
             adjustment.label(),
-            adjustment.get(&develop),
+            adjustment.get(&develop) * sign,
             spec,
             &self.theme,
             move |new_value, _window, cx| {
                 entity.update(cx, |this, cx| {
-                    this.apply_adjustment(adjustment, new_value, cx);
+                    this.apply_adjustment(adjustment, new_value * sign, cx);
                 });
             },
         )
