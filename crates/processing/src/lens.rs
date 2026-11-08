@@ -50,10 +50,19 @@ pub(crate) fn correct(source: &RgbImage, s: &DevelopSettings) -> RgbImage {
                 // which straightens barrel distortion.
                 let scale = 1.0 - k * r2;
                 let gain = (1.0 + vignette * r2).max(0.0);
-                for (c, factor) in [scale * (1.0 + ca), scale, scale * (1.0 - ca)]
-                    .into_iter()
-                    .enumerate()
-                {
+                let mut factors = [scale * (1.0 + ca), scale, scale * (1.0 - ca)];
+                // Where red or blue would be read from beyond the photo,
+                // the three channels all follow green: otherwise one is
+                // stretched from the edge while the others aren't, and the
+                // photo gets a purple / green border.
+                let outside = factors.iter().any(|f| {
+                    let (sx, sy) = (cx + dx * f, cy + dy * f);
+                    sx < 0.0 || sy < 0.0 || sx > w as f32 - 1.0 || sy > h as f32 - 1.0
+                });
+                if outside {
+                    factors = [scale; 3];
+                }
+                for (c, factor) in factors.into_iter().enumerate() {
                     let v = sample(c, cx + dx * factor, cy + dy * factor) * gain;
                     px[c] = v.round().clamp(0.0, 255.0) as u8;
                 }
@@ -118,5 +127,24 @@ mod tests {
         let peak = |c: usize| (0..401).max_by_key(|&x| out.get_pixel(x, 10)[c]).unwrap();
         assert!(peak(0) < peak(2), "red and blue should separate");
         assert_eq!(peak(1), 390);
+    }
+
+    #[test]
+    fn chromatic_aberration_leaves_no_coloured_border() {
+        // A grey photo: whatever the correction, it has to stay grey, edge
+        // pixels included.
+        let mut img = RgbImage::new(120, 80);
+        for (x, _, px) in img.enumerate_pixels_mut() {
+            let v = (x * 2) as u8;
+            *px = Rgb([v, v, v]);
+        }
+        for ca in [100.0, -100.0] {
+            let out = correct(&img, &with(|s| s.lens_ca = ca));
+            for (x, y) in [(0, 0), (0, 40), (119, 0), (119, 79), (60, 0), (60, 79), (0, 79)] {
+                let p = out.get_pixel(x, y);
+                let spread = p.0.iter().max().unwrap() - p.0.iter().min().unwrap();
+                assert!(spread <= 3, "({x}, {y}) at {ca}: {p:?}");
+            }
+        }
     }
 }

@@ -326,6 +326,22 @@ impl Workspace {
         };
         self.push_undo(label, changes, false);
         self.mark_catalog_dirty(cx);
+        // Say what was set, as the keys give no other sign in the editor.
+        let first = &self.catalog.assets[targets[0]];
+        self.status_message = Some(
+            match op {
+                CullOp::Flag(_) => format!("Flag: {:?}", first.flag),
+                CullOp::Rating(_) => match first.rating.value() {
+                    0 => "Rating cleared".to_string(),
+                    n => format!("Rated {}", "\u{2605}".repeat(n as usize)),
+                },
+                CullOp::Label(_) => match first.color_label {
+                    ColorLabel::None => "Colour label cleared".to_string(),
+                    l => format!("Colour label: {l:?}"),
+                },
+            }
+            .into(),
+        );
 
         // Auto-advance after a decision on a single photo (never wraps).
         let decides = matches!(op, CullOp::Flag(_) | CullOp::Rating(_));

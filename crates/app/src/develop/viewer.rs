@@ -4,7 +4,7 @@
 use rustyedit_ui::sp;
 use gpui::{
     canvas, div, img, prelude::*, px, AnyElement, ClickEvent, Context, ImageSource, MouseButton,
-    MouseDownEvent, MouseMoveEvent, ObjectFit, Window,
+    MouseDownEvent, MouseMoveEvent, ObjectFit, SharedString, Window,
 };
 
 use crate::workspace::Workspace;
@@ -93,6 +93,7 @@ impl Workspace {
                     .children(self.develop_split_overlay(cx)),
             )
             .child(self.render_zoom_badge(cx))
+            .child(self.render_rating_badge(cx))
             // A thin accent frame while a comparison is on, so the photo
             // isn't mistaken for the edit.
             .when(comparing, |el| {
@@ -289,6 +290,69 @@ impl Workspace {
             .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
                 this.toggle_develop_zoom(cx);
             }))
+            .into_any_element()
+    }
+
+    /// The photo's stars and colour label, top right of the viewer: what
+    /// the 0-5 and 6-9 keys set, shown (and clickable) while editing.
+    fn render_rating_badge(&self, cx: &mut Context<Self>) -> AnyElement {
+        use rustyedit_core::ColorLabel;
+        let theme = self.theme;
+        let Some(asset) = self.catalog.selected_asset() else {
+            return div().into_any_element();
+        };
+        let (rating, current) = (asset.rating, asset.color_label);
+        let entity = cx.entity();
+        let swatches = [
+            (ColorLabel::Red, "Red", "6"),
+            (ColorLabel::Yellow, "Yellow", "7"),
+            (ColorLabel::Green, "Green", "8"),
+            (ColorLabel::Blue, "Blue", "9"),
+        ]
+        .into_iter()
+        .filter_map(|(label, name, key)| {
+            let colour = theme.color_label(label)?;
+            let entity = cx.entity();
+            Some(
+                rustyedit_ui::label_swatch(
+                    SharedString::from(format!("develop-label-{name}")),
+                    colour,
+                    format!("{name} label ({key})"),
+                    current == label,
+                    &theme,
+                    move |_, _w, cx| {
+                        entity.update(cx, |this, cx| this.set_color_label_value(label, cx));
+                    },
+                )
+                .into_any_element(),
+            )
+        });
+        div()
+            .id("develop-rating-badge")
+            .absolute()
+            .top(sp(10.0))
+            .right(sp(10.0))
+            .h(sp(26.0))
+            .px_2()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_2()
+            .rounded_md()
+            .bg(theme.surface.opacity(0.85))
+            .border_1()
+            .border_color(theme.border)
+            .child(rustyedit_ui::rating_stars(
+                "develop-rating",
+                rating,
+                &theme,
+                14.0,
+                Some(move |value: u8, _w: &mut Window, cx: &mut gpui::App| {
+                    entity.update(cx, |this, cx| this.set_rating_value(value, cx));
+                }),
+            ))
+            .child(div().w(sp(1.0)).h(sp(14.0)).bg(theme.border_subtle))
+            .children(swatches)
             .into_any_element()
     }
 

@@ -489,7 +489,20 @@ fn load(@builtin(global_invocation_id) id: vec3<u32>) {
         let r2 = (dx * dx + dy * dy) / p.lens_norm2;
         let scale = 1.0 - p.lens_k * r2;
         let gain = max(1.0 + p.lens_vig * r2, 0.0);
-        let f = vec3<f32>(scale * (1.0 + p.lens_ca), scale, scale * (1.0 - p.lens_ca));
+        var f = vec3<f32>(scale * (1.0 + p.lens_ca), scale, scale * (1.0 - p.lens_ca));
+        // Where red or blue would be read from beyond the photo, all three
+        // channels follow green (lens.rs `correct`): a mismatched edge
+        // stretch made a purple / green border.
+        let wmax = f32(p.src_width) - 1.0;
+        let hmax = f32(p.src_height) - 1.0;
+        var outside = false;
+        for (var k = 0; k < 3; k++) {
+            let fk = f[k];
+            let sx = p.lens_cx + dx * fk;
+            let sy = p.lens_cy + dy * fk;
+            if (sx < 0.0 || sy < 0.0 || sx > wmax || sy > hmax) { outside = true; }
+        }
+        if (outside) { f = vec3<f32>(scale); }
         c = vec3<f32>(
             lens_sample(p.lens_cx + dx * f.x, p.lens_cy + dy * f.x).x,
             lens_sample(p.lens_cx + dx * f.y, p.lens_cy + dy * f.y).y,
