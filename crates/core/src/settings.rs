@@ -870,9 +870,13 @@ pub struct DevelopPreferences {
     pub preset_hover_preview: bool,
     /// The first time a RAW photo is opened in Develop, start it from the
     /// camera's own colour look (taken from the JPEG preview in the file).
+    /// Off unless the user turns it on: nothing is adjusted for them. The
+    /// saved key is new, so the earlier default of "on" isn't carried over.
+    #[serde(rename = "start_from_camera_look")]
     pub camera_look_on_open: bool,
     /// ...and with lens corrections: the lens profile when the lens is
     /// known, otherwise the corrections the camera applied.
+    #[serde(rename = "start_with_lens_corrections")]
     pub camera_lens_on_open: bool,
     /// The ICC profile (a printer's, usually) last loaded for soft-proofing.
     pub proof_profile: Option<std::path::PathBuf>,
@@ -896,8 +900,8 @@ impl Default for DevelopPreferences {
             tools_expanded_on_startup: true,
             section_order: Vec::new(),
             preset_hover_preview: true,
-            camera_look_on_open: true,
-            camera_lens_on_open: true,
+            camera_look_on_open: false,
+            camera_lens_on_open: false,
             proof_profile: None,
             lens_db_folder: None,
             parametric_points: true,

@@ -1960,6 +1960,7 @@ impl Workspace {
                     .border_color(if focused { look.selected } else { gpui::transparent_black() })
                     .when(picked, |el| el.bg(look.frame_selected_bg))
                     .hover(|el| el.bg(look.frame_hover_bg))
+                    .on_mouse_down(MouseButton::Right, Self::page_menu_listener(cx.entity(), layout_ix))
                     .child(
                         div()
                             .border_1()
@@ -2194,7 +2195,7 @@ impl Workspace {
     }
 
     /// The label under page `ix` of the layout.
-    fn zine_auto_title(&self, layout: &ZinePageLayout, ix: usize) -> String {
+    pub(crate) fn zine_auto_title(&self, layout: &ZinePageLayout, ix: usize) -> String {
         if layout.pages.len() == 1 && layout.pages[0].cells.len() > 1 {
             "Folded sheet".to_string()
         } else if self.zine.options.cover && ix == 0 {
@@ -2280,7 +2281,7 @@ impl Workspace {
     }
 
     /// Scrolls the pages to page `ix` of the layout.
-    fn scroll_to_auto_page(&self, ix: usize) {
+    pub(crate) fn scroll_to_auto_page(&self, ix: usize) {
         let child = if self.zine_ui.spreads { (ix + 1) / 2 } else { ix };
         self.zine_ui.scroll.scroll_to_top_of_item(child);
     }
@@ -2326,6 +2327,7 @@ impl Workspace {
                             .text_color(look.meta_text)
                             .child(label),
                     )
+                    .on_mouse_down(MouseButton::Right, Self::page_menu_listener(cx.entity(), ix))
                     .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
                         this.scroll_to_auto_page(ix);
                         cx.notify();
@@ -2776,7 +2778,7 @@ fn side_section(theme: &rustyedit_ui::Theme, title: &'static str, content: AnyEl
 
 /// Starts the manual pages from the automatic layout, as an override of
 /// it begins.
-fn hand_over(zine: &mut rustyedit_core::Zine) {
+pub(crate) fn hand_over(zine: &mut rustyedit_core::Zine) {
     zine.options.mode = rustyedit_core::ZineMode::Manual;
     zine.seed_manual();
 }

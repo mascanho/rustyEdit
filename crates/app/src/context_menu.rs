@@ -47,6 +47,8 @@ pub(crate) struct ContextMenu {
     pub position: Point<Pixels>,
     /// Index into the entries of the highlighted row.
     focus: Option<usize>,
+    /// The menu is for page `n` of the zine's layout, not for photos.
+    page: Option<usize>,
     /// The submenu that's open, and its highlighted row.
     submenu: Option<OpenSubmenu>,
 }
@@ -182,9 +184,249 @@ impl Workspace {
         self.context_menu = Some(ContextMenu {
             position,
             focus: None,
+            page: None,
             submenu: None,
         });
         cx.notify();
+    }
+
+    /// Opens the menu for page `layout_ix` of the zine (a page's strip
+    /// thumbnail was right-clicked).
+    pub(crate) fn open_page_menu(
+        &mut self,
+        layout_ix: usize,
+        position: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        self.bottom_menu = None;
+        self.card_info = None;
+        self.context_menu = Some(ContextMenu {
+            position,
+            focus: None,
+            page: Some(layout_ix),
+            submenu: None,
+        });
+        cx.notify();
+    }
+
+    /// Attach to a page's thumbnail: right-click opens the page menu.
+    pub(crate) fn page_menu_listener(
+        entity: gpui::Entity<Self>,
+        layout_ix: usize,
+    ) -> impl Fn(&MouseDownEvent, &mut Window, &mut gpui::App) + 'static {
+        move |event: &MouseDownEvent, _window, cx| {
+            let position = event.position;
+            entity.update(cx, |this, cx| this.open_page_menu(layout_ix, position, cx));
+        }
+    }
+
+    /// The page menu's rows: what can be done with one page of the zine.
+    /// On an automatic zine, anything that changes the pages first hands
+    /// them over to manual (one Undo gives them back).
+    fn page_entries(&self, layout_ix: usize) -> Vec<Entry> {
+        use rustyedit_core::{ZineLayout, ZineMode, ZineTemplate};
+        let layout = self.zine.layout();
+        let total = layout.pages.len();
+        let Some(page) = layout.pages.get(layout_ix) else {
+            return Vec::new();
+        };
+        let sheet = self.zine.options.layout == ZineLayout::FoldedSheet;
+        let offset = usize::from(self.zine.options.cover && !sheet);
+        let manual_ix = layout_ix.checked_sub(offset).filter(|_| !sheet);
+        let automatic = self.zine.options.mode == ZineMode::Auto;
+        let photos = page
+            .cells
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c.content,
+                    rustyedit_core::ZineContent::Photo(_)
+                        | rustyedit_core::ZineContent::Cover { photo: Some(_) }
+                )
+            })
+            .count();
+        let mut out = vec![Entry::Header {
+            title: self.zine_auto_title(&layout, layout_ix),
+            subtitle: format!(
+                "{} \u{00B7} page {} of {total}",
+                plural(photos, "1 photo", "photos"),
+                layout_ix + 1
+            ),
+            thumb: None,
+            count: 1,
+        }];
+        out.push(
+            item("page-menu-show", Icon::View, "Show this page", move |this, _w, cx| {
+                this.scroll_to_auto_page(layout_ix);
+                cx.notify();
+            })
+            .entry(),
+        );
+        out.push(
+            item("page-menu-preview", Icon::ZoomIn, "Preview from here", move |this, _w, cx| {
+                this.zine_ui.preview = Some(layout_ix);
+                cx.notify();
+            })
+            .entry(),
+        );
+        let Some(page_ix) = manual_ix else {
+            // The cover and a folded sheet are made up by the zine's
+            // settings, so there is nothing to rearrange.
+            return out;
+        };
+
+        // What the page holds now, for ticking the layout.
+        let (slots, free) = match (automatic, self.zine.manual.pages.get(page_ix)) {
+            (false, Some(p)) => (p.slots.len(), p.is_free()),
+            _ => (page.cells.len(), false),
+        };
+        let edit = move |this: &mut Workspace,
+                         cx: &mut Context<Workspace>,
+                         change: Box<dyn FnOnce(&mut rustyedit_core::Zine)>| {
+            this.zine_ui.clear_selection();
+            this.update_zine(cx, move |z| {
+                if z.options.mode == ZineMode::Auto {
+                    crate::zine_pages::hand_over(z);
+                }
+                change(z)
+            });
+        };
+
+        out.push(Entry::Separator);
+        let layouts: Vec<Item> = [(1usize, "1 photo"), (2, "2 photos"), (4, "4 photos")]
+            .into_iter()
+            .map(|(n, label)| {
+                item(format!("page-menu-per-{n}"), Icon::Grid, label, move |this, _w, cx| {
+                    edit(this, cx, Box::new(move |z| z.set_page_slots(page_ix, n)))
+                })
+                .checked(!free && slots == n)
+            })
+            .chain(std::iter::once(
+                item("page-menu-free", Icon::Frame, "Free layout", move |this, _w, cx| {
+                    edit(this, cx, Box::new(move |z| z.make_page_free(page_ix)))
+                })
+                .checked(free),
+            ))
+            .collect();
+        out.push(Entry::Submenu {
+            id: "page-menu-layout".into(),
+            icon: Icon::Grid,
+            label: "Layout".into(),
+            detail: Some(if free { "Free".into() } else { format!("{slots} per page") }),
+            items: layouts,
+        });
+        out.push(Entry::Submenu {
+            id: "page-menu-template".into(),
+            icon: Icon::Frame,
+            label: "Apply a template".into(),
+            detail: None,
+            items: ZineTemplate::ALL
+                .iter()
+                .map(|&template| {
+                    item(
+                        format!("page-menu-template-{}", template.label()),
+                        Icon::Frame,
+                        template.label(),
+                        move |this, _w, cx| {
+                            edit(
+                                this,
+                                cx,
+                                Box::new(move |z| {
+                                    z.apply_template(page_ix, template);
+                                }),
+                            )
+                        },
+                    )
+                })
+                .collect(),
+        });
+        let papers: [(&str, Option<[u8; 3]>); 5] = [
+            ("The zine\u{2019}s paper", None),
+            ("White", Some([255, 255, 255])),
+            ("Cream", Some([244, 236, 216])),
+            ("Light grey", Some([222, 222, 222])),
+            ("Black", Some([20, 20, 20])),
+        ];
+        let current = self.zine.manual.pages.get(page_ix).and_then(|p| p.background);
+        out.push(Entry::Submenu {
+            id: "page-menu-paper".into(),
+            icon: Icon::Brush,
+            label: "Paper colour".into(),
+            detail: None,
+            items: papers
+                .into_iter()
+                .map(|(label, colour)| {
+                    item(format!("page-menu-paper-{label}"), Icon::Brush, label, move |this, _w, cx| {
+                        edit(this, cx, Box::new(move |z| z.set_page_background(page_ix, colour)))
+                    })
+                    .checked(!automatic && current == colour)
+                })
+                .collect(),
+        });
+
+        out.push(Entry::Separator);
+        let last = total.saturating_sub(offset + 1);
+        if page_ix > 0 {
+            out.push(
+                item("page-menu-earlier", Icon::ChevronLeft, "Move earlier", move |this, _w, cx| {
+                    edit(this, cx, Box::new(move |z| {
+                        z.shift_page(page_ix, -1);
+                    }))
+                })
+                .entry(),
+            );
+            out.push(
+                item("page-menu-first", Icon::ChevronLeft, "Move to the start", move |this, _w, cx| {
+                    edit(this, cx, Box::new(move |z| {
+                        z.move_page(page_ix, 0);
+                    }))
+                })
+                .entry(),
+            );
+        }
+        if page_ix < last {
+            out.push(
+                item("page-menu-later", Icon::ChevronRight, "Move later", move |this, _w, cx| {
+                    edit(this, cx, Box::new(move |z| {
+                        z.shift_page(page_ix, 1);
+                    }))
+                })
+                .entry(),
+            );
+            out.push(
+                item("page-menu-last", Icon::ChevronRight, "Move to the end", move |this, _w, cx| {
+                    edit(this, cx, Box::new(move |z| {
+                        z.move_page(page_ix, last);
+                    }))
+                })
+                .entry(),
+            );
+        }
+        out.push(Entry::Separator);
+        out.push(
+            item("page-menu-duplicate", Icon::Duplicates, "Duplicate page", move |this, _w, cx| {
+                edit(this, cx, Box::new(move |z| {
+                    z.duplicate_page(page_ix);
+                }))
+            })
+            .entry(),
+        );
+        out.push(
+            item("page-menu-add", Icon::Plus, "Add a page at the end", move |this, _w, cx| {
+                edit(this, cx, Box::new(move |z| z.add_free_page()))
+            })
+            .entry(),
+        );
+        out.push(Entry::Separator);
+        out.push(
+            item("page-menu-delete", Icon::Trash, "Delete page", move |this, _w, cx| {
+                this.zine_ui.page = None;
+                edit(this, cx, Box::new(move |z| z.remove_page(page_ix)))
+            })
+            .danger()
+            .entry(),
+        );
+        out
     }
 
     /// Attach to any element showing photo `ix`: right-click opens the menu.
@@ -201,6 +443,9 @@ impl Workspace {
     // --- Building the entries --------------------------------------------------
 
     fn context_entries(&self, cx: &App) -> Vec<Entry> {
+        if let Some(page) = self.context_menu.and_then(|m| m.page) {
+            return self.page_entries(page);
+        }
         let targets = self.target_indices();
         let count = targets.len();
         let assets: Vec<_> = targets.iter().map(|&ix| &self.catalog.assets[ix]).collect();
@@ -634,7 +879,7 @@ impl Workspace {
             "9" => Some(CullOp::Label(ColorLabel::Blue)),
             _ => None,
         };
-        if let Some(op) = quick {
+        if let Some(op) = quick.filter(|_| menu.page.is_none()) {
             self.context_menu = None;
             self.apply_cull(op, cx);
             cx.notify();

@@ -133,6 +133,10 @@ pub(crate) struct DevelopUi {
     /// The Crop tool is picked, and the drag in progress on its box.
     pub(crate) crop_tool: bool,
     pub(crate) crop_drag: Option<crop_tool::CropDrag>,
+    /// "Align" is on: a line drawn on the photo levels it to the frame.
+    pub(crate) crop_align: bool,
+    /// The line being drawn, in screen pixels: where it began and ends.
+    pub(crate) crop_ruler: Option<((f32, f32), (f32, f32))>,
     /// What the pointer is over on the crop box, and where it is.
     pub(crate) crop_hover: Option<crop_tool::CropHit>,
     pub(crate) crop_pointer: Point<Pixels>,
@@ -179,6 +183,8 @@ impl DevelopUi {
             gradients: GradientUi::default(),
             crop_tool: false,
             crop_drag: None,
+            crop_align: false,
+            crop_ruler: None,
             crop_hover: None,
             crop_pointer: Point::default(),
             curve_target: false,

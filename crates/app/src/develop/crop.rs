@@ -46,6 +46,43 @@ impl Workspace {
         );
 
         let upright = self.upright_row(cx);
+        let aligning = self.develop_ui.crop_align;
+        let theme = self.theme;
+        let align = div()
+            .id("crop-align")
+            .flex()
+            .items_center()
+            .justify_center()
+            .h(sp(26.0))
+            .rounded_md()
+            .border_1()
+            .cursor_pointer()
+            .text_size(sp(rustyedit_ui::type_size::BODY))
+            .when(aligning, |el| {
+                el.bg(theme.accent_muted).border_color(theme.accent).text_color(theme.text)
+            })
+            .when(!aligning, |el| {
+                el.border_color(theme.border_subtle)
+                    .text_color(theme.text_muted)
+                    .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
+            })
+            .tooltip(rustyedit_ui::tip(
+                "Draw a line along the horizon or an edge; the photo turns until it lies along the frame",
+                &theme,
+            ))
+            .child(if aligning { "Align: drag a line on the photo" } else { "Align to a line\u{2026}" })
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                let on = !this.develop_ui.crop_align;
+                // Picking the tool puts everything else down, Align too,
+                // so it's switched on after.
+                if on && !this.develop_ui.crop_tool {
+                    this.toggle_photo_tool(super::tool_strip::PhotoTool::Crop, cx);
+                }
+                this.develop_ui.crop_align = on;
+                this.develop_ui.crop_ruler = None;
+                cx.notify();
+            }))
+            .into_any_element();
         let perspective_spec = SliderSpec {
             min: -MAX_PERSPECTIVE,
             max: MAX_PERSPECTIVE,
@@ -72,6 +109,7 @@ impl Workspace {
 
         vec![
             upright,
+            align,
             aspects.into_any_element(),
             straighten.into_any_element(),
             perspective("crop-vertical", "Vertical", crop.vertical, true),

@@ -47,7 +47,8 @@ pub fn apply_tone(pixel: [f32; 3], settings: &DevelopSettings) -> [f32; 3] {
 
     // Whites / blacks: rescale the output range.
     let black_point = (settings.blacks / 100.0).clamp(-1.0, 1.0) * 0.25;
-    let white_point = 1.0 + (settings.whites / 100.0).clamp(-1.0, 1.0) * 0.25;
+    // Positive Whites brightens (the white point comes down).
+    let white_point = 1.0 - (settings.whites / 100.0).clamp(-1.0, 1.0) * 0.25;
     let range = (white_point - black_point).max(0.05);
     for c in rgb.iter_mut() {
         *c = ((*c - black_point) / range).clamp(0.0, 1.0);
@@ -68,4 +69,21 @@ pub fn apply_tone_rgb8(pixel: Rgb<u8>, settings: &DevelopSettings) -> Rgb<u8> {
         (adjusted[1].clamp(0.0, 1.0) * 255.0).round() as u8,
         (adjusted[2].clamp(0.0, 1.0) * 255.0).round() as u8,
     ])
+}
+
+#[cfg(test)]
+mod whites_tests {
+    use super::*;
+
+    #[test]
+    fn positive_whites_brighten_and_negative_whites_darken() {
+        let light = Rgb([200u8, 200, 200]);
+        let at = |whites: f32| {
+            let mut s = DevelopSettings::default();
+            s.whites = whites;
+            apply_tone_rgb8(light, &s)[0]
+        };
+        assert!(at(50.0) > at(0.0), "{} vs {}", at(50.0), at(0.0));
+        assert!(at(-50.0) < at(0.0));
+    }
 }

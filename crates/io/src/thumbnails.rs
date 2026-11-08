@@ -296,11 +296,18 @@ pub fn generate_thumbnails_in_batches(
     progress: &std::sync::atomic::AtomicUsize,
     measure_sharpness: bool,
     batch: usize,
+    cancel: &std::sync::atomic::AtomicBool,
     mut sink: impl FnMut(Vec<ThumbInfo>),
 ) {
     use rayon::prelude::*;
+    use std::sync::atomic::Ordering;
 
     for chunk in assets.chunks(batch.max(1)) {
+        // The library moved on (another catalog was opened): stop making
+        // thumbnails nobody is waiting for.
+        if cancel.load(Ordering::Relaxed) {
+            return;
+        }
         let infos: Vec<ThumbInfo> = chunk
             .par_iter()
             .filter_map(|asset| thumbnail_one(cache, asset, progress, measure_sharpness))
@@ -519,7 +526,7 @@ mod batch_tests {
         let cache = ThumbnailCache::for_folder(&dir);
         let progress = AtomicUsize::new(0);
         let mut batches: Vec<Vec<u64>> = Vec::new();
-        generate_thumbnails_in_batches(&cache, &assets, &progress, false, 2, |infos| {
+        generate_thumbnails_in_batches(&cache, &assets, &progress, false, 2, &std::sync::atomic::AtomicBool::new(false), |infos| {
             // What was finished so far is already counted.
             assert!(progress.load(Ordering::Relaxed) >= infos.len());
             batches.push(infos.iter().map(|i| i.id).collect());

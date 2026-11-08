@@ -43,7 +43,7 @@ impl Workspace {
             center.child(self.render_empty_library(cx))
         } else {
             center
-                .children(self.is_importing.then(|| self.render_import_banner()))
+                .children((self.is_importing || self.import_progress.is_some()).then(|| self.render_import_banner()))
                 .child(self.render_library_toolbar(cx))
                 .child(
                     // The view and anything floating over it (the search chip).

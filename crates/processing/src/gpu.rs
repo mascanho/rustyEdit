@@ -1751,7 +1751,8 @@ fn plan_develop(plan: &mut Planner, s: &DevelopSettings, raw: bool) {
 
     if crate::has_base_edits(&base) {
         let black_point = (base.blacks / 100.0).clamp(-1.0, 1.0) * 0.25;
-        let white_point = 1.0 + (base.whites / 100.0).clamp(-1.0, 1.0) * 0.25;
+        // Positive Whites brightens (the white point comes down).
+        let white_point = 1.0 - (base.whites / 100.0).clamp(-1.0, 1.0) * 0.25;
         let params = Params {
             exposure_factor: 2f32.powf(base.exposure / 50.0),
             shadow_amount: base.shadows / 100.0,

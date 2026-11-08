@@ -278,6 +278,10 @@ pub struct Workspace {
     pub(crate) right_rail_tool: Option<RailTool>,
     /// Thumbnail progress of the running import: (done counter, total).
     pub(crate) import_progress: Option<(Arc<std::sync::atomic::AtomicUsize>, usize)>,
+    /// Stops the thumbnails of a catalog that was opened over (see
+    /// `open_catalog`), and which opening is the current one.
+    pub(crate) import_cancel: Arc<std::sync::atomic::AtomicBool>,
+    pub(crate) import_epoch: u64,
     pub(crate) grid_scroll: UniformListScrollHandle,
     // Scroll positions of the side panels and Settings content, which
     // also drive their scrollbars.
@@ -557,6 +561,8 @@ impl Workspace {
             left_rail_tool: None,
             right_rail_tool: None,
             import_progress: None,
+            import_cancel: Default::default(),
+            import_epoch: 0,
             grid_scroll: UniformListScrollHandle::new(),
             left_dock_scroll: ScrollHandle::new(),
             right_dock_scroll: ScrollHandle::new(),

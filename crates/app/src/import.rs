@@ -86,6 +86,14 @@ impl Workspace {
         if self.is_importing {
             return;
         }
+        // Whatever thumbnails were still being made for the library that's
+        // being replaced aren't wanted any more.
+        self.import_cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.import_cancel = Default::default();
+        self.import_epoch += 1;
+        let epoch = self.import_epoch;
+        let cancel = self.import_cancel.clone();
+        self.import_progress = None;
         let folders = self.catalog_def.folders.clone();
         if folders.is_empty() {
             self.install_catalog(Catalog::default(), self.thumbnail_cache.clone(), None, cx);
@@ -220,6 +228,9 @@ impl Workspace {
                 let catalog = Catalog::new_multi(folders, assets);
                 this.install_catalog(catalog, Some(Arc::new(cache.clone())), select, cx);
                 this.import_progress = Some((done.clone(), total));
+                // Scanning is over: the library is on show and can be used
+                // (or switched away from) while its thumbnails come in.
+                this.is_importing = false;
                 this.status_message = Some(format!("Generating thumbnails for {total} photos…").into());
                 cx.notify();
                 (added, removed, missing, kept)
@@ -234,6 +245,7 @@ impl Workspace {
             let thumb_assets = this
                 .update(cx, |this, _| this.catalog.assets.clone())
                 .unwrap_or_default();
+            let cancel_job = cancel.clone();
             let job = cx.background_executor().spawn({
                 let (pending, finished, done) = (pending.clone(), finished.clone(), done.clone());
                 async move {
@@ -243,6 +255,7 @@ impl Workspace {
                         &done,
                         measure_sharpness,
                         THUMBNAIL_BATCH,
+                        &cancel_job,
                         |batch| pending.lock().unwrap().extend(batch),
                     );
                     finished.store(true, std::sync::atomic::Ordering::Release);
@@ -257,10 +270,14 @@ impl Workspace {
                 let batch = std::mem::take(&mut *pending.lock().unwrap());
                 let alive = this
                     .update(cx, |this, cx| {
+                        if this.import_epoch != epoch {
+                            return false;
+                        }
                         this.apply_thumbnails(batch);
                         cx.notify();
+                        true
                     })
-                    .is_ok();
+                    .unwrap_or(false);
                 if last || !alive {
                     break;
                 }
@@ -268,6 +285,10 @@ impl Workspace {
             job.await;
 
             this.update(cx, |this, cx| {
+                // Another catalog was opened meanwhile; it reports for itself.
+                if this.import_epoch != epoch {
+                    return;
+                }
                 this.facets = crate::filters_panel::Facets::build(&this.catalog);
                 this.mark_catalog_dirty(cx);
                 if import_append {

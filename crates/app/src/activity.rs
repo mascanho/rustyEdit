@@ -49,7 +49,7 @@ impl Workspace {
     /// Everything running now, the most important first.
     pub(crate) fn activities(&self) -> Vec<Activity> {
         let mut out = Vec::new();
-        if self.is_importing {
+        if self.is_importing || self.import_progress.is_some() {
             let (detail, progress) = match &self.import_progress {
                 Some((done, total)) => of(done.load(Ordering::Relaxed), *total, "thumbnails"),
                 None => ("Scanning folders\u{2026}".to_string(), None),

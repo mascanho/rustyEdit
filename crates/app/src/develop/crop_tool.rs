@@ -71,7 +71,49 @@ fn rotated_angle(start_angle: f32, centre: (f32, f32), from: f32, to: (f32, f32)
     (start_angle + delta).clamp(-MAX_STRAIGHTEN, MAX_STRAIGHTEN)
 }
 
+/// How far (degrees, turning the photo clockwise) a line drawn from `a`
+/// to `b` on screen has to be turned to lie along the nearest axis, the
+/// frame's edges: horizontal for a shallow line, vertical for a steep one.
+/// Negative when it leans clockwise already (so the photo turns back).
+fn alignment_turn(a: (f32, f32), b: (f32, f32)) -> f32 {
+    let theta = (b.1 - a.1).atan2(b.0 - a.0).to_degrees();
+    // How far clockwise of an axis the line is, -45..45.
+    let off = (theta + 45.0).rem_euclid(90.0) - 45.0;
+    -off
+}
+
 impl Workspace {
+    /// Mouse released: a line drawn with Align turns the photo until that
+    /// line lies along the frame.
+    pub(crate) fn finish_crop_ruler(&mut self, cx: &mut Context<Self>) {
+        let Some((a, b)) = self.develop_ui.crop_ruler.take() else {
+            return;
+        };
+        cx.notify();
+        // Too short a line says nothing about the angle.
+        if (b.0 - a.0).hypot(b.1 - a.1) < 24.0 {
+            return;
+        }
+        let turn = alignment_turn(a, b);
+        let Some(current) = self.catalog.selected_asset().map(|a| a.develop.crop.angle) else {
+            return;
+        };
+        let target = current + turn;
+        if target.abs() > MAX_STRAIGHTEN {
+            self.status_message = Some(
+                format!("That line is more than {MAX_STRAIGHTEN:.0}\u{b0} off the frame; draw it along something nearly level.").into(),
+            );
+            return;
+        }
+        self.develop_ui.crop_align = false;
+        self.edit_develop(
+            "Align to a line",
+            |d| d.crop.angle = target,
+            |d| (String::new(), format!("{:+.1}\u{b0}", d.crop.angle)),
+            cx,
+        );
+    }
+
     pub fn tool_crop(&mut self, _: &ToolCrop, _w: &mut gpui::Window, cx: &mut Context<Self>) {
         if self.mode == Mode::Develop {
             self.toggle_photo_tool(super::tool_strip::PhotoTool::Crop, cx);
@@ -138,7 +180,49 @@ impl Workspace {
                         .child(rustyedit_ui::icon(rustyedit_ui::Icon::Reset, 14.0, gpui::white())),
                 )
         });
+        // Align: a level with a crosshair at its centre stands in for the
+        // pointer, so the line can be set on the horizon exactly.
+        let level_glyph = (self.develop_ui.crop_align
+            && (self.develop_ui.crop_hover.is_some() || self.develop_ui.crop_ruler.is_some()))
+        .then(|| {
+            let at = self.develop_ui.crop_pointer;
+            let line = |w: f32, h: f32, x: f32, y: f32, c: gpui::Hsla| {
+                div().absolute().left(px(x)).top(px(y)).w(px(w)).h(px(h)).bg(c)
+            };
+            let (dark, light, gold) = (gpui::black().opacity(0.6), gpui::white(), gpui::rgb(0xffd23f));
+            div()
+                .absolute()
+                .left(at.x - px(18.0))
+                .top(at.y - px(18.0))
+                .size(px(36.0))
+                // Crosshair, with a gap at the middle.
+                .child(line(36.0, 3.0, 0.0, 16.5, dark))
+                .child(line(3.0, 36.0, 16.5, 0.0, dark))
+                .child(line(14.0, 1.0, 0.0, 17.0, light))
+                .child(line(14.0, 1.0, 22.0, 17.0, light))
+                .child(line(1.0, 14.0, 17.0, 0.0, light))
+                .child(line(1.0, 14.0, 17.0, 22.0, light))
+                // The level: a tube with its bubble centred.
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(22.0))
+                        .top(px(-6.0))
+                        .w(px(26.0))
+                        .h(px(10.0))
+                        .rounded_full()
+                        .bg(gpui::black().opacity(0.7))
+                        .border_1()
+                        .border_color(light)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(div().size(px(5.0)).rounded_full().bg(gold)),
+                )
+        });
         let (hint_bg, hint_border, hint_text) = (theme.surface.opacity(0.9), theme.border, theme.text);
+        let ruler = self.develop_ui.crop_ruler;
+        let aligning = self.develop_ui.crop_align;
         let thirds = self.develop_ui.grid_overlay == super::grid_overlay::GridOverlay::Off;
         let (pw, ph) = (f32::from(photo.size.width), f32::from(photo.size.height));
         // The box on screen.
@@ -159,6 +243,7 @@ impl Workspace {
                     }
                 }))
                 .children(turn_glyph)
+                .children(level_glyph)
                 .child(
                     canvas(
                         |_, _, _| {},
@@ -199,6 +284,21 @@ impl Workspace {
                                             stroke(window, &[(left + width * f, top), (left + width * f, top + height)], false, c.1, c.0);
                                             stroke(window, &[(left, top + height * f), (left + width, top + height * f)], false, c.1, c.0);
                                         }
+                                    }
+                                }
+                                // The Align line, with the level it will make.
+                                if let Some((a, b)) = ruler {
+                                    stroke(window, &[a, b], false, 4.0, gpui::black().opacity(0.5));
+                                    stroke(window, &[a, b], false, 2.0, gpui::rgb(0xffd23f).into());
+                                    let target = {
+                                        let turn = alignment_turn(a, b);
+                                        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+                                        let (c, s) = (turn.to_radians().cos(), turn.to_radians().sin());
+                                        (a.0 + dx * c - dy * s, a.1 + dx * s + dy * c)
+                                    };
+                                    stroke(window, &[a, target], false, 1.0, gpui::white().opacity(0.8));
+                                    for end in [a, b] {
+                                        window.paint_quad(fill(rect(end.0 - 3.0, end.1 - 3.0, 6.0, 6.0), gpui::rgb(0xffd23f)));
                                     }
                                 }
                                 // The handles.
@@ -242,7 +342,11 @@ impl Workspace {
                                 .border_color(hint_border)
                                 .text_size(gpui::px(10.5))
                                 .text_color(hint_text)
-                                .child("Drag a corner or edge to resize \u{00B7} just outside a corner to rotate \u{00B7} X flips \u{00B7} double-click to finish"),
+                                .child(if aligning {
+                                    "Align: drag a line along the horizon or an edge that should be level or upright"
+                                } else {
+                                    "Drag a corner or edge to resize \u{00B7} just outside a corner to rotate \u{00B7} X flips \u{00B7} double-click to finish"
+                                }),
                         ),
                 )
                 .on_mouse_down(
@@ -317,7 +421,9 @@ impl Workspace {
         let hit = photo
             .contains(&position)
             .then(|| Self::crop_hit(position, photo, rect));
-        let moved = hit == Some(CropHit::Rotate) && self.develop_ui.crop_pointer != position;
+        // Align's level cursor follows the pointer, so every move redraws.
+        let moved = (hit == Some(CropHit::Rotate) || self.develop_ui.crop_align)
+            && self.develop_ui.crop_pointer != position;
         self.develop_ui.crop_pointer = position;
         if hit != self.develop_ui.crop_hover || moved {
             self.develop_ui.crop_hover = hit;
@@ -329,6 +435,15 @@ impl Workspace {
     /// else by what the pointer is over.
     fn crop_cursor(&self) -> gpui::CursorStyle {
         use gpui::CursorStyle as C;
+        if self.develop_ui.crop_align {
+            // The level glyph follows the pointer instead (see the
+            // overlay); off the photo the plain cursor shows.
+            return if self.develop_ui.crop_hover.is_some() || self.develop_ui.crop_ruler.is_some() {
+                C::None
+            } else {
+                C::Crosshair
+            };
+        }
         let hit = match self.develop_ui.crop_drag {
             Some(CropDrag::Rotate { .. }) => Some(CropHit::Rotate),
             Some(CropDrag::Box { handle: CropHandle::Move, .. }) => {
@@ -356,6 +471,13 @@ impl Workspace {
             return;
         };
         if !photo.contains(&event.position) {
+            return;
+        }
+        if self.develop_ui.crop_align {
+            // Align: this press starts a line along what should be level.
+            let p = (f32::from(event.position.x), f32::from(event.position.y));
+            self.develop_ui.crop_ruler = Some((p, p));
+            cx.notify();
             return;
         }
         let at = Self::crop_point(event.position, photo);
@@ -413,6 +535,16 @@ impl Workspace {
         dragging: bool,
         cx: &mut Context<Self>,
     ) -> bool {
+        if let Some((a, _)) = self.develop_ui.crop_ruler {
+            if dragging {
+                self.develop_ui.crop_pointer = position;
+                self.develop_ui.crop_ruler = Some((a, (f32::from(position.x), f32::from(position.y))));
+                cx.notify();
+            } else {
+                self.finish_crop_ruler(cx);
+            }
+            return true;
+        }
         let Some(drag) = self.develop_ui.crop_drag else {
             return false;
         };
@@ -498,5 +630,25 @@ mod tests {
         assert!((angle - 2.0).abs() < 0.01, "{angle}");
         assert_eq!(rotated_angle(40.0, centre, 0.0, (0.0, 100.0)), MAX_STRAIGHTEN);
         assert_eq!(rotated_angle(-40.0, centre, 0.0, (0.0, -100.0)), -MAX_STRAIGHTEN);
+    }
+}
+
+#[cfg(test)]
+mod align_tests {
+    use super::alignment_turn;
+
+    #[test]
+    fn a_line_is_turned_onto_the_nearest_axis() {
+        // Level already.
+        assert!(alignment_turn((0.0, 0.0), (100.0, 0.0)).abs() < 1e-3);
+        // Sloping down to the right by about 5.7 degrees: turn back.
+        let turn = alignment_turn((0.0, 0.0), (100.0, 10.0));
+        assert!((turn + 5.71).abs() < 0.05, "{turn}");
+        // Drawn right to left, it's the same line.
+        let back = alignment_turn((100.0, 10.0), (0.0, 0.0));
+        assert!((back - turn).abs() < 1e-3);
+        // A leaning upright turns onto the vertical.
+        let upright = alignment_turn((0.0, 0.0), (10.0, 100.0));
+        assert!(upright > 0.0 && upright < 6.0, "{upright}");
     }
 }

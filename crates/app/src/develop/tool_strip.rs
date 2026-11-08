@@ -166,6 +166,8 @@ impl Workspace {
         ui.gradients.tool = None;
         ui.gradients.range_pick = None;
         ui.crop_tool = false;
+        ui.crop_align = false;
+        ui.crop_ruler = None;
         ui.crop_drag = None;
         ui.crop_hover = None;
         ui.curve_target = false;

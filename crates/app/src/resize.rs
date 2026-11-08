@@ -205,6 +205,7 @@ impl Workspace {
             cx.notify();
         }
         self.finish_remove_stroke(cx);
+        self.finish_crop_ruler(cx);
         self.end_develop_drag();
         self.end_histogram_drag();
         self.survey_pan = None;

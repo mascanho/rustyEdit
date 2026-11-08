@@ -51,7 +51,14 @@ impl Workspace {
     }
 
     pub(crate) fn switch_catalog(&mut self, id: &str, cx: &mut Context<Self>) {
-        if self.is_importing || id == self.catalog_def.id {
+        if id == self.catalog_def.id {
+            return;
+        }
+        if self.is_importing {
+            // Only while folders are being scanned (thumbnails coming in
+            // no longer hold it up); say so rather than do nothing.
+            self.status_message = Some("Still scanning folders \u{2014} try again in a moment.".into());
+            cx.notify();
             return;
         }
         let Some(next) = self.catalog_list.iter().find(|d| d.id == id).cloned() else {
