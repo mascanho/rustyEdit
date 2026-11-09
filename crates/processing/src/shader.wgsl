@@ -245,6 +245,20 @@ fn mirror(v: i32, n: i32) -> i32 {
     return clamp(m, 0, n - 1);
 }
 
+/// Mirrors at the edges of the picture area (not the whole sensor, whose
+/// masked border pixels are dark and tinted the outermost rows and
+/// columns). Reflection keeps each position's parity, so the CFA colour is
+/// preserved.
+fn mirror_in_crop_x(x: i32) -> i32 {
+    let o = i32(raw(RAW_CROP));
+    return o + mirror(x - o, i32(raw(RAW_CROP + 2u)));
+}
+
+fn mirror_in_crop_y(y: i32) -> i32 {
+    let o = i32(raw(RAW_CROP + 1u));
+    return o + mirror(y - o, i32(raw(RAW_CROP + 3u)));
+}
+
 fn cfa_color(x: i32, y: i32) -> u32 {
     let pw = u32(raw(RAW_PW));
     let ph = u32(raw(RAW_PH));
@@ -255,8 +269,8 @@ fn cfa_color(x: i32, y: i32) -> u32 {
 /// the CFA colour is preserved), black-subtracted, scaled so the sensor's
 /// white is 1, and white balanced.
 fn mosaic(x: i32, y: i32) -> f32 {
-    let mx = mirror(x, i32(p.src_width));
-    let my = mirror(y, i32(p.src_height));
+    let mx = mirror_in_crop_x(x);
+    let my = mirror_in_crop_y(y);
     let v = f32(src_u16(u32(my) * p.src_width + u32(mx)));
     let pos = u32(my % 2) * 2u + u32(mx % 2);
     let black = raw(RAW_BLACK + pos);
@@ -298,7 +312,7 @@ fn demosaic_generic(x: i32, y: i32) -> vec3<f32> {
     var weight = vec3<f32>(0.0);
     for (var dy = -2; dy <= 2; dy++) {
         for (var dx = -2; dx <= 2; dx++) {
-            let c = cfa_color(mirror(x + dx, i32(p.src_width)), mirror(y + dy, i32(p.src_height)));
+            let c = cfa_color(mirror_in_crop_x(x + dx), mirror_in_crop_y(y + dy));
             let w = 1.0 / f32(1 + dx * dx + dy * dy);
             let v = mosaic(x + dx, y + dy);
             if (c == 0u) { sum.x += v * w; weight.x += w; }

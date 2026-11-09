@@ -942,6 +942,9 @@ impl Workspace {
             return;
         }
         self.mode = Mode::Develop;
+        // The edited thumbnail stands in until the first render is ready.
+        let selected = self.catalog.selected;
+        self.ensure_edited_thumbnails(&[selected], cx);
         if self.source_image_for != self.catalog.selected_asset().map(|a| a.id) {
             self.load_source_image(cx);
         }

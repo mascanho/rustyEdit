@@ -1048,6 +1048,7 @@ impl Workspace {
             rustyedit_ui::SectionExtras {
                 trailing,
                 dimmed: false,
+                ..Default::default()
             },
             children,
         );
@@ -1646,7 +1647,8 @@ fn tile_view(
             } else {
                 ObjectFit::Cover
             })
-            .grayscale(look.monochrome)
+            // Always as the photo is: the film style's black and white is
+            // for the frame around it, never the picture.
             .absolute()
             .top_0()
             .left_0()

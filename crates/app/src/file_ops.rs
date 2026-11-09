@@ -257,19 +257,16 @@ impl Workspace {
             let moved = cx
                 .background_executor()
                 .spawn(async move {
-                    let mut moved = HashSet::new();
-                    let mut failed = Vec::new();
-                    for path in to_move {
-                        if let Some(cache) = &cache {
-                            cache.forget(&path);
-                        }
-                        match rustyedit_io::move_to_trash(&path) {
-                            Ok(_) => {
-                                moved.insert(path);
-                            }
-                            Err(err) => failed.push((path, err.to_string())),
+                    if let Some(cache) = &cache {
+                        for path in &to_move {
+                            cache.forget(path);
                         }
                     }
+                    // One request for the lot: the system's Trash sound
+                    // plays once, not for every photo.
+                    let list: Vec<PathBuf> = to_move.into_iter().collect();
+                    let (done, failed) = rustyedit_io::move_all_to_trash(&list);
+                    let moved: HashSet<PathBuf> = done.into_iter().collect();
                     (moved, failed)
                 })
                 .await;
@@ -279,11 +276,12 @@ impl Workspace {
                         Some(format!("Couldn't move {} photo(s) to Trash.", moved.1.len()).into());
                 }
                 if !moved.0.is_empty() {
+                    let done = moved.0.len();
                     this.finish_removal(moved.0, cx);
                     this.status_message = Some(
                         format!(
-                            "Moved {count} photo{} to the Trash.",
-                            if count == 1 { "" } else { "s" }
+                            "Moved {done} photo{} to the Trash.",
+                            if done == 1 { "" } else { "s" }
                         )
                         .into(),
                     );

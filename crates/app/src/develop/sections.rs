@@ -113,6 +113,7 @@ impl Workspace {
             SectionExtras {
                 trailing: vec![reset, switch, grip(section, key, &theme)],
                 dimmed: !enabled,
+                ..Default::default()
             },
             children,
         );

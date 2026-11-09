@@ -577,6 +577,9 @@ pub struct LayoutSettings {
     /// The Before / After bar under the photo (Develop and the Library
     /// loupe), switched by its button in the right-hand rail.
     pub compare_bar: bool,
+    /// Stars and colour labels down the right-hand rail in Develop,
+    /// switched by the star button under the Before / After one.
+    pub rating_rail: bool,
 }
 
 impl Default for LayoutSettings {
@@ -588,6 +591,7 @@ impl Default for LayoutSettings {
             inspector_width: 300,
             filmstrip_height: 80,
             compare_bar: false,
+            rating_rail: true,
         }
     }
 }

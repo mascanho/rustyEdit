@@ -81,6 +81,7 @@ impl Workspace {
                 self.guides_rail_button(side, cx),
                 self.view_rail_button(side, cx),
                 self.compare_bar_rail_button(cx),
+                self.rating_rail_button(cx),
             ]
         } else if self.mode == crate::workspace::Mode::Library && side == DockSide::Right {
             vec![self.compare_bar_rail_button(cx)]
@@ -231,5 +232,40 @@ fn rail_icon(tool: RailTool) -> Icon {
         RailTool::Details => Icon::Edit,
         RailTool::Adjust => Icon::Adjust,
         RailTool::Keywords => Icon::Tag,
+    }
+}
+
+impl Workspace {
+    /// The rail button that shows or hides the floating stars and colour
+    /// labels over the photo (Develop only).
+    fn rating_rail_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        use gpui::{div, ClickEvent};
+        let theme = self.theme;
+        let on = self.settings.layout.rating_rail;
+        div()
+            .id("rail-rating")
+            .flex()
+            .items_center()
+            .justify_center()
+            .size(gpui::px(rustyedit_ui::RAIL_BUTTON_SIZE))
+            .rounded_md()
+            .cursor_pointer()
+            .when(on, |el| el.bg(theme.accent_muted))
+            .when(!on, |el| el.hover(|el| el.bg(theme.surface_elevated)))
+            .child(rustyedit_ui::icon(
+                if on { Icon::StarFilled } else { Icon::Star },
+                16.0,
+                if on { theme.star } else { theme.text_muted },
+            ))
+            .tooltip(rustyedit_ui::tip(
+                if on { "Hide the stars and colours over the photo" } else { "Show the stars and colours over the photo" },
+                &theme,
+            ))
+            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                let show = !this.settings.layout.rating_rail;
+                this.update_settings(|s| s.layout.rating_rail = show, cx);
+                cx.notify();
+            }))
+            .into_any_element()
     }
 }

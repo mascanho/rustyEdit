@@ -362,7 +362,8 @@ impl Workspace {
             }),
         )
         .track_scroll(self.file_tree.scroll.clone())
-        .h(px(height));
+        .flex_1()
+        .min_h(px(0.0));
 
         let tool = |id: &'static str, icon: Icon, tip: &'static str| {
             div()
@@ -397,13 +398,30 @@ impl Workspace {
                     .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.refresh_file_tree(cx))),
             );
 
-        self.disclosure(
+        let expanded = !self.collapsed_sections.contains("folders");
+        rustyedit_ui::disclosure_section_with(
             "folders",
+            &theme,
             "Folders",
+            expanded,
+            cx.listener(|this, _: &ClickEvent, _window, cx| {
+                if !this.collapsed_sections.remove("folders") {
+                    this.collapsed_sections.insert("folders");
+                }
+                cx.notify();
+            }),
+            rustyedit_ui::SectionExtras {
+                fill: true,
+                ..Default::default()
+            },
             vec![
                 toolbar.into_any_element(),
                 div()
                     .relative()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h(px(height))
                     .rounded_md()
                     .bg(theme.background)
                     .border_1()
@@ -418,8 +436,8 @@ impl Workspace {
                     .child(self.resize_grip(crate::resize::ResizeTarget::FolderTree, cx))
                     .into_any_element(),
             ],
-            cx,
         )
+        .into_any_element()
     }
 }
 

@@ -121,6 +121,10 @@ pub struct SectionExtras {
     pub trailing: Vec<AnyElement>,
     /// Fade the body, e.g. while the section is switched off.
     pub dimmed: bool,
+    /// Take all the height the panel has left over (its body then fills
+    /// the section); the body's own minimum height still applies, past
+    /// which the panel scrolls.
+    pub fill: bool,
 }
 
 /// [`disclosure_section`] with extra title-bar controls and a dimmed state.
@@ -134,7 +138,7 @@ pub fn disclosure_section_with(
     children: Vec<AnyElement>,
 ) -> impl IntoElement {
     let theme = *theme;
-    let SectionExtras { trailing, dimmed } = extras;
+    let SectionExtras { trailing, dimmed, fill } = extras;
     let has_trailing = !trailing.is_empty();
 
     // Each collapsible section is a card: a thin, quiet outline with a
@@ -145,6 +149,7 @@ pub fn disclosure_section_with(
         .flex_col()
         .mx_1p5()
         .my_0p5()
+        .when(fill, |el| el.flex_1().min_h(px(0.0)))
         .rounded_md()
         .overflow_hidden()
         .border_1()
@@ -185,6 +190,7 @@ pub fn disclosure_section_with(
                     .mb_px()
                     .px_2()
                     .py_2()
+                    .when(fill, |el| el.flex_1().min_h(px(0.0)))
                     .bg(theme.background.opacity(0.45))
                     .when(dimmed, |el| el.opacity(0.45))
                     .children(children),

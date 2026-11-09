@@ -93,7 +93,7 @@ impl Workspace {
                     .children(self.develop_split_overlay(cx)),
             )
             .child(self.render_zoom_badge(cx))
-            .child(self.render_rating_badge(cx))
+            .children(self.render_rating_badge(cx))
             // A thin accent frame while a comparison is on, so the photo
             // isn't mistaken for the edit.
             .when(comparing, |el| {
@@ -162,10 +162,14 @@ impl Workspace {
     pub(super) fn develop_image_source(&self) -> Option<ImageSource> {
         match self.live_preview.image() {
             Some(rendered) => Some(rendered.into()),
-            None => self
-                .catalog
-                .selected_asset()
-                .map(|a| a.display_source().to_path_buf().into()),
+            // Until the first render of this photo is ready (a RAW takes a
+            // few seconds), show its thumbnail *with its edits*: the plain
+            // one made the edits pop in when the render arrived.
+            None => self.catalog.selected_asset().map(|a| {
+                self.display_thumbnail(a)
+                    .unwrap_or_else(|| a.display_source().to_path_buf())
+                    .into()
+            }),
         }
     }
 
@@ -293,14 +297,16 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// The photo's stars and colour label, top right of the viewer: what
-    /// the 0-5 and 6-9 keys set, shown (and clickable) while editing.
-    fn render_rating_badge(&self, cx: &mut Context<Self>) -> AnyElement {
+    /// The photo's stars and colour label, floating top right of the
+    /// viewer when the rail's star button has them on: what the 0-5 and
+    /// 6-9 keys set, shown (and clickable) while editing.
+    fn render_rating_badge(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         use rustyedit_core::ColorLabel;
+        if !self.settings.layout.rating_rail {
+            return None;
+        }
         let theme = self.theme;
-        let Some(asset) = self.catalog.selected_asset() else {
-            return div().into_any_element();
-        };
+        let asset = self.catalog.selected_asset()?;
         let (rating, current) = (asset.rating, asset.color_label);
         let entity = cx.entity();
         let swatches = [
@@ -327,33 +333,35 @@ impl Workspace {
                 .into_any_element(),
             )
         });
-        div()
-            .id("develop-rating-badge")
-            .absolute()
-            .top(sp(10.0))
-            .right(sp(10.0))
-            .h(sp(26.0))
-            .px_2()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap_2()
-            .rounded_md()
-            .bg(theme.surface.opacity(0.85))
-            .border_1()
-            .border_color(theme.border)
-            .child(rustyedit_ui::rating_stars(
-                "develop-rating",
-                rating,
-                &theme,
-                14.0,
-                Some(move |value: u8, _w: &mut Window, cx: &mut gpui::App| {
-                    entity.update(cx, |this, cx| this.set_rating_value(value, cx));
-                }),
-            ))
-            .child(div().w(sp(1.0)).h(sp(14.0)).bg(theme.border_subtle))
-            .children(swatches)
-            .into_any_element()
+        Some(
+            div()
+                .id("develop-rating-badge")
+                .absolute()
+                .top(sp(10.0))
+                .right(sp(10.0))
+                .h(sp(26.0))
+                .px_2()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .rounded_md()
+                .bg(theme.surface.opacity(0.85))
+                .border_1()
+                .border_color(theme.border)
+                .child(rustyedit_ui::rating_stars(
+                    "develop-rating",
+                    rating,
+                    &theme,
+                    14.0,
+                    Some(move |value: u8, _w: &mut Window, cx: &mut gpui::App| {
+                        entity.update(cx, |this, cx| this.set_rating_value(value, cx));
+                    }),
+                ))
+                .child(div().w(sp(1.0)).h(sp(14.0)).bg(theme.border_subtle))
+                .children(swatches)
+                .into_any_element(),
+        )
     }
 
     /// The part of the photo in view; `None` when fitted.

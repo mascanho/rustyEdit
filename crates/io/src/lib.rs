@@ -39,7 +39,7 @@ pub use decode::{
     open_image,
 };
 pub use maintenance::{
-    build_backup, move_to_trash, optimize_catalog, read_backup, restore_backup, write_backup,
+    build_backup, move_all_to_trash, move_to_trash, optimize_catalog, read_backup, restore_backup, write_backup,
     BackupSidecar, CatalogBackup, OptimizeReport,
 };
 pub use recovery::{

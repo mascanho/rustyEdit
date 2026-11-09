@@ -146,6 +146,34 @@ pub fn move_to_trash(path: &Path) -> anyhow::Result<PathBuf> {
     Ok(path.to_path_buf())
 }
 
+/// Moves many originals to the Trash in one go: one request to the system
+/// (so macOS plays its Trash sound once, not once per photo, and the whole
+/// batch lands in the Trash together). If the batch is refused (one file
+/// can't be moved), the files are tried one by one so the rest still go.
+/// Returns the paths moved and, for the others, why not.
+pub fn move_all_to_trash(paths: &[PathBuf]) -> (Vec<PathBuf>, Vec<(PathBuf, String)>) {
+    // Files already gone can't be moved; leave them out of the request.
+    let (present, missing): (Vec<&PathBuf>, Vec<&PathBuf>) = paths.iter().partition(|p| p.exists());
+    let mut failed: Vec<(PathBuf, String)> = missing
+        .into_iter()
+        .map(|p| (p.clone(), "the file isn't there any more".to_string()))
+        .collect();
+    if present.is_empty() {
+        return (Vec::new(), failed);
+    }
+    if trash::delete_all(present.iter().copied()).is_ok() {
+        return (present.into_iter().cloned().collect(), failed);
+    }
+    let mut moved = Vec::new();
+    for path in present {
+        match move_to_trash(path) {
+            Ok(_) => moved.push(path.clone()),
+            Err(err) => failed.push((path.clone(), err.to_string())),
+        }
+    }
+    (moved, failed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,6 +208,30 @@ mod tests {
         assert_eq!(read.sidecars[0].catalog.assets[0].caption, "hello");
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn many_files_go_to_the_trash_together() {
+        let dir = temp_dir("trash-many");
+        let files: Vec<PathBuf> = (0..3)
+            .map(|i| {
+                let f = dir.join(format!("{i}.txt"));
+                std::fs::write(&f, "x").unwrap();
+                f
+            })
+            .collect();
+        let gone = dir.join("gone.txt");
+        let mut all = files.clone();
+        all.push(gone.clone());
+        let (moved, failed) = move_all_to_trash(&all);
+        // A machine with no Trash (CI) can refuse; then nothing moved.
+        if !moved.is_empty() {
+            assert_eq!(moved.len(), 3);
+            assert!(files.iter().all(|f| !f.exists()));
+        }
+        // The file that wasn't there is reported either way.
+        assert!(failed.iter().any(|(p, _)| *p == gone));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
