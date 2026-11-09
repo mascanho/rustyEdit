@@ -94,5 +94,7 @@ actions!(
         ToggleShortcuts,
         ToolRemove,
         MergeToHdr,
+        MergeFocusStack,
+        MergePanorama,
     ]
 );

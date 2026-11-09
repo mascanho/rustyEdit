@@ -587,9 +587,31 @@ impl Workspace {
                     "ctx-merge-hdr",
                     Icon::MergeHdr,
                     "Merge to HDR\u{2026}",
-                    |this, _w, cx| this.merge_selection_to_hdr(cx),
+                    |this, _w, cx| this.merge_selection(crate::hdr_merge::MergeKind::Hdr, cx),
                 )
                 .keys(cx, &crate::actions::MergeToHdr)
+                .entry(),
+            );
+            entries.push(
+                item(
+                    "ctx-focus-stack",
+                    Icon::MergeHdr,
+                    "Focus stack\u{2026}",
+                    |this, _w, cx| {
+                        this.merge_selection(crate::hdr_merge::MergeKind::FocusStack, cx)
+                    },
+                )
+                .keys(cx, &crate::actions::MergeFocusStack)
+                .entry(),
+            );
+            entries.push(
+                item(
+                    "ctx-merge-panorama",
+                    Icon::MergeHdr,
+                    "Merge to panorama\u{2026}",
+                    |this, _w, cx| this.merge_selection(crate::hdr_merge::MergeKind::Panorama, cx),
+                )
+                .keys(cx, &crate::actions::MergePanorama)
                 .entry(),
             );
         }

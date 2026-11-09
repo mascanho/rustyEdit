@@ -31,21 +31,21 @@ const BINOMIAL: [f32; 5] = [1.0 / 16.0, 4.0 / 16.0, 6.0 / 16.0, 4.0 / 16.0, 1.0 
 /// channel-interleaved: the shape used throughout this module, for both a
 /// photo (3 channels) and a weight map (1).
 #[derive(Clone)]
-struct Buf {
-    data: Vec<f32>,
-    width: usize,
-    height: usize,
-    channels: usize,
+pub(crate) struct Buf {
+    pub(crate) data: Vec<f32>,
+    pub(crate) width: usize,
+    pub(crate) height: usize,
+    pub(crate) channels: usize,
 }
 
 impl Buf {
-    fn new(width: usize, height: usize, channels: usize) -> Self {
+    pub(crate) fn new(width: usize, height: usize, channels: usize) -> Self {
         Self { data: vec![0.0; width * height * channels], width, height, channels }
     }
 
     /// Clamp-to-edge sample, so a convolution near a border repeats the
     /// edge pixel instead of reading outside the buffer.
-    fn at(&self, x: isize, y: isize, c: usize) -> f32 {
+    pub(crate) fn at(&self, x: isize, y: isize, c: usize) -> f32 {
         let x = x.clamp(0, self.width as isize - 1) as usize;
         let y = y.clamp(0, self.height as isize - 1) as usize;
         self.data[(y * self.width + x) * self.channels + c]
@@ -69,10 +69,17 @@ pub fn merge_exposures(images: &[RgbImage]) -> Option<RgbImage> {
         return Some(first.clone());
     }
 
-    let n = images.len();
-    let mut weights: Vec<Buf> = images.iter().map(|img| weight_map(img)).collect();
+    let mut weights: Vec<Buf> = images.iter().map(weight_map).collect();
     normalize_weights(&mut weights);
+    Some(fuse(images, &weights))
+}
 
+/// Blends `images` across a Laplacian pyramid by their (already
+/// normalised) per-pixel `weights`: smooth seams wherever the weights
+/// change. Shared by exposure fusion and focus stacking.
+pub(crate) fn fuse(images: &[RgbImage], weights: &[Buf]) -> RgbImage {
+    let (width, height) = images[0].dimensions();
+    let n = images.len();
     let levels = pyramid_levels(width as usize, height as usize);
     let mut blended: Vec<Buf> = vec![Buf::new(0, 0, 0); levels];
 
@@ -106,7 +113,7 @@ pub fn merge_exposures(images: &[RgbImage]) -> Option<RgbImage> {
         result = add(&expanded, target);
     }
 
-    Some(buf_to_image(&result))
+    buf_to_image(&result)
 }
 
 /// How many times `width` x `height` roughly halves before either side
@@ -177,7 +184,7 @@ fn weight_map(img: &RgbImage) -> Buf {
 /// Scales every image's weight at each pixel so they sum to 1 there (an
 /// even 1/n share if every input's weight came out at ~0, e.g. a pixel
 /// that's clipped white in every bracket).
-fn normalize_weights(weights: &mut [Buf]) {
+pub(crate) fn normalize_weights(weights: &mut [Buf]) {
     let n = weights.len();
     let pixels = weights[0].data.len();
     for p in 0..pixels {
@@ -219,7 +226,7 @@ fn buf_to_image(buf: &Buf) -> RgbImage {
 /// Blurs with the 5-tap binomial kernel, then keeps every other sample:
 /// an anti-aliased halving, separable into a horizontal then a vertical
 /// pass.
-fn reduce(src: &Buf) -> Buf {
+pub(crate) fn reduce(src: &Buf) -> Buf {
     let half_w = src.width.div_ceil(2).max(1);
     let half_h = src.height.div_ceil(2).max(1);
 

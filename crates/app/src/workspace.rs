@@ -1365,6 +1365,8 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::sync_settings_action))
             .on_action(cx.listener(Self::create_virtual_copy))
             .on_action(cx.listener(Self::merge_to_hdr))
+            .on_action(cx.listener(Self::merge_focus_stack))
+            .on_action(cx.listener(Self::merge_panorama))
             .on_action(cx.listener(Self::match_look_action))
             .on_action(cx.listener(Self::preset_from_photo_action))
             .on_action(cx.listener(Self::toggle_cull_view))

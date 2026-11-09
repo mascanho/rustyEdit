@@ -33,7 +33,10 @@ mod finishing;
 mod frame;
 mod geometry;
 mod gpu;
+mod align;
+mod focus_stack;
 mod hdr_merge;
+mod panorama;
 mod lens;
 mod lens_blur;
 mod look;
@@ -50,7 +53,9 @@ pub use auto::{auto_tone, neutral_white_balance, sample_colour, sample_colour_wi
 pub use cms::{is_proofing_profile, set_display_profile, OutputSpace};
 pub use proof::{apply_proof, ProofIntent, ProofSettings};
 pub use maskview::overlay_mask;
+pub use focus_stack::stack_focus;
 pub use hdr_merge::merge_exposures;
+pub use panorama::stitch_panorama;
 
 /// What the Color Mixer does to a colour (display RGB, 0..=1), for showing
 /// its effect in the panel.

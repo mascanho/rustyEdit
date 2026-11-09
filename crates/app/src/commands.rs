@@ -118,6 +118,8 @@ pub(crate) fn commands() -> Vec<Command> {
         cmd!("Develop", "New preset from a photo\u{2026}", PresetFromPhoto, "reference style"),
         cmd!("Photo", "Create virtual copy", CreateVirtualCopy, "duplicate version"),
         cmd!("Photo", "Merge to HDR\u{2026}", MergeToHdr, "exposure bracket fusion"),
+        cmd!("Photo", "Focus stack\u{2026}", MergeFocusStack, "depth of field macro sharp"),
+        cmd!("Photo", "Merge to panorama\u{2026}", MergePanorama, "stitch wide"),
         cmd!("Photo", "Rename photo\u{2026}", RenamePhoto, "file name"),
         cmd!("Photo", "Rotate left", RotateLeft),
         cmd!("Photo", "Rotate right", RotateRight),
