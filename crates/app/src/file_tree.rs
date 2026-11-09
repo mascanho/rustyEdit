@@ -424,8 +424,6 @@ impl Workspace {
                     .min_h(px(height))
                     .rounded_md()
                     .bg(theme.background)
-                    .border_1()
-                    .border_color(theme.border_subtle)
                     .py_1()
                     .child(list)
                     .child(rustyedit_ui::vertical_scrollbar(
