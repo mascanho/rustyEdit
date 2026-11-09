@@ -154,6 +154,12 @@ impl Workspace {
                 }
                 .clamp(DOCK_MIN, DOCK_MAX)
                 .round() as u32;
+                // Zines have one panel, sized like the Inspector.
+                if self.mode == crate::workspace::Mode::Zines {
+                    self.settings.layout.inspector_width = size;
+                    cx.notify();
+                    return;
+                }
                 let arrangement = self.settings.layout.preset.arrangement();
                 let panels = match side {
                     DockSide::Left => arrangement.left,

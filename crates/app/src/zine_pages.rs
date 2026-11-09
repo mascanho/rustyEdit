@@ -201,7 +201,6 @@ impl Workspace {
 
     /// The zine's title and how many photos and pages it has.
     fn zine_workbench_header(&self, layout: &ZinePageLayout) -> AnyElement {
-        let theme = self.theme;
         let count = self.zine.photos.len();
         let unplaced = self
             .zine
@@ -218,32 +217,7 @@ impl Workspace {
         if unplaced > 0 {
             summary.push_str(&format!(" \u{00B7} {unplaced} not on a page yet"));
         }
-        div()
-            .flex()
-            .flex_row()
-            .items_baseline()
-            .gap_3()
-            .flex_shrink_0()
-            .px_6()
-            .py_2()
-            .bg(theme.surface)
-            .border_b_1()
-            .border_color(theme.border)
-            .child(
-                div()
-                    .truncate()
-                    .text_size(sp(16.0))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(theme.text)
-                    .child(self.zine.options.title.clone()),
-            )
-            .child(
-                div()
-                    .text_size(sp(rustyedit_ui::type_size::BODY))
-                    .text_color(if unplaced > 0 { theme.accent } else { theme.text_faint })
-                    .child(summary),
-            )
-            .into_any_element()
+        self.zine_toolbar(summary, unplaced > 0)
     }
 
     /// Every control, in a bar down the right: the view, what can be added,
@@ -1566,6 +1540,10 @@ impl Workspace {
                     .map(|f| f.to_string_lossy().into_owned())
                     .unwrap_or_default();
                 let thumb = self.zine_thumb(photo);
+                // Each tile is as wide as its photo, so a portrait doesn't
+                // sit between black bars.
+                let image_h = PHOTO_W * 0.72;
+                let tile_w = (image_h * self.zine_aspect(photo)).clamp(PHOTO_W * 0.6, PHOTO_W * 1.45);
                 let drag = ZineDrag {
                     photo: photo.clone(),
                     from: None,
@@ -1581,7 +1559,7 @@ impl Workspace {
                     .flex_col()
                     .flex_shrink_0()
                     .gap_1()
-                    .w(sp(PHOTO_W))
+                    .w(sp(tile_w + 10.0))
                     .p_1()
                     .rounded_lg()
                     .cursor_grab()
@@ -1594,7 +1572,7 @@ impl Workspace {
                         div()
                             .relative()
                             .w_full()
-                            .h(sp(PHOTO_W * 0.72))
+                            .h(sp(image_h))
                             .rounded_md()
                             .overflow_hidden()
                             .bg(gpui::black())
@@ -2146,7 +2124,6 @@ impl Workspace {
     }
 
     fn zine_auto_header(&self, layout: &ZinePageLayout) -> AnyElement {
-        let theme = self.theme;
         let count = self.zine.photos.len();
         let mut summary = format!(
             "{count} photo{} \u{00B7} {} page{}",
@@ -2157,32 +2134,7 @@ impl Workspace {
         if layout.left_out > 0 {
             summary.push_str(&format!(" \u{00B7} {} didn\u{2019}t fit", layout.left_out));
         }
-        div()
-            .flex()
-            .flex_row()
-            .items_baseline()
-            .gap_3()
-            .flex_shrink_0()
-            .px_6()
-            .py_2()
-            .bg(theme.surface)
-            .border_b_1()
-            .border_color(theme.border)
-            .child(
-                div()
-                    .truncate()
-                    .text_size(sp(16.0))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(theme.text)
-                    .child(self.zine.options.title.clone()),
-            )
-            .child(
-                div()
-                    .text_size(sp(rustyedit_ui::type_size::BODY))
-                    .text_color(if layout.left_out > 0 { theme.accent } else { theme.text_faint })
-                    .child(summary),
-            )
-            .into_any_element()
+        self.zine_toolbar(summary, layout.left_out > 0)
     }
 
     /// How tall the pages are drawn, as the manual view's zoom sets.

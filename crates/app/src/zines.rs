@@ -408,11 +408,21 @@ impl Workspace {
             rustyedit_ui::PanelSide::Left,
             self.settings.layout.inspector_width as f32,
             &self.zine_panel_scroll,
-            None,
+            Some(self.zine_panel_pinned(layout.pages.len(), cx)),
             Some(footer),
             sections,
         )
         .into_any_element();
+        // Resizable like Library's and Develop's side panels.
+        let grip = self.resize_grip(crate::resize::ResizeTarget::Dock(rustyedit_core::settings::DockSide::Left), cx);
+        let panel = div()
+            .flex()
+            .flex_row()
+            .flex_shrink_0()
+            .h_full()
+            .child(panel)
+            .child(grip)
+            .into_any_element();
 
         // The finished zine, page by page.
         if self.zine_ui.preview.is_some() && count > 0 {
@@ -508,6 +518,41 @@ impl Workspace {
             .min_h(sp(0.0))
             .child(panel)
             .child(center)
+            .into_any_element()
+    }
+
+    /// The slim bar over every zine view, the same height and weight as
+    /// Library's toolbar: the zine's name at the left, what it holds at the
+    /// right (in the accent colour when something needs attention).
+    pub(crate) fn zine_toolbar(&self, summary: String, attention: bool) -> AnyElement {
+        let theme = self.theme;
+        div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .gap_3()
+            .flex_shrink_0()
+            .h(sp(32.0))
+            .px_3()
+            .border_b_1()
+            .border_color(theme.border_subtle)
+            .child(
+                div()
+                    .min_w(sp(0.0))
+                    .truncate()
+                    .text_size(sp(rustyedit_ui::type_size::LABEL))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme.text)
+                    .child(self.zine.options.title.clone()),
+            )
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .text_size(sp(rustyedit_ui::type_size::SMALL))
+                    .text_color(if attention { theme.accent } else { theme.text_muted })
+                    .child(summary),
+            )
             .into_any_element()
     }
 
@@ -724,6 +769,19 @@ impl Workspace {
     }
 
     /// The thumbnail of a photo of the zine.
+    /// Width over height of the photo as shown (1.5 when unknown).
+    pub(crate) fn zine_aspect(&self, photo: &ZinePhoto) -> f32 {
+        self.catalog
+            .assets
+            .iter()
+            .find(|a| a.path == photo.path && a.copy_name == photo.copy_name)
+            .filter(|a| a.width > 0 && a.height > 0)
+            .map_or(1.5, |a| {
+                let (w, h) = (a.width as f32, a.height as f32);
+                if a.orientation >= 5 { h / w } else { w / h }
+            })
+    }
+
     pub(crate) fn zine_thumb(&self, photo: &ZinePhoto) -> Option<PathBuf> {
         self.catalog
             .assets

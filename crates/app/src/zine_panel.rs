@@ -380,6 +380,62 @@ impl Workspace {
     }
 
     /// Every card of the panel, in the order you work in.
+    /// The top of the panel, which stays put while the cards scroll: which
+    /// zine, how big it is, and whether the pages flow by themselves or are
+    /// placed by hand.
+    pub(crate) fn zine_panel_pinned(&self, pages: usize, cx: &mut Context<Self>) -> AnyElement {
+        let theme = self.theme;
+        let kit = Kit::new(theme, cx.entity());
+        let options = &self.zine.options;
+        let count = self.zine.photos.len();
+        let title = if options.title.trim().is_empty() { "Untitled".to_string() } else { options.title.clone() };
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_baseline()
+                    .justify_between()
+                    .gap_2()
+                    .px_1()
+                    .child(
+                        div()
+                            .min_w(sp(0.0))
+                            .truncate()
+                            .text_size(sp(rustyedit_ui::type_size::LABEL))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.text)
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .text_size(sp(rustyedit_ui::type_size::SMALL))
+                            .text_color(theme.text_muted)
+                            .child(format!(
+                                "{count} photo{} \u{00B7} {pages} page{}",
+                                crate::zines::plural(count),
+                                crate::zines::plural(pages)
+                            )),
+                    ),
+            )
+            .child(kit.segmented(
+                "zine-mode",
+                &ZineMode::ALL,
+                options.mode,
+                |m| m.label().to_string(),
+                |this, v, cx| this.update_zine_options(cx, |o| o.mode = v),
+            ))
+            .child(kit.hint(match options.mode {
+                ZineMode::Auto => "The photos flow onto the pages in order.",
+                ZineMode::Manual => "Drag each photo to the page and place you want.",
+            }))
+            .into_any_element()
+    }
+
     pub(crate) fn zine_panel_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let kit = Kit::new(self.theme, cx.entity());
         let options = self.zine.options.clone();
@@ -501,16 +557,6 @@ impl Workspace {
     fn card_pages(&self, kit: &Kit, options: &ZineOptions, _cx: &mut Context<Self>) -> Vec<AnyElement> {
         let folded = options.layout == ZineLayout::FoldedSheet;
         let mut out = vec![
-            kit.field(
-                "Arrangement",
-                kit.segmented("zine-mode", &ZineMode::ALL, options.mode, |m| m.label().to_string(), |this, v, cx| {
-                    this.update_zine_options(cx, |o| o.mode = v)
-                }),
-            ),
-            kit.hint(match options.mode {
-                ZineMode::Auto => "The photos flow onto the pages in order.",
-                ZineMode::Manual => "Drag each photo to the page and place you want.",
-            }),
             kit.field(
                 "Photos per page",
                 kit.segmented("zine-layout", &ZineLayout::ALL, options.layout, |l| l.label().to_string(), |this, v, cx| {

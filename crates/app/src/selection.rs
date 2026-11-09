@@ -292,15 +292,9 @@ impl Workspace {
             }
         });
 
-        // A RAW and its JPEG are one shot: they share flag, rating and label.
-        let mut applied = targets.clone();
-        for &ix in &targets {
-            if let Some(other) = self.catalog.companion_of(ix) {
-                if !applied.contains(&other) {
-                    applied.push(other);
-                }
-            }
-        }
+        // Each file is rated, flagged and labelled on its own: a RAW and
+        // its JPEG are two photos here.
+        let applied = targets.clone();
 
         let mut changes = Vec::new();
         for &ix in &applied {
