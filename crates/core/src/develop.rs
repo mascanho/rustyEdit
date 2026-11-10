@@ -81,6 +81,8 @@ pub struct DevelopSettings {
 
     // Effects
     pub dehaze: f32,
+    /// 0..=100: a soft bloom of light around the bright areas.
+    pub glow: f32,
     /// -100 darkens the corners, +100 lightens them.
     pub vignette: f32,
     /// 0..=100: how far in from the corners the vignette starts.
@@ -143,6 +145,7 @@ impl Default for DevelopSettings {
             mixer: ColorMixer::default(),
             grading: ColorGrading::default(),
             dehaze: 0.0,
+            glow: 0.0,
             vignette: 0.0,
             vignette_midpoint: 50.0,
             vignette_feather: 50.0,
@@ -222,6 +225,7 @@ pub enum Adjustment {
     Grade(ToneZone, GradeProp),
     GradingBalance,
     Dehaze,
+    Glow,
     Vignette,
     VignetteMidpoint,
     VignetteFeather,
@@ -282,8 +286,9 @@ impl Adjustment {
         Adjustment::CurveShadows,
     ];
 
-    pub const EFFECTS: [Adjustment; 7] = [
+    pub const EFFECTS: [Adjustment; 8] = [
         Adjustment::Dehaze,
+        Adjustment::Glow,
         Adjustment::Vignette,
         Adjustment::VignetteMidpoint,
         Adjustment::VignetteFeather,
@@ -327,6 +332,7 @@ impl Adjustment {
             Adjustment::Grade(_, GradeProp::Luminance) => "Luminance",
             Adjustment::GradingBalance => "Balance",
             Adjustment::Dehaze => "Dehaze",
+            Adjustment::Glow => "Glow",
             Adjustment::Vignette => "Vignette",
             Adjustment::VignetteMidpoint => "Midpoint",
             Adjustment::VignetteFeather => "Feather",
@@ -379,6 +385,7 @@ impl Adjustment {
             | Adjustment::VignetteMidpoint
             | Adjustment::VignetteFeather
             | Adjustment::VignetteRoundness
+            | Adjustment::Glow
             | Adjustment::Grain
             | Adjustment::GrainSize
             | Adjustment::LensBlurAmount
@@ -452,6 +459,7 @@ impl Adjustment {
             }
             Adjustment::GradingBalance => settings.grading.balance,
             Adjustment::Dehaze => settings.dehaze,
+            Adjustment::Glow => settings.glow,
             Adjustment::Vignette => settings.vignette,
             Adjustment::VignetteMidpoint => settings.vignette_midpoint,
             Adjustment::VignetteFeather => settings.vignette_feather,
@@ -503,6 +511,7 @@ impl Adjustment {
             }
             Adjustment::GradingBalance => settings.grading.balance = v,
             Adjustment::Dehaze => settings.dehaze = v,
+            Adjustment::Glow => settings.glow = v,
             Adjustment::Vignette => settings.vignette = v,
             Adjustment::VignetteMidpoint => settings.vignette_midpoint = v,
             Adjustment::VignetteFeather => settings.vignette_feather = v,

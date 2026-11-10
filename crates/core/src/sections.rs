@@ -190,6 +190,7 @@ impl DevelopSection {
             }
             DevelopSection::Effects => {
                 to.dehaze = from.dehaze;
+                to.glow = from.glow;
                 to.vignette = from.vignette;
                 to.vignette_midpoint = from.vignette_midpoint;
                 to.vignette_feather = from.vignette_feather;

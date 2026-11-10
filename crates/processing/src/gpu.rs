@@ -197,11 +197,13 @@ enum Kernel {
     LensCoc,
     LensBlur,
     LensBright,
+    GlowLights,
+    Glow,
     /// Not a kernel: copies `src` to `dst` (`Pass::dst_bytes` of them).
     Copy,
 }
 
-const ENTRY_POINTS: [&str; 24] = [
+const ENTRY_POINTS: [&str; 26] = [
     "load",
     "demosaic",
     "spot_ring",
@@ -226,6 +228,8 @@ const ENTRY_POINTS: [&str; 24] = [
     "lens_coc",
     "lens_blur",
     "lens_bright",
+    "glow_lights",
+    "glow",
 ];
 
 impl Kernel {
@@ -1303,6 +1307,11 @@ impl Planner {
 
     /// image::imageops::blur of the current image into `into`.
     fn blur(&mut self, sigma: f32, into: Buf) {
+        self.blur_of(self.cur, sigma, into);
+    }
+
+    /// image::imageops::blur of `from` into `into`.
+    fn blur_of(&mut self, from: Buf, sigma: f32, into: Buf) {
         let weights = gaussian_kernel(sigma);
         let mut params = self.params();
         params.blur_radius = (weights.len() / 2) as i32;
@@ -1312,7 +1321,7 @@ impl Planner {
         self.push(Pass {
             kernel: Kernel::BlurH,
             params,
-            src: self.cur,
+            src: from,
             dst: Buf::NoOutput,
             img_a: Buf::NoInput,
             img_b: Buf::NoInput,
@@ -1794,6 +1803,36 @@ fn plan_develop(plan: &mut Planner, s: &DevelopSettings, raw: bool) {
 
     plan_finishing(plan, s);
     plan_lens_blur(plan, s);
+    plan_glow(plan, s);
+}
+
+/// glow.rs: the picture with a wide blur of itself screened in where it
+/// is bright.
+fn plan_glow(plan: &mut Planner, s: &DevelopSettings) {
+    if s.glow < 0.5 || plan.full_w < 3 || plan.full_h < 3 {
+        return;
+    }
+    // The highlights, picked out into BlurB, then blurred into BlurA.
+    let groups = plan.groups();
+    let params = plan.params();
+    let dst_bytes = plan.pixels() * HALF_PX;
+    plan.push(Pass {
+        kernel: Kernel::GlowLights,
+        params,
+        src: plan.cur,
+        dst: Buf::BlurB,
+        img_a: Buf::NoInput,
+        img_b: Buf::NoInput,
+        groups,
+        dst_bytes,
+        tmp_bytes: 0,
+    });
+    plan.blur_of(Buf::BlurB, crate::glow::glow_sigma(plan.full_w, plan.full_h), Buf::BlurA);
+    let params = Params {
+        sharpen_strength: crate::glow::glow_amount(s.glow),
+        ..plan.params()
+    };
+    plan.step(Kernel::Glow, params, Buf::BlurA, Buf::NoInput);
 }
 
 fn custom_sharpen_sigma(s: &DevelopSettings) -> f32 {
@@ -1825,6 +1864,9 @@ fn margin(s: &DevelopSettings, raw: bool, full: (u32, u32)) -> u32 {
     }
     if custom {
         m += blur_radius(custom_sharpen_sigma(s)) + 1;
+    }
+    if s.glow >= 0.5 {
+        m += blur_radius(crate::glow::glow_sigma(full.0, full.1));
     }
     if s.gradients.is_active() {
         let (wide, narrow) = local_sigmas(full.0, full.1, s.gradients.any_blur());

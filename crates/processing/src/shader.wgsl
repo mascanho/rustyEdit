@@ -781,6 +781,27 @@ fn sharpen(@builtin(global_invocation_id) id: vec3<u32>) {
     store(i, v + (v - px_a(i)) * m);
 }
 
+// glow.rs: the highlights of `src`, weighted by how bright the pixel is.
+@compute @workgroup_size(16, 16)
+fn glow_lights(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (!in_bounds(id)) { return; }
+    let i = id.y * p.width + id.x;
+    let v = clamp(px_src(i), vec3<f32>(0.0), vec3<f32>(1.0));
+    let luma = 0.299 * v.x + 0.587 * v.y + 0.114 * v.z;
+    let t = clamp((luma - 0.55) / (1.0 - 0.55), 0.0, 1.0);
+    store(i, v * (t * t * (3.0 - 2.0 * t)));
+}
+
+// glow.rs: the picture with the blurred highlights `img_a` screened in.
+@compute @workgroup_size(16, 16)
+fn glow(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (!in_bounds(id)) { return; }
+    let i = id.y * p.width + id.x;
+    let v = px_src(i);
+    let bloom = clamp(px_a(i) * p.sharpen_strength, vec3<f32>(0.0), vec3<f32>(1.0));
+    store(i, v + bloom * (vec3<f32>(1.0) - v));
+}
+
 // ------------------------------------------------- finishing
 
 /// The composed tone curve for channel `ch`, linearly interpolated.

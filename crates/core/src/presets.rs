@@ -295,6 +295,7 @@ impl DevelopSettings {
         out.clarity = mix(self.clarity, full.clarity);
         out.sharpening = mix(self.sharpening, full.sharpening);
         out.dehaze = mix(self.dehaze, full.dehaze);
+        out.glow = mix(self.glow, full.glow);
         out.vignette = mix(self.vignette, full.vignette);
         out.vignette_midpoint = mix(self.vignette_midpoint, full.vignette_midpoint);
         out.vignette_feather = mix(self.vignette_feather, full.vignette_feather);

@@ -32,6 +32,7 @@ mod develop_source;
 mod finishing;
 mod frame;
 mod geometry;
+mod glow;
 mod gpu;
 mod align;
 mod focus_stack;
@@ -324,6 +325,7 @@ fn apply_cpu(source: &DevelopSource, settings: &DevelopSettings) -> RgbImage {
     if lens_blur::is_active(settings) {
         lens_blur::apply(&mut buffer, settings);
     }
+    glow::apply_glow(&mut buffer, settings.glow);
     let mut buffer = crop::straighten_and_crop(buffer, &settings.crop);
     let (width, height) = buffer.dimensions();
     if let Some(finishing) = finishing::Finishing::after_crop(settings, width, height) {
@@ -750,6 +752,7 @@ mod tests {
                 }),
             ),
             ("dehaze", with(|s| s.dehaze = 70.0)),
+            ("glow", with(|s| s.glow = 70.0)),
             ("haze", with(|s| s.dehaze = -50.0)),
             (
                 "gradients",
@@ -872,7 +875,7 @@ mod tests {
             exposure, contrast, highlights, shadows, whites, blacks, temperature, tint,
             vibrance, saturation, clarity, sharpening, sharpen_radius, sharpen_masking,
             noise_luma, noise_color, defringe_purple, defringe_green, lens_distortion, lens_vignetting, lens_ca, spots,
-            gradients, curves, parametric, mixer, grading, dehaze, vignette,
+            gradients, curves, parametric, mixer, grading, dehaze, glow, vignette,
             vignette_midpoint, vignette_feather, grain, grain_size, crop,
             rotation_degrees, flip_horizontal, flip_vertical, lens_blur
         );
