@@ -28,6 +28,7 @@ actions!(
         GoDevelop,
         GoExport,
         ToggleInfo,
+        ToggleFocusPoint,
         ToggleBeforeAfter,
         Undo,
         FocusSearch,

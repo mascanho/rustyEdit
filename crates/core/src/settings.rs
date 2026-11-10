@@ -580,6 +580,8 @@ pub struct LayoutSettings {
     /// Stars and colour labels down the right-hand rail in Develop,
     /// switched by the star button under the Before / After one.
     pub rating_rail: bool,
+    /// A square over the camera's autofocus point in Develop.
+    pub show_focus_point: bool,
 }
 
 impl Default for LayoutSettings {
@@ -592,6 +594,7 @@ impl Default for LayoutSettings {
             filmstrip_height: 80,
             compare_bar: false,
             rating_rail: true,
+            show_focus_point: false,
         }
     }
 }

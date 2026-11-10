@@ -30,6 +30,7 @@ mod history_panel;
 mod import;
 mod before_after;
 mod edited_thumbs;
+mod focus_point;
 mod info_overlay;
 mod inspector_tabs;
 mod keywords;
@@ -72,7 +73,7 @@ use actions::{
     FocusSearch, GoDevelop, GoExport, GoLibrary, ImportFolder, LabelBlue, LabelGreen, LabelRed,
     LabelYellow, NextImage, OpenSettings, OptimizeCatalog, PrevImage, Quit, Rating0, Rating1,
     Rating2, Rating3, Rating4, Rating5, Redo, RenamePhoto, RestoreAutoBackup, RestoreCatalog, RestoreRemoved,
-    RevealInFinder, RotateLeft, RotateRight, SelectAll, StackSelected, SyncFolders, ToggleBeforeAfter, ToggleInfo,
+    RevealInFinder, RotateLeft, RotateRight, SelectAll, StackSelected, SyncFolders, ToggleBeforeAfter, ToggleFocusPoint, ToggleInfo,
     ToggleStack, ToggleZoom, Undo, Unstack, ViewCompare, ViewSurvey,
 };
 use actions::{
@@ -129,6 +130,7 @@ fn default_key_bindings() -> Vec<KeyBinding> {
             KeyBinding::new("f", CycleFilter, Some(KEY_CONTEXT)),
             KeyBinding::new("z", ToggleZoom, Some(KEY_CONTEXT)),
             KeyBinding::new("i", ToggleInfo, Some(KEY_CONTEXT)),
+            KeyBinding::new("a", ToggleFocusPoint, Some(KEY_CONTEXT)),
             KeyBinding::new("b", CycleBackground, Some(KEY_CONTEXT)),
             KeyBinding::new("j", CycleGridStyle, Some(KEY_CONTEXT)),
             KeyBinding::new("q", ToolSpotRemoval, Some(KEY_CONTEXT)),

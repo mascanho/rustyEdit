@@ -33,7 +33,7 @@ mod frames;
 mod detail;
 mod detail_view;
 mod gradients;
-mod grid_overlay;
+pub(crate) mod grid_overlay;
 mod history;
 mod lens_blur_ui;
 mod look;
@@ -205,6 +205,9 @@ impl Workspace {
         }
         // The tools column includes Library's folder tree.
         self.prepare_file_tree();
+        if self.settings.layout.show_focus_point {
+            self.request_focus_point(cx);
+        }
 
         let viewer = self.render_develop_viewer(window, cx);
         let panel_side = self.develop_panel_side();

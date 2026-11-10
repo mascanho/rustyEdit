@@ -69,6 +69,7 @@ pub(crate) fn commands() -> Vec<Command> {
         cmd!("View", "Zoom to 100% / fit", ToggleZoom),
         cmd!("View", "Before / after", ToggleBeforeAfter, "original"),
         cmd!("View", "Info overlay", ToggleInfo, "exif details"),
+        cmd!("View", "Focus point", ToggleFocusPoint, "autofocus af square"),
         cmd!("View", "Next background", CycleBackground, "loupe backdrop"),
         cmd!("View", "Next grid style", CycleGridStyle, "cards"),
         cmd!("View", "Larger thumbnails", GridLarger, "bigger"),

@@ -246,6 +246,9 @@ pub struct Workspace {
     pub(crate) resize_anchor: (f32, f32),
     // Loupe info overlay (see `info_overlay.rs`).
     pub(crate) info_visible: bool,
+    /// Each photo's recorded focus point (`None`: the file has none).
+    pub(crate) focus_cache: HashMap<PathBuf, Option<(f32, f32)>>,
+    pub(crate) focus_loading: HashSet<PathBuf>,
     /// Titles of the info groups the user has collapsed.
     pub(crate) info_collapsed: HashSet<&'static str>,
     pub(crate) metadata_cache: HashMap<u64, Arc<rustyedit_io::Metadata>>,
@@ -541,6 +544,8 @@ impl Workspace {
             resizing: None,
             resize_anchor: (0.0, 0.0),
             info_visible: false,
+            focus_cache: HashMap::new(),
+            focus_loading: HashSet::new(),
             info_collapsed: HashSet::new(),
             metadata_cache: HashMap::new(),
             metadata_loading: HashSet::new(),
@@ -1364,6 +1369,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::auto_tone_action))
             .on_action(cx.listener(Self::sync_settings_action))
             .on_action(cx.listener(Self::create_virtual_copy))
+            .on_action(cx.listener(Self::toggle_focus_point))
             .on_action(cx.listener(Self::merge_to_hdr))
             .on_action(cx.listener(Self::merge_focus_stack))
             .on_action(cx.listener(Self::merge_panorama))

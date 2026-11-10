@@ -84,6 +84,7 @@ impl Workspace {
                     )
                     .child(content)
                     .children(self.render_grid_overlay())
+                    .children(self.render_focus_overlay())
                     .children(self.render_retouch_overlay(cx))
                     .children(self.render_gradient_overlay(cx))
                     .children(self.render_crop_overlay(cx))
@@ -176,7 +177,7 @@ impl Workspace {
     /// The photo's size in image pixels as Develop shows it: the rendered
     /// preview's, or (before the first render) the original's, capped to
     /// the working-preview size it will be rendered at.
-    pub(super) fn develop_image_size(&self) -> Option<(f32, f32)> {
+    pub(crate) fn develop_image_size(&self) -> Option<(f32, f32)> {
         if let Some(size) = self.live_preview.size() {
             return Some(size);
         }

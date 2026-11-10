@@ -29,7 +29,8 @@ pub fn read_fuji_recipe(path: &Path) -> Option<FujiRecipe> {
 
 /// The maker note's bytes: from the photo's own EXIF, or, for a RAF, from
 /// the JPEG it carries.
-fn maker_note(path: &Path) -> Option<Vec<u8>> {
+/// The photo's EXIF: its own, or for a RAF the one in the JPEG it carries.
+fn photo_exif(path: &Path) -> Option<exif::Exif> {
     let mut file = File::open(path).ok()?;
     let mut magic = [0u8; 16];
     file.read_exact(&mut magic).ok()?;
@@ -53,17 +54,51 @@ fn maker_note(path: &Path) -> Option<Vec<u8>> {
         BufReader::new(file).take(2 * 1024 * 1024).read_to_end(&mut all).ok()?;
         all
     };
-    let exif = exif::Reader::new()
+    exif::Reader::new()
         .read_from_container(&mut Cursor::new(bytes))
-        .ok()?;
+        .ok()
+}
+
+/// The maker note's bytes.
+fn maker_note(path: &Path) -> Option<Vec<u8>> {
+    note_of(&photo_exif(path)?)
+}
+
+fn note_of(exif: &exif::Exif) -> Option<Vec<u8>> {
     match &exif.get_field(exif::Tag::MakerNote, exif::In::PRIMARY)?.value {
         exif::Value::Undefined(note, _) => Some(note.clone()),
         _ => None,
     }
 }
 
+/// Where the camera focused, as fractions of the frame it was taken in
+/// (0, 0 top left), and the photo's EXIF orientation. The point is stored
+/// in pixels of the picture the EXIF describes (a RAF's embedded
+/// 1920 x 1280 JPEG, say), which is how it's turned into fractions.
+pub(crate) fn read_fuji_focus(path: &Path) -> Option<((f32, f32), u8)> {
+    let exif = photo_exif(path)?;
+    let tags = parse_tags(&note_of(&exif)?)?;
+    let dim = |tag| exif.get_field(tag, exif::In::PRIMARY)?.value.get_uint(0);
+    let frame = (
+        dim(exif::Tag::PixelXDimension)? as f32,
+        dim(exif::Tag::PixelYDimension)? as f32,
+    );
+    let orientation = dim(exif::Tag::Orientation).unwrap_or(1) as u8;
+    Some((focus_fraction(&tags, frame)?, orientation))
+}
+
+fn focus_fraction(tags: &HashMap<u16, Vec<i64>>, (width, height): (f32, f32)) -> Option<(f32, f32)> {
+    // 0x1023 "FocusPixel".
+    let at = tags.get(&0x1023)?;
+    let (x, y) = (*at.first()? as f32, *at.get(1)? as f32);
+    if width <= 0.0 || height <= 0.0 || x <= 0.0 || y <= 0.0 || x > width || y > height {
+        return None;
+    }
+    Some((x / width, y / height))
+}
+
 /// The maker note's numeric tags, each as its list of values.
-fn parse_tags(note: &[u8]) -> Option<HashMap<u16, Vec<i64>>> {
+pub(crate) fn parse_tags(note: &[u8]) -> Option<HashMap<u16, Vec<i64>>> {
     if !note.starts_with(b"FUJIFILM") {
         return None;
     }
@@ -246,6 +281,16 @@ mod tests {
 
     fn recipe(entries: &[(u16, u16, &[i64])]) -> Option<FujiRecipe> {
         recipe_from_tags(&parse_tags(&note(entries))?)
+    }
+
+    #[test]
+    fn the_focus_pixel_becomes_a_fraction_of_the_frame() {
+        let tags = parse_tags(&note(&[(0x1023, 3, &[960, 640])])).unwrap();
+        assert_eq!(focus_fraction(&tags, (1920.0, 1280.0)), Some((0.5, 0.5)));
+        // Outside the frame, or no frame: nothing.
+        assert_eq!(focus_fraction(&tags, (900.0, 1280.0)), None);
+        assert_eq!(focus_fraction(&tags, (0.0, 0.0)), None);
+        assert_eq!(focus_fraction(&HashMap::new(), (1920.0, 1280.0)), None);
     }
 
     #[test]
