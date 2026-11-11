@@ -296,6 +296,11 @@ impl DevelopSettings {
         out.sharpening = mix(self.sharpening, full.sharpening);
         out.dehaze = mix(self.dehaze, full.dehaze);
         out.glow = mix(self.glow, full.glow);
+        out.glow_style = full.glow_style;
+        out.glow_size = mix(self.glow_size, full.glow_size);
+        out.glow_threshold = mix(self.glow_threshold, full.glow_threshold);
+        out.blemish_amount = mix(self.blemish_amount, full.blemish_amount);
+        out.blemish_fade = mix(self.blemish_fade, full.blemish_fade);
         out.vignette = mix(self.vignette, full.vignette);
         out.vignette_midpoint = mix(self.vignette_midpoint, full.vignette_midpoint);
         out.vignette_feather = mix(self.vignette_feather, full.vignette_feather);

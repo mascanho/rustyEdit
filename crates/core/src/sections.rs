@@ -191,6 +191,11 @@ impl DevelopSection {
             DevelopSection::Effects => {
                 to.dehaze = from.dehaze;
                 to.glow = from.glow;
+                to.glow_style = from.glow_style;
+                to.glow_size = from.glow_size;
+                to.glow_threshold = from.glow_threshold;
+                to.blemish_amount = from.blemish_amount;
+                to.blemish_fade = from.blemish_fade;
                 to.vignette = from.vignette;
                 to.vignette_midpoint = from.vignette_midpoint;
                 to.vignette_feather = from.vignette_feather;

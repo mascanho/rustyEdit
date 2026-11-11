@@ -301,6 +301,10 @@ pub fn read_sidecar(photo: &Path) -> Option<SidecarData> {
     parse_xmp(&text)
 }
 
+pub(crate) fn parse_xmp_str(text: &str) -> Option<SidecarData> {
+    parse_xmp(text)
+}
+
 fn parse_xmp(text: &str) -> Option<SidecarData> {
     const XMP: &str = "http://ns.adobe.com/xap/1.0/";
     const DC: &str = "http://purl.org/dc/elements/1.1/";

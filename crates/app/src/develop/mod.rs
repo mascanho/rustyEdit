@@ -31,6 +31,8 @@ mod crop_tool;
 mod curve_editor;
 mod frames;
 mod detail;
+mod dropdown;
+mod effects;
 mod detail_view;
 mod gradients;
 pub(crate) mod grid_overlay;
@@ -91,6 +93,8 @@ pub(crate) struct DevelopUi {
     pub(crate) preset_ui: presets::PresetUi,
     /// The tool strip's View dropdown is open.
     pub(crate) view_menu_open: bool,
+    /// The editing panel's open dropdown (see `dropdown.rs`), by name.
+    pub(crate) open_dropdown: Option<&'static str>,
     /// Soft-proofing: the profile to simulate and what to show of it.
     pub(crate) proof: proof_ui::ProofUi,
     /// The composition guide over the photo, its mirrored variant (0-3),
@@ -160,6 +164,7 @@ impl DevelopUi {
             presets: rustyedit_io::load_presets(),
             preset_ui: presets::PresetUi::default(),
             view_menu_open: false,
+            open_dropdown: None,
             proof: proof_ui::ProofUi::new(settings.develop.proof_profile.as_ref()),
             grid_overlay: grid_overlay::GridOverlay::Off,
             grid_orientation: 0,
@@ -344,10 +349,7 @@ impl Workspace {
             // Frames has its own rail tool, not a panel section.
             S::Frames => ("develop-frames", Vec::new()),
             S::LensBlur => ("develop-lens-blur", self.lens_blur_section(cx)),
-            S::Effects => (
-                "develop-effects",
-                self.adjustment_sliders(&Adjustment::EFFECTS, cx),
-            ),
+            S::Effects => ("develop-effects", self.effects_section(cx)),
         }
     }
 

@@ -28,6 +28,15 @@ pub(crate) fn is_hidden(path: &Path) -> bool {
 /// real shoots, so this walks the whole tree) and returns an `Asset` for
 /// every supported image file found, in a stable sorted order.
 pub fn scan_folder(folder: &Path) -> Vec<Asset> {
+    scan_paths(folder)
+        .into_iter()
+        .enumerate()
+        .map(|(ix, path)| Asset::new(ix as u64, path))
+        .collect()
+}
+
+/// The photo files under `folder`, sorted.
+pub(crate) fn scan_paths(folder: &Path) -> Vec<std::path::PathBuf> {
     let mut paths: Vec<_> = WalkDir::new(folder)
         .into_iter()
         .filter_entry(|entry| entry.depth() == 0 || !is_hidden(entry.path()))
@@ -38,12 +47,7 @@ pub fn scan_folder(folder: &Path) -> Vec<Asset> {
         .collect();
 
     paths.sort();
-
     paths
-        .into_iter()
-        .enumerate()
-        .map(|(ix, path)| Asset::new(ix as u64, path))
-        .collect()
 }
 
 #[cfg(test)]

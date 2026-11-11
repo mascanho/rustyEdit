@@ -35,6 +35,7 @@ mod geometry;
 mod glow;
 mod gpu;
 mod align;
+mod blemish;
 mod focus_stack;
 mod hdr_merge;
 mod panorama;
@@ -325,7 +326,8 @@ fn apply_cpu(source: &DevelopSource, settings: &DevelopSettings) -> RgbImage {
     if lens_blur::is_active(settings) {
         lens_blur::apply(&mut buffer, settings);
     }
-    glow::apply_glow(&mut buffer, settings.glow);
+    blemish::apply_blemish(&mut buffer, settings);
+    glow::apply_glow(&mut buffer, settings);
     let mut buffer = crop::straighten_and_crop(buffer, &settings.crop);
     let (width, height) = buffer.dimensions();
     if let Some(finishing) = finishing::Finishing::after_crop(settings, width, height) {
@@ -752,7 +754,13 @@ mod tests {
                 }),
             ),
             ("dehaze", with(|s| s.dehaze = 70.0)),
+            ("blemish", with(|s| { s.blemish_amount = 70.0; s.blemish_fade = 90.0; })),
             ("glow", with(|s| s.glow = 70.0)),
+            ("glow halation", with(|s| { s.glow = 70.0; s.glow_style = rustyedit_core::GlowStyle::Halation; })),
+            ("glow diffusion", with(|s| { s.glow = 70.0; s.glow_style = rustyedit_core::GlowStyle::Diffusion; s.glow_size = 80.0; })),
+            ("glow dreamy", with(|s| { s.glow = 70.0; s.glow_style = rustyedit_core::GlowStyle::Dreamy; })),
+            ("glow mist", with(|s| { s.glow = 70.0; s.glow_style = rustyedit_core::GlowStyle::Mist; })),
+            ("glow cinema", with(|s| { s.glow = 70.0; s.glow_style = rustyedit_core::GlowStyle::Cinema; s.glow_threshold = 20.0; })),
             ("haze", with(|s| s.dehaze = -50.0)),
             (
                 "gradients",
@@ -875,11 +883,43 @@ mod tests {
             exposure, contrast, highlights, shadows, whites, blacks, temperature, tint,
             vibrance, saturation, clarity, sharpening, sharpen_radius, sharpen_masking,
             noise_luma, noise_color, defringe_purple, defringe_green, lens_distortion, lens_vignetting, lens_ca, spots,
-            gradients, curves, parametric, mixer, grading, dehaze, glow, vignette,
+            gradients, curves, parametric, mixer, grading, dehaze, glow, glow_style, glow_size, glow_threshold, blemish_amount, blemish_fade, vignette,
             vignette_midpoint, vignette_feather, grain, grain_size, crop,
             rotation_degrees, flip_horizontal, flip_vertical, lens_blur
         );
         a
+    }
+
+    #[test]
+    fn gpu_blemish_removal_matches_cpu_on_skin() {
+        if !gpu_available() {
+            return;
+        }
+        // Skin with red spots of several sizes, a freckle and a dark hair.
+        let spots = [(150.0, 120.0, 4.0, [214u8, 98, 92]), (420.0, 200.0, 7.0, [208, 112, 100]),
+                     (300.0, 330.0, 3.0, [168, 118, 88]), (560.0, 90.0, 3.0, [40, 40, 40])];
+        let img = RgbImage::from_fn(700, 460, |x, y| {
+            for (cx, cy, r, colour) in spots {
+                let d = ((x as f32 - cx).powi(2) + (y as f32 - cy).powi(2)).sqrt();
+                if d < r {
+                    return image::Rgb(colour);
+                }
+            }
+            image::Rgb([205, 152, 122])
+        });
+        let source = DevelopSource::from_working(DynamicImage::ImageRgb8(img));
+        let settings = with(|s| {
+            s.blemish_amount = 80.0;
+            s.blemish_fade = 100.0;
+        });
+        assert_parity("blemish on skin", &source, &settings);
+        // And the red spot really went, on both paths.
+        let gpu = working_rgb(&source, &settings).unwrap();
+        let cpu = apply_cpu(&source, &settings);
+        let none = apply_cpu(&source, &DevelopSettings::default());
+        let green = |img: &RgbImage| img.get_pixel(150, 120)[1] as i32;
+        assert!(green(&cpu) > green(&none) + 30, "cpu {} vs {}", green(&cpu), green(&none));
+        assert!(green(&gpu) > green(&none) + 30, "gpu {}", green(&gpu));
     }
 
     #[test]

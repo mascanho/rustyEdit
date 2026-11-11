@@ -199,11 +199,12 @@ enum Kernel {
     LensBright,
     GlowLights,
     Glow,
+    Blemish,
     /// Not a kernel: copies `src` to `dst` (`Pass::dst_bytes` of them).
     Copy,
 }
 
-const ENTRY_POINTS: [&str; 26] = [
+const ENTRY_POINTS: [&str; 27] = [
     "load",
     "demosaic",
     "spot_ring",
@@ -230,6 +231,7 @@ const ENTRY_POINTS: [&str; 26] = [
     "lens_bright",
     "glow_lights",
     "glow",
+    "blemish",
 ];
 
 impl Kernel {
@@ -1803,18 +1805,41 @@ fn plan_develop(plan: &mut Planner, s: &DevelopSettings, raw: bool) {
 
     plan_finishing(plan, s);
     plan_lens_blur(plan, s);
+    plan_blemish(plan, s);
     plan_glow(plan, s);
+}
+
+/// blemish.rs: spots on skin blended into the skin around them.
+fn plan_blemish(plan: &mut Planner, s: &DevelopSettings) {
+    if !crate::blemish::is_active(s) || plan.full_w < 3 || plan.full_h < 3 {
+        return;
+    }
+    let sigma = crate::blemish::sigma(plan.full_w, plan.full_h);
+    plan.blur(sigma, Buf::BlurA);
+    let params = Params {
+        sharpen_strength: crate::blemish::fade(s.blemish_fade),
+        sharpen_threshold: crate::blemish::threshold(s.blemish_amount),
+        // The ring's reach, in pixels.
+        threshold: crate::blemish::ring_reach(sigma) as f32,
+        ..plan.params()
+    };
+    plan.step(Kernel::Blemish, params, Buf::BlurA, Buf::NoInput);
 }
 
 /// glow.rs: the picture with a wide blur of itself screened in where it
 /// is bright.
 fn plan_glow(plan: &mut Planner, s: &DevelopSettings) {
-    if s.glow < 0.5 || plan.full_w < 3 || plan.full_h < 3 {
+    if !crate::glow::is_active(s) || plan.full_w < 3 || plan.full_h < 3 {
         return;
     }
-    // The highlights, picked out into BlurB, then blurred into BlurA.
+    // What glows (the highlights, or the whole picture), taken into BlurB,
+    // then blurred into BlurA.
     let groups = plan.groups();
-    let params = plan.params();
+    let params = Params {
+        sharpen_masking: s.glow_style.index(),
+        sharpen_threshold: crate::glow::glow_threshold(s.glow_threshold, s.glow_style),
+        ..plan.params()
+    };
     let dst_bytes = plan.pixels() * HALF_PX;
     plan.push(Pass {
         kernel: Kernel::GlowLights,
@@ -1827,9 +1852,14 @@ fn plan_glow(plan: &mut Planner, s: &DevelopSettings) {
         dst_bytes,
         tmp_bytes: 0,
     });
-    plan.blur_of(Buf::BlurB, crate::glow::glow_sigma(plan.full_w, plan.full_h), Buf::BlurA);
+    plan.blur_of(
+        Buf::BlurB,
+        crate::glow::glow_sigma(plan.full_w, plan.full_h, s.glow_size),
+        Buf::BlurA,
+    );
     let params = Params {
         sharpen_strength: crate::glow::glow_amount(s.glow),
+        sharpen_masking: s.glow_style.index(),
         ..plan.params()
     };
     plan.step(Kernel::Glow, params, Buf::BlurA, Buf::NoInput);
@@ -1865,8 +1895,12 @@ fn margin(s: &DevelopSettings, raw: bool, full: (u32, u32)) -> u32 {
     if custom {
         m += blur_radius(custom_sharpen_sigma(s)) + 1;
     }
-    if s.glow >= 0.5 {
-        m += blur_radius(crate::glow::glow_sigma(full.0, full.1));
+    if crate::blemish::is_active(s) {
+        let sigma = crate::blemish::sigma(full.0, full.1);
+        m += blur_radius(sigma).max(crate::blemish::ring_reach(sigma) as u32);
+    }
+    if crate::glow::is_active(s) {
+        m += blur_radius(crate::glow::glow_sigma(full.0, full.1, s.glow_size));
     }
     if s.gradients.is_active() {
         let (wide, narrow) = local_sigmas(full.0, full.1, s.gradients.any_blur());

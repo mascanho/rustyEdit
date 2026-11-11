@@ -10,6 +10,7 @@ mod catalog_store;
 mod decode;
 mod focus;
 mod fuji;
+mod import_scan;
 mod maintenance;
 mod metadata;
 mod pdf;
@@ -54,6 +55,7 @@ pub use preset_store::{
     save as save_presets,
 };
 pub use focus::read_focus_point;
+pub use import_scan::read_import_candidates;
 pub use metadata::{read_gps, read_metadata, read_photo_meta, MetaGroup, Metadata};
 pub use scan::scan_folder;
 pub use settings_store::{load as load_settings, save as save_settings, settings_path};

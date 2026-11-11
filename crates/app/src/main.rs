@@ -31,6 +31,7 @@ mod import;
 mod before_after;
 mod edited_thumbs;
 mod focus_point;
+mod import_filter;
 mod info_overlay;
 mod inspector_tabs;
 mod keywords;

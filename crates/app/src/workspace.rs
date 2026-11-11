@@ -356,6 +356,8 @@ pub struct Workspace {
     /// The Sync Settings dialog, while open (see `sync_settings.rs`), and
     /// the sections last chosen in it.
     pub(crate) sync_dialog: Option<crate::sync_settings::SyncDialog>,
+    /// The import dialog's choices, while it's open (see `import_filter.rs`).
+    pub(crate) import_dialog: Option<crate::import_filter::ImportDialog>,
     pub(crate) sync_choice: Vec<rustyedit_core::DevelopSection>,
 
     /// Grid thumbnails rendered with each photo's edits (see
@@ -611,6 +613,7 @@ impl Workspace {
             histogram_ui: HistogramUi::default(),
             preview_epoch: 0,
             sync_dialog: None,
+            import_dialog: None,
             sync_choice: crate::sync_settings::default_choice(),
             edited_thumbs: Default::default(),
             import_append: false,
@@ -882,6 +885,10 @@ impl Workspace {
         }
         if self.cull_view {
             self.leave_cull_view(window, cx);
+            return;
+        }
+        if self.import_dialog.is_some() {
+            self.close_import_dialog(cx);
             return;
         }
         if self.sync_dialog.is_some() {
@@ -1442,6 +1449,9 @@ impl Render for Workspace {
             })
             .when(self.sync_dialog.is_some(), |el| {
                 el.child(self.render_sync_dialog(cx))
+            })
+            .when(self.import_dialog.is_some(), |el| {
+                el.child(self.render_import_dialog(cx))
             })
             .when(self.cull_view, |el| el.child(self.render_cull_view(cx)))
             .children(self.render_toasts(cx))

@@ -781,25 +781,107 @@ fn sharpen(@builtin(global_invocation_id) id: vec3<u32>) {
     store(i, v + (v - px_a(i)) * m);
 }
 
-// glow.rs: the highlights of `src`, weighted by how bright the pixel is.
+// glow.rs. Styles: 0 Bloom, 1 Diffusion, 2 Halation, 3 Dreamy, 4 Mist,
+// 5 Cinema. `sharpen_masking` is the style, `sharpen_threshold` where
+// highlights start, `sharpen_strength` the amount (0..1).
+fn glow_from_highlights(style: u32) -> bool {
+    return style == 0u || style == 2u || style == 5u;
+}
+
+// What is blurred: the highlights weighted by brightness, or everything.
 @compute @workgroup_size(16, 16)
 fn glow_lights(@builtin(global_invocation_id) id: vec3<u32>) {
     if (!in_bounds(id)) { return; }
     let i = id.y * p.width + id.x;
     let v = clamp(px_src(i), vec3<f32>(0.0), vec3<f32>(1.0));
+    if (!glow_from_highlights(p.sharpen_masking)) {
+        store(i, v);
+        return;
+    }
     let luma = 0.299 * v.x + 0.587 * v.y + 0.114 * v.z;
-    let t = clamp((luma - 0.55) / (1.0 - 0.55), 0.0, 1.0);
+    let t = clamp((luma - p.sharpen_threshold) / (1.0 - p.sharpen_threshold), 0.0, 1.0);
     store(i, v * (t * t * (3.0 - 2.0 * t)));
 }
 
-// glow.rs: the picture with the blurred highlights `img_a` screened in.
+fn glow_screen(v: vec3<f32>, b: vec3<f32>) -> vec3<f32> {
+    return v + clamp(b, vec3<f32>(0.0), vec3<f32>(1.0)) * (vec3<f32>(1.0) - v);
+}
+
+// The picture with the blurred glow `img_a` laid on in the chosen style.
 @compute @workgroup_size(16, 16)
 fn glow(@builtin(global_invocation_id) id: vec3<u32>) {
     if (!in_bounds(id)) { return; }
     let i = id.y * p.width + id.x;
     let v = px_src(i);
-    let bloom = clamp(px_a(i) * p.sharpen_strength, vec3<f32>(0.0), vec3<f32>(1.0));
-    store(i, v + bloom * (vec3<f32>(1.0) - v));
+    let b = px_a(i);
+    let a = p.sharpen_strength;
+    var out = v;
+    switch (p.sharpen_masking) {
+        case 0u: { out = glow_screen(v, b * a * 2.0); }
+        case 1u: { out = v + (b - v) * 0.55 * a + (glow_screen(v, b) - v) * 0.25 * a; }
+        case 2u: { out = glow_screen(v, b * a * 2.4 * vec3<f32>(1.0, 0.38, 0.14)); }
+        case 3u: {
+            let overlay = 0.6 * glow_screen(v, b) + 0.4 * v * b;
+            out = v + (overlay - v) * 0.85 * a;
+        }
+        case 4u: {
+            let softened = v + (b - v) * 0.5 * a;
+            out = softened + (vec3<f32>(1.0) - softened) * 0.12 * a;
+        }
+        default: { out = glow_screen(v, b * a * 2.2 * vec3<f32>(1.0, 0.82, 0.62)); }
+    }
+    store(i, clamp(out, vec3<f32>(0.0), vec3<f32>(1.0)));
+}
+
+// blemish.rs. `img_a` is the blur, `sharpen_strength` the fade,
+// `sharpen_threshold` how much redness counts as a spot, `threshold` the
+// ring's reach in pixels.
+fn bl_smooth(e0: f32, e1: f32, x: f32) -> f32 {
+    let t = clamp((x - e0) / (e1 - e0), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+fn bl_skin(c: vec3<f32>) -> f32 {
+    let mx = max(c.x, max(c.y, c.z));
+    let mn = min(c.x, min(c.y, c.z));
+    let warm = bl_smooth(0.02, 0.06, c.x - c.y) * bl_smooth(0.02, 0.06, c.x - c.z);
+    let chroma = mx - mn;
+    let colourful = bl_smooth(0.05, 0.10, chroma) * (1.0 - bl_smooth(0.42, 0.55, chroma));
+    return warm * colourful * bl_smooth(0.22, 0.34, mx);
+}
+
+fn bl_tap(x: i32, y: i32, dx: f32, dy: f32) -> f32 {
+    let r = p.threshold;
+    let tx = clamp(x + i32(round(dx * r)), 0, i32(p.width) - 1);
+    let ty = clamp(y + i32(round(dy * r)), 0, i32(p.height) - 1);
+    return bl_skin(clamp(px_src(u32(ty) * p.width + u32(tx)), vec3<f32>(0.0), vec3<f32>(1.0)));
+}
+
+@compute @workgroup_size(16, 16)
+fn blemish(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (!in_bounds(id)) { return; }
+    let i = id.y * p.width + id.x;
+    let v = px_src(i);
+    let b = px_a(i);
+    let x = i32(id.x);
+    let y = i32(id.y);
+    let luma_v = 0.299 * v.x + 0.587 * v.y + 0.114 * v.z;
+    let luma_b = 0.299 * b.x + 0.587 * b.y + 0.114 * b.z;
+    let redder = (v.x - v.y) - (b.x - b.y);
+    let darker = luma_b - luma_v;
+    let spot = redder + 0.5 * max(darker, 0.0);
+    let warm = bl_smooth(0.02, 0.06, v.x - v.y) * bl_smooth(0.0, 0.04, v.x - v.z);
+    var ring = bl_tap(x, y, 1.0, 0.0) + bl_tap(x, y, -1.0, 0.0)
+        + bl_tap(x, y, 0.0, 1.0) + bl_tap(x, y, 0.0, -1.0)
+        + bl_tap(x, y, 0.7, 0.7) + bl_tap(x, y, -0.7, 0.7)
+        + bl_tap(x, y, 0.7, -0.7) + bl_tap(x, y, -0.7, -0.7);
+    let surrounded = bl_smooth(0.55, 0.9, ring / 8.0);
+    var weight = 0.0;
+    if (redder > 0.0) {
+        weight = bl_smooth(p.sharpen_threshold, p.sharpen_threshold + 0.07, spot)
+            * warm * surrounded * p.sharpen_strength;
+    }
+    store(i, v + (b - v) * weight);
 }
 
 // ------------------------------------------------- finishing

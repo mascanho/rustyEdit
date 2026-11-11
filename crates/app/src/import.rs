@@ -41,7 +41,8 @@ impl Workspace {
             this.update(cx, |this, cx| {
                 this.is_importing = false;
                 match folder {
-                    Some(folder) => this.import_folder(folder, None, cx),
+                    // Choose what to bring in, then import.
+                    Some(folder) => this.open_import_dialog(folder, cx),
                     None => {
                         this.status_message = Some("Import cancelled.".into());
                         cx.notify();
@@ -51,6 +52,30 @@ impl Workspace {
             .ok();
         })
         .detach();
+    }
+
+    /// Imports `folder` except for the photos in `skipped` (the ones the
+    /// import dialog's filter left out). They're remembered as not
+    /// belonging to the library, so a rescan doesn't bring them in; an
+    /// import of the folder with other choices does.
+    pub(crate) fn import_folder_without(
+        &mut self,
+        folder: PathBuf,
+        skipped: Vec<PathBuf>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.is_importing {
+            return;
+        }
+        self.catalog_def.add_folder(&folder);
+        // Earlier choices for this folder are replaced by this one.
+        self.catalog_def.restore_excluded_in(&folder);
+        for path in &skipped {
+            self.catalog_def.exclude(path);
+        }
+        self.save_catalog_def();
+        self.import_append = true;
+        self.open_catalog(None, cx);
     }
 
     /// Adds `folder` to the active catalog and (re)loads it. This is the

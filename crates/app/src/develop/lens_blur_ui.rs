@@ -6,11 +6,11 @@
 //! shows its handles on the photo). The layer is marked as the focus, so
 //! it follows the layer when layers are reordered or removed.
 
-use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, SharedString};
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context};
 use rustyedit_core::{Adjustment, BokehShape, GradientKind, LensBlur};
 use rustyedit_ui::{sp, Icon, Theme};
 
-use super::{auto::small_button, tool_strip::PhotoTool};
+use super::{auto::small_button, dropdown::choice, tool_strip::PhotoTool};
 use crate::workspace::Workspace;
 
 impl Workspace {
@@ -30,46 +30,45 @@ impl Workspace {
         rows.extend(self.adjustment_sliders(&Adjustment::LENS_BLUR, cx));
 
         // Bokeh shape.
-        let shapes = BokehShape::ALL.map(|shape| {
-            chip(
-                SharedString::from(format!("lens-shape-{}", shape.label())),
-                shape.label(),
-                lens.shape == shape,
-                &theme,
-            )
-            .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                this.edit_lens_blur("Bokeh shape", move |l| l.shape = shape, cx)
-            }))
-            .into_any_element()
-        });
-        rows.push(labelled("Bokeh", chips(shapes.into_iter().collect()), &theme));
+        let shapes = BokehShape::ALL
+            .iter()
+            .map(|&shape| {
+                choice(shape.label(), None, move |this, cx| {
+                    this.edit_lens_blur("Bokeh shape", move |l| l.shape = shape, cx)
+                })
+            })
+            .collect();
+        let at = BokehShape::ALL.iter().position(|s| *s == lens.shape).unwrap_or(0);
+        rows.push(labelled(
+            "Bokeh",
+            self.dropdown("lens-bokeh", lens.shape.label(), at, shapes, cx),
+            &theme,
+        ));
 
         // What's in focus.
-        let mut focus = vec![chip(
-            "lens-focus-centre".into(),
-            "Centre",
-            focus_ix.is_none(),
-            &theme,
-        )
-        .tooltip(rustyedit_ui::tip("An oval around the middle of the photo", &theme))
-        .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.set_lens_focus(None, cx)))
-        .into_any_element()];
+        let mut focus = vec![choice("Centre", Some("An oval around the middle of the photo"), |this, cx| {
+            this.set_lens_focus(None, cx)
+        })];
         for (ix, g) in develop.gradients.as_slice().iter().enumerate() {
-            focus.push(
-                chip(
-                    SharedString::from(format!("lens-focus-{ix}")),
-                    &format!("{} {}", g.kind.label(), ix + 1),
-                    focus_ix == Some(ix),
-                    &theme,
-                )
-                .tooltip(rustyedit_ui::tip("Keep this mask layer in focus", &theme))
-                .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                    this.set_lens_focus(Some(ix), cx)
-                }))
-                .into_any_element(),
-            );
+            focus.push(choice(
+                format!("{} {}", g.kind.label(), ix + 1),
+                Some("Keep this mask layer in focus"),
+                move |this, cx| this.set_lens_focus(Some(ix), cx),
+            ));
         }
-        rows.push(labelled("Focus", chips(focus), &theme));
+        let current = match focus_ix {
+            None => "Centre".to_string(),
+            Some(ix) => format!(
+                "{} {}",
+                develop.gradients.as_slice()[ix].kind.label(),
+                ix + 1
+            ),
+        };
+        rows.push(labelled(
+            "Focus",
+            self.dropdown("lens-focus", &current, focus_ix.map_or(0, |ix| ix + 1), focus, cx),
+            &theme,
+        ));
 
         // Tilting the focus oval tilts the blur with it. Tilting the centre
         // oval makes it a layer first, so the angle has somewhere to live.
@@ -291,41 +290,7 @@ impl Workspace {
     }
 }
 
-fn chip(id: SharedString, label: &str, on: bool, theme: &Theme) -> gpui::Stateful<gpui::Div> {
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .h(sp(20.0))
-        .px_1p5()
-        .rounded_md()
-        .border_1()
-        .cursor_pointer()
-        .text_size(sp(rustyedit_ui::type_size::SMALL))
-        .when(on, |el| {
-            el.bg(theme.accent_muted)
-                .border_color(theme.accent)
-                .text_color(theme.text)
-        })
-        .when(!on, |el| {
-            el.border_color(theme.border_subtle)
-                .text_color(theme.text_muted)
-                .hover(|el| el.text_color(theme.text).border_color(theme.border))
-        })
-        .child(label.to_string())
-}
-
-fn chips(children: Vec<AnyElement>) -> AnyElement {
-    div()
-        .flex()
-        .flex_row()
-        .flex_wrap()
-        .gap_1()
-        .children(children)
-        .into_any_element()
-}
-
-fn labelled(label: &'static str, control: AnyElement, theme: &Theme) -> AnyElement {
+pub(super) fn labelled(label: &'static str, control: AnyElement, theme: &Theme) -> AnyElement {
     div()
         .flex()
         .flex_row()

@@ -83,6 +83,17 @@ pub struct DevelopSettings {
     pub dehaze: f32,
     /// 0..=100: a soft bloom of light around the bright areas.
     pub glow: f32,
+    pub glow_style: crate::GlowStyle,
+    /// 0..=100: how far the glow spreads.
+    pub glow_size: f32,
+    /// 0..=100: how bright a highlight must be to glow (the highlight
+    /// styles only).
+    pub glow_threshold: f32,
+    /// 0..=100: how readily skin blemishes are found and cleared; 0 is off.
+    pub blemish_amount: f32,
+    /// 0..=100: how completely a found blemish is blended away. Less keeps
+    /// some of it, so the skin stays natural.
+    pub blemish_fade: f32,
     /// -100 darkens the corners, +100 lightens them.
     pub vignette: f32,
     /// 0..=100: how far in from the corners the vignette starts.
@@ -146,6 +157,11 @@ impl Default for DevelopSettings {
             grading: ColorGrading::default(),
             dehaze: 0.0,
             glow: 0.0,
+            glow_style: crate::GlowStyle::Bloom,
+            glow_size: 50.0,
+            glow_threshold: 50.0,
+            blemish_amount: 0.0,
+            blemish_fade: 80.0,
             vignette: 0.0,
             vignette_midpoint: 50.0,
             vignette_feather: 50.0,
@@ -226,6 +242,10 @@ pub enum Adjustment {
     GradingBalance,
     Dehaze,
     Glow,
+    GlowSize,
+    GlowThreshold,
+    BlemishAmount,
+    BlemishFade,
     Vignette,
     VignetteMidpoint,
     VignetteFeather,
@@ -286,9 +306,13 @@ impl Adjustment {
         Adjustment::CurveShadows,
     ];
 
-    pub const EFFECTS: [Adjustment; 8] = [
+    pub const EFFECTS: [Adjustment; 12] = [
         Adjustment::Dehaze,
         Adjustment::Glow,
+        Adjustment::GlowSize,
+        Adjustment::GlowThreshold,
+        Adjustment::BlemishAmount,
+        Adjustment::BlemishFade,
         Adjustment::Vignette,
         Adjustment::VignetteMidpoint,
         Adjustment::VignetteFeather,
@@ -333,6 +357,10 @@ impl Adjustment {
             Adjustment::GradingBalance => "Balance",
             Adjustment::Dehaze => "Dehaze",
             Adjustment::Glow => "Glow",
+            Adjustment::GlowSize => "Size",
+            Adjustment::GlowThreshold => "Threshold",
+            Adjustment::BlemishAmount => "Amount",
+            Adjustment::BlemishFade => "Fade",
             Adjustment::Vignette => "Vignette",
             Adjustment::VignetteMidpoint => "Midpoint",
             Adjustment::VignetteFeather => "Feather",
@@ -386,6 +414,10 @@ impl Adjustment {
             | Adjustment::VignetteFeather
             | Adjustment::VignetteRoundness
             | Adjustment::Glow
+            | Adjustment::GlowSize
+            | Adjustment::GlowThreshold
+            | Adjustment::BlemishAmount
+            | Adjustment::BlemishFade
             | Adjustment::Grain
             | Adjustment::GrainSize
             | Adjustment::LensBlurAmount
@@ -460,6 +492,10 @@ impl Adjustment {
             Adjustment::GradingBalance => settings.grading.balance,
             Adjustment::Dehaze => settings.dehaze,
             Adjustment::Glow => settings.glow,
+            Adjustment::GlowSize => settings.glow_size,
+            Adjustment::GlowThreshold => settings.glow_threshold,
+            Adjustment::BlemishAmount => settings.blemish_amount,
+            Adjustment::BlemishFade => settings.blemish_fade,
             Adjustment::Vignette => settings.vignette,
             Adjustment::VignetteMidpoint => settings.vignette_midpoint,
             Adjustment::VignetteFeather => settings.vignette_feather,
@@ -512,6 +548,10 @@ impl Adjustment {
             Adjustment::GradingBalance => settings.grading.balance = v,
             Adjustment::Dehaze => settings.dehaze = v,
             Adjustment::Glow => settings.glow = v,
+            Adjustment::GlowSize => settings.glow_size = v,
+            Adjustment::GlowThreshold => settings.glow_threshold = v,
+            Adjustment::BlemishAmount => settings.blemish_amount = v,
+            Adjustment::BlemishFade => settings.blemish_fade = v,
             Adjustment::Vignette => settings.vignette = v,
             Adjustment::VignetteMidpoint => settings.vignette_midpoint = v,
             Adjustment::VignetteFeather => settings.vignette_feather = v,
