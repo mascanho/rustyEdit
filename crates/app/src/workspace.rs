@@ -246,6 +246,8 @@ pub struct Workspace {
     pub(crate) resize_anchor: (f32, f32),
     // Loupe info overlay (see `info_overlay.rs`).
     pub(crate) info_visible: bool,
+    /// The dropdown that's open, by name (see `dropdown.rs`).
+    pub(crate) open_dropdown: Option<&'static str>,
     /// Each photo's recorded focus point (`None`: the file has none).
     pub(crate) focus_cache: HashMap<PathBuf, Option<(f32, f32)>>,
     pub(crate) focus_loading: HashSet<PathBuf>,
@@ -546,6 +548,7 @@ impl Workspace {
             resizing: None,
             resize_anchor: (0.0, 0.0),
             info_visible: false,
+            open_dropdown: None,
             focus_cache: HashMap::new(),
             focus_loading: HashSet::new(),
             info_collapsed: HashSet::new(),
@@ -887,6 +890,10 @@ impl Workspace {
             self.leave_cull_view(window, cx);
             return;
         }
+        if self.open_dropdown.take().is_some() {
+            cx.notify();
+            return;
+        }
         if self.import_dialog.is_some() {
             self.close_import_dialog(cx);
             return;
@@ -1150,11 +1157,7 @@ impl Workspace {
             .into_any_element(),
             rustyedit_ui::chrome_tab(
                 "mode-zines",
-                if self.zine.photos.is_empty() {
-                    "Zines".to_string()
-                } else {
-                    format!("Zines ({})", self.zine.photos.len())
-                },
+                "Zines",
                 self.mode == Mode::Zines,
                 &theme,
                 cx.listener(|this, _: &ClickEvent, _w, cx| this.go_zines(cx)),

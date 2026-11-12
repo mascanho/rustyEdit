@@ -5,7 +5,8 @@ use gpui::{div, prelude::*, AnyElement, Context};
 use rustyedit_core::{Adjustment, GlowStyle};
 use rustyedit_ui::sp;
 
-use super::{dropdown::choice, lens_blur_ui::labelled};
+use super::lens_blur_ui::labelled;
+use crate::dropdown::choice;
 use crate::workspace::Workspace;
 
 impl Workspace {

@@ -41,7 +41,7 @@ impl Workspace {
         rustyedit_ui::footer_button(
             "footer-import",
             "Import\u{2026}",
-            "Add a folder of photos (\u{2318}O)",
+            "Add a folder of photos, choosing which to bring in (\u{2318}O)",
             !self.is_importing,
             &self.theme,
             cx.listener(|this, _: &ClickEvent, _w, cx| this.start_import(cx)),

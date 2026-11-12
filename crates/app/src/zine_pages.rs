@@ -185,9 +185,14 @@ impl Workspace {
         const GAP: f32 = 40.0;
         let paired = self.zine_ui.spreads && !self.zine.manual.pages.iter().any(|p| p.is_sheet());
         let unit = if paired { page_w * 2.0 } else { page_w };
-        let side = if self.zine_ui.sidebar_open { SIDEBAR_W } else { 32.0 };
+        let side = if self.zine_ui.sidebar_open { SIDEBAR_W } else { rustyedit_ui::COLLAPSED_PANEL_WIDTH };
+        let left = if self.zine_ui.panel_open {
+            self.settings.layout.inspector_width as f32
+        } else {
+            rustyedit_ui::COLLAPSED_PANEL_WIDTH
+        };
         let avail = f32::from(window.viewport_size().width)
-            - self.settings.layout.inspector_width as f32
+            - left
             - side
             - 64.0
             - 14.0;
@@ -223,123 +228,74 @@ impl Workspace {
     /// Every control, in a bar down the right: the view, what can be added,
     /// the page and the selection, and the pages themselves.
     fn zine_sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
-        let theme = self.theme;
         let body = vec![
-            side_section(&theme, "View", self.zine_view_controls(cx)),
-            side_section(&theme, "Add to a page", self.zine_add_tools(cx)),
+            self.zine_card("zine-side-view", "View", self.zine_view_controls(cx), cx),
+            self.zine_card("zine-side-add", "Add to a page", self.zine_add_tools(cx), cx),
             self.zine_context_sections(cx),
         ];
         self.zine_sidebar_shell(body, cx)
     }
 
-    /// The side bar's frame, shared by the manual and automatic views: a
-    /// title bar with the fold-away arrow, the tools scrolling in between,
-    /// and the Preview button pinned at the bottom. Folded, it's a thin
-    /// strip with just the arrow to open it again.
+    /// The side bar's frame, shared by the manual and automatic views: the
+    /// same collapsible panel as Library's docks, with a title bar and its
+    /// fold-away arrow, the tools scrolling in between as cards, and the
+    /// Preview button pinned at the bottom. Folded, it's a thin strip with
+    /// just the arrow to open it again.
     fn zine_sidebar_shell(&self, body: Vec<AnyElement>, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
-        let open = self.zine_ui.sidebar_open;
-        let toggle = |id: &'static str| {
-            div()
-                .id(id)
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(sp(22.0))
-                .rounded_md()
-                .cursor_pointer()
-                .hover(|el| el.bg(theme.surface_elevated))
-                .tooltip(rustyedit_ui::tip(
-                    if open { "Fold the tools away" } else { "Show the tools" },
-                    &theme,
-                ))
-                .child(rustyedit_ui::icon(
-                    if open { rustyedit_ui::Icon::ChevronRight } else { rustyedit_ui::Icon::ChevronLeft },
-                    12.0,
-                    theme.text_muted,
-                ))
-                .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
-                    this.zine_ui.sidebar_open = !this.zine_ui.sidebar_open;
-                    cx.notify();
-                }))
-        };
-        if !open {
-            return div()
-                .id("zine-sidebar")
-                .flex()
-                .flex_col()
-                .items_center()
-                .flex_shrink_0()
-                .w(sp(32.0))
-                .h_full()
-                .py_2()
-                .bg(theme.surface)
-                .border_l_1()
-                .border_color(theme.border)
-                .child(toggle("zine-sidebar-toggle"))
-                .into_any_element();
-        }
-        let preview = div()
-            .id("zine-preview")
-            .flex()
-            .items_center()
-            .justify_center()
-            .h(sp(32.0))
-            .rounded_md()
-            .bg(theme.accent)
-            .text_color(gpui::white())
-            .text_size(sp(rustyedit_ui::type_size::LABEL))
-            .font_weight(gpui::FontWeight::SEMIBOLD)
-            .cursor_pointer()
-            .hover(|el| el.opacity(0.92))
-            .tooltip(rustyedit_ui::tip("See the zine as it will print", &theme))
-            .child("Preview")
-            .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.open_zine_preview(cx)));
-        div()
-            .id("zine-sidebar")
-            .flex()
-            .flex_col()
-            .flex_shrink_0()
-            .w(sp(SIDEBAR_W))
-            .h_full()
-            .bg(theme.surface)
-            .border_l_1()
-            .border_color(theme.border)
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
-                    .flex_shrink_0()
-                    .h(sp(STRIP_HEADER_H + 8.0))
-                    .px_3()
-                    .border_b_1()
-                    .border_color(theme.border_subtle)
-                    .child(rustyedit_ui::caption(&theme, "Tools"))
-                    .child(toggle("zine-sidebar-toggle")),
-            )
-            .child(
-                div()
-                    .id("zine-sidebar-body")
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h(sp(0.0))
-                    .overflow_y_scroll()
-                    .gap_3()
-                    .p_3()
-                    .children(body),
-            )
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .p_3()
-                    .border_t_1()
-                    .border_color(theme.border_subtle)
-                    .child(preview),
-            )
-            .into_any_element()
+        let footer = rustyedit_ui::panel_footer(
+            &theme,
+            vec![vec![rustyedit_ui::footer_button(
+                "zine-preview",
+                "Preview",
+                "See the zine as it will print",
+                true,
+                &theme,
+                cx.listener(|this, _: &ClickEvent, _w, cx| this.open_zine_preview(cx)),
+            )]],
+        );
+        rustyedit_ui::collapsible_panel_pinned(
+            "zine-sidebar",
+            &theme,
+            "Tools",
+            rustyedit_ui::PanelSide::Right,
+            SIDEBAR_W,
+            !self.zine_ui.sidebar_open,
+            &self.zine_ui.sidebar_scroll,
+            cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.zine_ui.sidebar_open = !this.zine_ui.sidebar_open;
+                cx.notify();
+            }),
+            None,
+            Some(footer),
+            body,
+        )
+        .into_any_element()
+    }
+
+    /// A card in the side bar, folding like the cards in Library's and
+    /// Develop's panels.
+    pub(crate) fn zine_card(
+        &self,
+        key: &'static str,
+        title: impl Into<gpui::SharedString>,
+        content: AnyElement,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        rustyedit_ui::disclosure_section(
+            key,
+            &self.theme,
+            title,
+            !self.collapsed_sections.contains(key),
+            cx.listener(move |this, _: &ClickEvent, _w, cx| {
+                if !this.collapsed_sections.remove(key) {
+                    this.collapsed_sections.insert(key);
+                }
+                cx.notify();
+            }),
+            vec![content],
+        )
+        .into_any_element()
     }
 
     /// Undo, spreads, preview, zoom.
@@ -1330,6 +1286,28 @@ impl Workspace {
                 .on_drag(ZineGesture, |_, _, _, cx| cx.new(|_| NoGhost))
                 .on_drag_move(cx.listener(move |this, event: &DragMoveEvent<ZineGesture>, _w, cx| {
                     this.zine_gesture_move(page, event.event.position, cx);
+                }))
+                .into_any_element(),
+        );
+        // A delete button on the box's top-right corner, for text boxes and
+        // photos alike (the Delete key does the same).
+        out.push(
+            handle("zine-item-delete", corners[1], gpui::CursorStyle::PointingHand)
+                .bg(theme.danger)
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(sp(rustyedit_ui::type_size::MICRO))
+                .text_color(gpui::white())
+                .child("\u{2715}")
+                .tooltip(rustyedit_ui::tip(
+                    if ui.items.len() == 1 { "Delete this box (Delete)" } else { "Delete these boxes (Delete)" },
+                    &theme,
+                ))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
+                    cx.stop_propagation();
+                    this.zine_delete_selection(cx);
                 }))
                 .into_any_element(),
         );
@@ -2479,7 +2457,10 @@ impl Workspace {
             )
             .into_any_element();
         self.zine_sidebar_shell(
-            vec![side_section(&theme, "View", view), side_section(&theme, "Edit", by_hand)],
+            vec![
+                self.zine_card("zine-side-view", "View", view, cx),
+                self.zine_card("zine-side-edit", "Edit", by_hand, cx),
+            ],
             cx,
         )
     }
@@ -2510,7 +2491,8 @@ impl Workspace {
             vec![current]
         };
         let viewport = window.viewport_size();
-        let avail_w = (f32::from(viewport.width) - self.settings.layout.inspector_width as f32 - 80.0).max(300.0);
+        let left = if self.zine_ui.panel_open { self.settings.layout.inspector_width as f32 } else { rustyedit_ui::COLLAPSED_PANEL_WIDTH };
+        let avail_w = (f32::from(viewport.width) - left - 80.0).max(300.0);
         let avail_h = (f32::from(viewport.height) - 230.0).max(300.0);
         let (pw, ph) = layout.size;
         let across = if spreads { 2.0 } else { 1.0 };
@@ -2704,28 +2686,6 @@ fn spot_key(spot: ZineSpot) -> (usize, usize) {
         ZineSpot::Cover => (usize::MAX, 0),
         ZineSpot::Slot { page, slot } => (page, slot),
     }
-}
-
-/// A titled block in the side bar.
-fn side_section(theme: &rustyedit_ui::Theme, title: &'static str, content: AnyElement) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .p_2()
-        .rounded_lg()
-        .bg(theme.background)
-        .border_1()
-        .border_color(theme.border_subtle)
-        .child(
-            div()
-                .text_size(sp(rustyedit_ui::type_size::CAPTION))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(theme.text_faint)
-                .child(title.to_uppercase()),
-        )
-        .child(content)
-        .into_any_element()
 }
 
 /// Starts the manual pages from the automatic layout, as an override of

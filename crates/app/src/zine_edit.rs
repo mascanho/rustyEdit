@@ -117,6 +117,10 @@ pub(crate) struct ZineUi {
     pub(crate) pages_open: bool,
     /// The side bar of tools is open (it folds away to a thin strip).
     pub(crate) sidebar_open: bool,
+    /// The left panel is open (it folds to a thin strip, like Library's).
+    pub(crate) panel_open: bool,
+    /// Scroll position of the right-hand tools.
+    pub(crate) sidebar_scroll: ScrollHandle,
     /// Whether the left panel's cards have had their starting folds.
     pub(crate) panel_ready: bool,
     /// Where the strips of pages and of photos are scrolled to.
@@ -163,6 +167,8 @@ impl Default for ZineUi {
             pages_selected: Vec::new(),
             pages_open: true,
             sidebar_open: true,
+            panel_open: true,
+            sidebar_scroll: ScrollHandle::new(),
             panel_ready: false,
             pages_scroll: ScrollHandle::new(),
             zines_list: ScrollHandle::new(),

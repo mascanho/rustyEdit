@@ -25,11 +25,13 @@ use crate::workspace::{TextTarget, Workspace};
 pub(crate) struct Kit {
     theme: Theme,
     entity: Entity<Workspace>,
+    /// The dropdown that's open, by name.
+    open: Option<&'static str>,
 }
 
 impl Kit {
-    pub(crate) fn new(theme: Theme, entity: Entity<Workspace>) -> Self {
-        Self { theme, entity }
+    pub(crate) fn new(theme: Theme, entity: Entity<Workspace>, open: Option<&'static str>) -> Self {
+        Self { theme, entity, open }
     }
 
     /// A line of explanation.
@@ -65,6 +67,28 @@ impl Kit {
     ) -> AnyElement {
         let theme = self.theme;
         let labels: Vec<String> = values.iter().map(|&v| label(v)).collect();
+        // More than three choices read better as a dropdown than as rows of
+        // buttons in a narrow panel.
+        if values.len() > 3 {
+            let selected = values.iter().position(|&v| v == current).unwrap_or(0);
+            let choices = values
+                .iter()
+                .zip(&labels)
+                .map(|(&value, text)| {
+                    let pick = pick.clone();
+                    crate::dropdown::choice(text.clone(), None, move |this, cx| pick(this, value, cx))
+                })
+                .collect();
+            return crate::dropdown::dropdown_view(
+                &theme,
+                &self.entity,
+                self.open,
+                id,
+                &labels[selected],
+                selected,
+                choices,
+            );
+        }
         let longest = labels.iter().map(|l| l.chars().count()).max().unwrap_or(0);
         // As many to a row as the labels allow, then rows as even as
         // possible (7 choices make rows of 4 and 3, not 3, 3 and 1).
@@ -385,7 +409,7 @@ impl Workspace {
     /// placed by hand.
     pub(crate) fn zine_panel_pinned(&self, pages: usize, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
-        let kit = Kit::new(theme, cx.entity());
+        let kit = Kit::new(theme, cx.entity(), self.open_dropdown);
         let options = &self.zine.options;
         let count = self.zine.photos.len();
         let title = if options.title.trim().is_empty() { "Untitled".to_string() } else { options.title.clone() };
@@ -437,7 +461,7 @@ impl Workspace {
     }
 
     pub(crate) fn zine_panel_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let kit = Kit::new(self.theme, cx.entity());
+        let kit = Kit::new(self.theme, cx.entity(), self.open_dropdown);
         let options = self.zine.options.clone();
         let zine_title = if options.title.trim().is_empty() {
             "Untitled".to_string()

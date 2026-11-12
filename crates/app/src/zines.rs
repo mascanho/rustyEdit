@@ -402,26 +402,39 @@ impl Workspace {
         }
         footer_rows.push(vec![footer_button.into_any_element()]);
         let footer = rustyedit_ui::panel_footer(&theme, footer_rows);
-        let panel = rustyedit_ui::side_panel(
+        // The same collapsible panel as Library's and Develop's docks.
+        let open = self.zine_ui.panel_open;
+        let panel = rustyedit_ui::collapsible_panel_pinned(
             "zine-side-panel",
             &theme,
+            "Zine",
             rustyedit_ui::PanelSide::Left,
             self.settings.layout.inspector_width as f32,
+            !open,
             &self.zine_panel_scroll,
+            cx.listener(|this, _: &ClickEvent, _w, cx| {
+                this.zine_ui.panel_open = !this.zine_ui.panel_open;
+                cx.notify();
+            }),
             Some(self.zine_panel_pinned(layout.pages.len(), cx)),
             Some(footer),
             sections,
         )
         .into_any_element();
-        // Resizable like Library's and Develop's side panels.
-        let grip = self.resize_grip(crate::resize::ResizeTarget::Dock(rustyedit_core::settings::DockSide::Left), cx);
+        // Resizable like theirs, too.
+        let grip = open.then(|| {
+            self.resize_grip(
+                crate::resize::ResizeTarget::Dock(rustyedit_core::settings::DockSide::Left),
+                cx,
+            )
+        });
         let panel = div()
             .flex()
             .flex_row()
             .flex_shrink_0()
             .h_full()
             .child(panel)
-            .child(grip)
+            .children(grip)
             .into_any_element();
 
         // The finished zine, page by page.
@@ -460,6 +473,38 @@ impl Workspace {
                 .into_any_element();
         }
 
+        // Nothing in the zine yet: the same bar and centred message as an
+        // empty library.
+        if count == 0 {
+            let centre = div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w(sp(0.0))
+                .min_h(sp(0.0))
+                .bg(theme.background)
+                .child(self.zine_toolbar("No photos yet".to_string(), false))
+                .child(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .justify_center()
+                        .gap_4()
+                        .child(empty_state(&theme))
+                        .children(self.start_with_best(cx)),
+                );
+            return div()
+                .flex()
+                .flex_row()
+                .flex_1()
+                .min_h(sp(0.0))
+                .child(panel)
+                .child(centre)
+                .into_any_element();
+        }
+
         // --- Centre: the pages, then the photos ---------------------------------
         let mut body: Vec<AnyElement> = Vec::new();
         body.push(self.zine_header(count, layout.pages.len(), layout.left_out, cx));
@@ -478,13 +523,8 @@ impl Workspace {
                     .into_any_element(),
             );
         }
-        if count == 0 {
-            body.push(empty_state(&theme));
-            body.extend(self.start_with_best(cx));
-        } else {
-            body.push(page_strip(&theme, &layout));
-            body.push(self.zine_tiles(cx));
-        }
+        body.push(page_strip(&theme, &layout));
+        body.push(self.zine_tiles(cx));
 
         let center = div()
             .relative()
@@ -1028,7 +1068,6 @@ fn empty_state(theme: &Theme) -> AnyElement {
         .flex_col()
         .items_center()
         .gap_2()
-        .py_12()
         .child(rustyedit_ui::icon(Icon::Sidecar, 36.0, theme.text_faint))
         .child(
             div()

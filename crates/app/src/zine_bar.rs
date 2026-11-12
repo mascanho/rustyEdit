@@ -51,10 +51,11 @@ impl Workspace {
 
         let mut sections: Vec<gpui::AnyElement> = Vec::new();
         match page {
-            Some(page) => sections.push(side_block(
-                &theme,
-                &format!("Page {}", page + usize::from(self.zine.options.cover && !self.zine.manual.pages[page].is_sheet()) + 1),
+            Some(page) => sections.push(self.zine_card(
+                "zine-side-page",
+                format!("Page {}", page + usize::from(self.zine.options.cover && !self.zine.manual.pages[page].is_sheet()) + 1),
                 self.page_group(page, cx),
+                cx,
             )),
             None => sections.push(
                 div()
@@ -72,12 +73,11 @@ impl Workspace {
         if let Some(group) = page.and_then(|p| self.selection_group(p, cx)) {
             let count = ui.items.len();
             let title = if count == 1 { "Selection".to_string() } else { format!("{count} selected") };
-            sections.push(side_block(&theme, &title, group));
+            sections.push(self.zine_card("zine-side-selection", title, group, cx));
         }
         div()
             .flex()
             .flex_col()
-            .gap_3()
             .children(sections)
             .into_any_element()
     }
@@ -737,24 +737,3 @@ fn labelled(theme: &Theme, label: &str, control: gpui::AnyElement) -> gpui::AnyE
         .into_any_element()
 }
 
-/// A titled block of controls in the side bar.
-fn side_block(theme: &Theme, title: &str, content: gpui::AnyElement) -> gpui::AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .p_2()
-        .rounded_lg()
-        .bg(theme.background)
-        .border_1()
-        .border_color(theme.border_subtle)
-        .child(
-            div()
-                .text_size(sp(rustyedit_ui::type_size::CAPTION))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(theme.text_faint)
-                .child(title.to_uppercase()),
-        )
-        .child(content)
-        .into_any_element()
-}

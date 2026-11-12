@@ -725,6 +725,19 @@ impl Workspace {
                         this.request_metadata(cx);
                     }
                 },
+            ))
+            .child(item(
+                "view-focus-point",
+                "Focus point",
+                "A",
+                self.settings.layout.show_focus_point,
+                true,
+                |this, cx| {
+                    this.update_settings(|s| s.layout.show_focus_point = !s.layout.show_focus_point, cx);
+                    if this.settings.layout.show_focus_point {
+                        this.request_focus_point(cx);
+                    }
+                },
             ));
 
         div()

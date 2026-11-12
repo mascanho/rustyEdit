@@ -10,7 +10,8 @@ use gpui::{div, prelude::*, AnyElement, ClickEvent, Context};
 use rustyedit_core::{Adjustment, BokehShape, GradientKind, LensBlur};
 use rustyedit_ui::{sp, Icon, Theme};
 
-use super::{auto::small_button, dropdown::choice, tool_strip::PhotoTool};
+use super::{auto::small_button, tool_strip::PhotoTool};
+use crate::dropdown::choice;
 use crate::workspace::Workspace;
 
 impl Workspace {

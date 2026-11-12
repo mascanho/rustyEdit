@@ -55,7 +55,7 @@ pub(crate) fn commands() -> Vec<Command> {
         cmd!("General", "Keyboard shortcuts", ToggleShortcuts, "help keys cheat sheet"),
         cmd!("General", "Undo", Undo),
         cmd!("General", "Redo", Redo),
-        cmd!("General", "Import a folder\u{2026}", ImportFolder, "add open"),
+        cmd!("General", "Import a folder\u{2026}", ImportFolder, "add open choose filter file type rating label protected"),
         cmd!("General", "Settings\u{2026}", OpenSettings, "preferences options"),
         cmd!("General", "Next layout", CycleLayout, "panels arrangement"),
         cmd!("General", "Quit", Quit, "exit close"),
@@ -69,7 +69,7 @@ pub(crate) fn commands() -> Vec<Command> {
         cmd!("View", "Zoom to 100% / fit", ToggleZoom),
         cmd!("View", "Before / after", ToggleBeforeAfter, "original"),
         cmd!("View", "Info overlay", ToggleInfo, "exif details"),
-        cmd!("View", "Focus point", ToggleFocusPoint, "autofocus af square"),
+        cmd!("View", "Focus point", ToggleFocusPoint, "autofocus af square where the camera focused"),
         cmd!("View", "Next background", CycleBackground, "loupe backdrop"),
         cmd!("View", "Next grid style", CycleGridStyle, "cards"),
         cmd!("View", "Larger thumbnails", GridLarger, "bigger"),
@@ -863,7 +863,7 @@ impl Workspace {
 
 /// Gestures and keys handled outside the keymap (see `develop/zoom.rs`,
 /// the sliders and the Navigator), shown in the sheet beside the commands.
-const ALSO_WORKS: [(&str, &str); 7] = [
+const ALSO_WORKS: [(&str, &str); 9] = [
     ("Pan a zoomed photo", "Space + drag"),
     ("Zoom in or out", "Ctrl + scroll"),
     ("Finish crop, spots or masks", "Enter"),
@@ -871,6 +871,8 @@ const ALSO_WORKS: [(&str, &str); 7] = [
     ("Select a range of photos", "Shift + click"),
     ("Add to the selection", "\u{2318} / Ctrl + click"),
     ("Jump to 100% at a spot", "Click Navigator"),
+    ("Close a dropdown, menu or dialog", "Esc"),
+    ("Fold a card or collapse a panel", "Click its title or arrow"),
 ];
 
 /// A shortcut drawn as a small keycap.

@@ -30,6 +30,7 @@ mod history_panel;
 mod import;
 mod before_after;
 mod edited_thumbs;
+mod dropdown;
 mod focus_point;
 mod import_filter;
 mod info_overlay;

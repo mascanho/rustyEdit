@@ -12,6 +12,7 @@ use rustyedit_core::{
 };
 use rustyedit_ui::Theme;
 
+use crate::dropdown::choice;
 use super::adjustments::wheel;
 use crate::workspace::Workspace;
 
@@ -122,79 +123,33 @@ impl Workspace {
 
     /// Ready-made shapes for the channel being edited.
     fn curve_presets(&self, channel: CurveChannel, cx: &mut Context<Self>) -> AnyElement {
-        let theme = self.theme;
-        div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap_1()
-            .children(CurvePreset::ALL.iter().map(|&preset| {
-                div()
-                    .id(("curve-preset", preset as usize))
-                    .flex()
-                    .items_center()
-                    .h(sp(20.0))
-                    .px_1p5()
-                    .cursor_pointer()
-                    .border_1()
-                    .border_color(theme.border_subtle)
-                    .bg(theme.background)
-                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
-                    .text_color(theme.text_muted)
-                    .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
-                    .child(preset.label())
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                        this.edit_curve(channel, cx, |curve| *curve = preset.curve());
-                    }))
-            }))
-            .into_any_element()
+        let choices = CurvePreset::ALL
+            .iter()
+            .map(|&preset| {
+                choice(preset.label(), None, move |this, cx| {
+                    this.edit_curve(channel, cx, |curve| *curve = preset.curve());
+                })
+            })
+            .collect();
+        self.dropdown("curve-preset", "Curve shape\u{2026}", usize::MAX, choices, cx)
     }
 
     /// Colour looks that set the red, green and blue curves together.
     fn curve_looks(&self, cx: &mut Context<Self>) -> AnyElement {
-        let theme = self.theme;
-        div()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .child(
-                div()
-                    .text_size(sp(rustyedit_ui::type_size::CAPTION))
-                    .text_color(theme.text_faint)
-                    .child("COLOUR LOOKS (all three channels)"),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .flex_wrap()
-                    .gap_1()
-                    .children(CurveLook::ALL.iter().map(|&look| {
-                        div()
-                            .id(("curve-look", look as usize))
-                            .flex()
-                            .items_center()
-                            .h(sp(20.0))
-                            .px_1p5()
-                            .cursor_pointer()
-                            .border_1()
-                            .border_color(theme.border_subtle)
-                            .bg(theme.background)
-                            .text_size(sp(rustyedit_ui::type_size::CAPTION))
-                            .text_color(theme.text_muted)
-                            .hover(|el| el.bg(theme.surface_elevated).text_color(theme.text))
-                            .child(look.label())
-                            .on_click(cx.listener(move |this, _: &ClickEvent, _w, cx| {
-                                this.edit_develop(
-                                    "Curve look",
-                                    |d| look.apply(&mut d.curves),
-                                    |_| (String::new(), look.label().to_string()),
-                                    cx,
-                                );
-                            }))
-                    })),
-            )
-            .into_any_element()
+        let choices = CurveLook::ALL
+            .iter()
+            .map(|&look| {
+                choice(look.label(), None, move |this, cx| {
+                    this.edit_develop(
+                        "Curve look",
+                        |d| look.apply(&mut d.curves),
+                        |_| (String::new(), look.label().to_string()),
+                        cx,
+                    );
+                })
+            })
+            .collect();
+        self.dropdown("curve-look", "Colour look (all three channels)\u{2026}", usize::MAX, choices, cx)
     }
 
     /// The parametric curve over the photo's histogram. Dragging up or

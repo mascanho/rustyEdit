@@ -20,7 +20,7 @@ impl Workspace {
         _window: &mut gpui::Window,
         cx: &mut Context<Self>,
     ) {
-        self.settings.layout.show_focus_point = !self.settings.layout.show_focus_point;
+        self.update_settings(|s| s.layout.show_focus_point = !s.layout.show_focus_point, cx);
         let on = self.settings.layout.show_focus_point;
         self.status_message = Some(
             if on { "Focus point shown (A to hide)" } else { "Focus point hidden" }.into(),

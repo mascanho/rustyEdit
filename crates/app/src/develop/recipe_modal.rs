@@ -155,6 +155,7 @@ impl Workspace {
             chips(
                 &theme,
                 &entity,
+                self.open_dropdown,
                 "recipe-sim",
                 FilmSimulation::ALL,
                 recipe.film_simulation,
@@ -169,6 +170,7 @@ impl Workspace {
                 chips(
                     &theme,
                     &entity,
+                    self.open_dropdown,
                     "recipe-filter",
                     MonoFilter::ALL,
                     recipe.mono_filter,
@@ -183,6 +185,7 @@ impl Workspace {
             chips(
                 &theme,
                 &entity,
+                self.open_dropdown,
                 "recipe-dr",
                 DynamicRange::ALL,
                 recipe.dynamic_range,
@@ -196,6 +199,7 @@ impl Workspace {
             chips(
                 &theme,
                 &entity,
+                self.open_dropdown,
                 "recipe-grain",
                 GrainEffect::ALL,
                 recipe.grain,
@@ -209,6 +213,7 @@ impl Workspace {
             chips(
                 &theme,
                 &entity,
+                self.open_dropdown,
                 "recipe-cc",
                 Strength::ALL,
                 recipe.color_chrome,
@@ -222,6 +227,7 @@ impl Workspace {
             chips(
                 &theme,
                 &entity,
+                self.open_dropdown,
                 "recipe-ccb",
                 Strength::ALL,
                 recipe.color_chrome_blue,
@@ -235,6 +241,7 @@ impl Workspace {
             chips(
                 &theme,
                 &entity,
+                self.open_dropdown,
                 "recipe-wb",
                 WhiteBalance::ALL,
                 recipe.white_balance,
@@ -640,6 +647,7 @@ fn text_value(
 fn chips<T: Copy + PartialEq + 'static>(
     theme: &Theme,
     entity: &Entity<Workspace>,
+    open: Option<&'static str>,
     id: &'static str,
     values: &[T],
     current: T,
@@ -647,6 +655,21 @@ fn chips<T: Copy + PartialEq + 'static>(
     apply: fn(&mut FujiRecipe, T),
 ) -> AnyElement {
     let theme = *theme;
+    // Many choices (film simulations, white balances) are a dropdown.
+    if values.len() > 3 {
+        let selected = values.iter().position(|&v| v == current).unwrap_or(0);
+        let choices = values
+            .iter()
+            .map(|&value| {
+                crate::dropdown::choice(label(value), None, move |this, cx| {
+                    this.edit_recipe(cx, |r| apply(r, value))
+                })
+            })
+            .collect();
+        return crate::dropdown::dropdown_view(
+            &theme, entity, open, id, &label(values[selected]), selected, choices,
+        );
+    }
     div()
         .flex()
         .flex_row()
