@@ -259,6 +259,9 @@ pub struct Workspace {
     pub(crate) export_options: ExportOptions,
     pub(crate) ba: crate::before_after::BaState,
     pub(crate) export_run: Option<crate::export::ExportRun>,
+    /// Exports asked for while one was running, started one after another
+    /// as each finishes: the photos (numbered) and where they go.
+    pub(crate) export_queue: std::collections::VecDeque<crate::export::QueuedExport>,
     /// Photos (by id) the user took out of the export queue.
     pub(crate) export_excluded: HashSet<u64>,
     /// Photos (by id) added to the export queue by clicking them in the
@@ -557,6 +560,7 @@ impl Workspace {
             export_options: ExportOptions::default(),
             ba: Default::default(),
             export_run: None,
+            export_queue: Default::default(),
             export_excluded: HashSet::new(),
             export_added: Vec::new(),
             zine: zine_library.zines[zine_library.active].clone(),

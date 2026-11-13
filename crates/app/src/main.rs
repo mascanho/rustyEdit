@@ -348,6 +348,14 @@ fn main() {
         .unwrap();
 
         cx.activate(true);
+
+        // Keep the thumbnail and preview cache within its size limit, giving
+        // up the least recently used previews first. Off the UI thread and
+        // at low priority: it walks every cached file.
+        let _ = std::thread::Builder::new().name("cache-prune".into()).spawn(|| {
+            rustyedit_processing::enter_background();
+            rustyedit_io::prune_cache(rustyedit_io::CACHE_LIMIT_BYTES);
+        });
     });
 }
 

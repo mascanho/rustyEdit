@@ -88,6 +88,41 @@ impl Workspace {
     /// can't render natively (RAW, or rotated by EXIF). No-op for the rest.
     pub(crate) fn request_loupe(&mut self, cx: &mut Context<Self>) {
         self.request_loupe_for(self.catalog.selected, cx);
+        self.prefetch_neighbour_loupes();
+    }
+
+    /// Has the previews of the photos on either side of the selected one
+    /// made ahead of time, at low priority, so stepping through a shoot
+    /// finds each one ready. Only the nearest few, the ones ahead first.
+    fn prefetch_neighbour_loupes(&self) {
+        const AHEAD: usize = 3;
+        const BEHIND: usize = 1;
+        let Some(cache) = &self.thumbnail_cache else {
+            return;
+        };
+        let visible = self.catalog.visible_indices();
+        let Some(at) = self.catalog.visible_position(self.catalog.selected) else {
+            return;
+        };
+        let ahead = (1..=AHEAD).filter_map(|n| visible.get(at + n));
+        let behind = (1..=BEHIND).filter_map(|n| at.checked_sub(n).and_then(|p| visible.get(p)));
+        let jobs: Vec<_> = ahead
+            .chain(behind)
+            .filter_map(|&ix| self.catalog.assets.get(ix))
+            .filter(|asset| {
+                !asset.missing
+                    && !self.loupe_paths.contains_key(&asset.id)
+                    && rustyedit_io::ThumbnailCache::needs_loupe_preview(
+                        &asset.path,
+                        asset.orientation,
+                        asset.rotation_quarters(),
+                    )
+                    // Already on disk: nothing to make.
+                    && cache.cached_loupe(&asset.path).is_none()
+            })
+            .map(|asset| (asset.path.clone(), asset.rotation_quarters()))
+            .collect();
+        rustyedit_io::prefetch_loupes(cache, jobs);
     }
 
     pub(crate) fn request_loupe_for(&mut self, index: usize, cx: &mut Context<Self>) {

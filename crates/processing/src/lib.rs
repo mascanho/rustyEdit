@@ -44,6 +44,7 @@ mod lens_blur;
 mod look;
 mod maskview;
 mod parallel;
+mod priority;
 mod proof;
 mod retouch;
 mod sharpen;
@@ -67,6 +68,7 @@ pub fn mix_colour(mixer: &rustyedit_core::ColorMixer, rgb: [f32; 3]) -> [f32; 3]
 pub use camera::{match_camera, CameraMatch};
 pub use look::{match_look, preset_from_look, LookStats};
 pub use frame::{frame_bgra, frame_rgb16, frame_rgb8, framed_size};
+pub use priority::enter_background;
 pub use watermark::apply_watermark;
 pub use develop_source::DevelopSource;
 pub use retouch::{find_spot_source, plan_stroke, stroke_spots, StrokeFill};

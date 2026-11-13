@@ -134,7 +134,9 @@ impl ThumbnailCache {
         let path = self
             .full_path_for(source)
             .ok_or_else(|| anyhow::anyhow!("could not stat {}", source.display()))?;
-        if !path.exists() {
+        if path.exists() {
+            touch(&path);
+        } else {
             crate::decode::open_image(source)?.to_rgb8().save(&path)?;
         }
         Ok(path)
@@ -164,8 +166,12 @@ impl ThumbnailCache {
             .rotated_path_for(source, quarters)
             .ok_or_else(|| anyhow::anyhow!("could not stat {}", source.display()))?;
         if path.exists() {
+            if let Some((w, h)) = read_dims(&path) {
+                return Ok((path, w, h));
+            }
             if let Ok((w, h)) = crate::decode::image_dimensions(source) {
                 let (w, h) = if quarters % 2 == 1 { (h, w) } else { (w, h) };
+                write_dims(&path, w, h);
                 return Ok((path, w, h));
             }
         }
@@ -179,6 +185,7 @@ impl ThumbnailCache {
         Self::rotate_image(fit(&image, THUMBNAIL_LONG_EDGE), quarters)
             .to_rgb8()
             .save(&path)?;
+        write_dims(&path, width, height);
         Ok((path, width, height))
     }
 
@@ -204,6 +211,7 @@ impl ThumbnailCache {
         }
         .ok_or_else(|| anyhow::anyhow!("could not stat {}", source.display()))?;
         if path.exists() {
+            touch(&path);
             return Ok(path);
         }
         let image = crate::decode::open_image(source)?;
@@ -225,7 +233,9 @@ impl ThumbnailCache {
             self.variant_path_for(source, &format!("-full-rot{quarters}"))
         }
         .ok_or_else(|| anyhow::anyhow!("could not stat {}", source.display()))?;
-        if !path.exists() {
+        if path.exists() {
+            touch(&path);
+        } else {
             Self::rotate_image(crate::decode::open_image(source)?, quarters)
                 .to_rgb8()
                 .save(&path)?;
@@ -249,7 +259,13 @@ impl ThumbnailCache {
             .ok_or_else(|| anyhow::anyhow!("could not stat {}", source.display()))?;
 
         if cache_path.exists() {
+            // Remembered next to the thumbnail: reading a RAW file's size
+            // otherwise means decoding the whole file.
+            if let Some((w, h)) = read_dims(&cache_path) {
+                return Ok((cache_path, w, h));
+            }
             if let Ok((w, h)) = crate::decode::image_dimensions(source) {
+                write_dims(&cache_path, w, h);
                 return Ok((cache_path, w, h));
             }
         }
@@ -260,6 +276,7 @@ impl ThumbnailCache {
         fit(&image, THUMBNAIL_LONG_EDGE)
             .to_rgb8()
             .save(&cache_path)?;
+        write_dims(&cache_path, width, height);
 
         Ok((cache_path, width, height))
     }
@@ -448,6 +465,138 @@ pub fn sampled_content_hash(path: &Path) -> u64 {
     hasher.finish()
 }
 
+/// The sidecar that remembers a cached thumbnail's source dimensions.
+fn dims_path(thumb: &Path) -> PathBuf {
+    thumb.with_extension("dim")
+}
+
+fn read_dims(thumb: &Path) -> Option<(u32, u32)> {
+    let text = std::fs::read_to_string(dims_path(thumb)).ok()?;
+    let (w, h) = text.trim().split_once(' ')?;
+    let (w, h) = (w.parse().ok()?, h.parse().ok()?);
+    (w > 0 && h > 0).then_some((w, h))
+}
+
+fn write_dims(thumb: &Path, width: u32, height: u32) {
+    let _ = std::fs::write(dims_path(thumb), format!("{width} {height}"));
+}
+
+/// Marks a cached file as just used, so pruning drops the least recently
+/// used first.
+fn touch(path: &Path) {
+    if let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) {
+        let _ = file.set_modified(std::time::SystemTime::now());
+    }
+}
+
+/// How much disk the thumbnail and preview cache may use before the least
+/// recently used previews are deleted.
+pub const CACHE_LIMIT_BYTES: u64 = 3 * 1024 * 1024 * 1024;
+
+/// Which kind of cached file this is, in the order they are given up:
+/// full-size previews (big, and made again when zooming), then loupe
+/// previews, then thumbnails (small, and what makes a folder open at once).
+fn cache_tier(name: &str) -> u8 {
+    if name.contains("-full") {
+        0
+    } else if name.contains("-loupe") {
+        1
+    } else {
+        2
+    }
+}
+
+/// Deletes cached files, least valuable and least recently used first,
+/// until the cache is within `limit` bytes. Returns the bytes freed. Walks
+/// every file, so run it off the UI thread.
+pub fn prune_cache(limit: u64) -> u64 {
+    prune_dir(&cache_base().join("thumbnails"), limit)
+}
+
+fn prune_dir(root: &Path, limit: u64) -> u64 {
+    let mut files: Vec<(u8, std::time::SystemTime, u64, PathBuf)> = Vec::new();
+    let mut total = 0u64;
+    let Ok(folders) = std::fs::read_dir(root) else {
+        return 0;
+    };
+    for folder in folders.flatten() {
+        let Ok(entries) = std::fs::read_dir(folder.path()) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(meta) = entry.metadata() else { continue };
+            if !meta.is_file() {
+                continue;
+            }
+            total += meta.len();
+            let tier = cache_tier(&entry.file_name().to_string_lossy());
+            let used = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
+            files.push((tier, used, meta.len(), entry.path()));
+        }
+    }
+    if total <= limit {
+        return 0;
+    }
+    files.sort_by_key(|(tier, used, ..)| (*tier, *used));
+    let mut freed = 0;
+    for (_, _, len, path) in files {
+        if total - freed <= limit {
+            break;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            freed += len;
+        }
+    }
+    freed
+}
+
+/// Photos waiting to have their loupe previews made ahead of time.
+static PREFETCH: std::sync::Mutex<Option<(ThumbnailCache, Vec<(PathBuf, u8)>)>> =
+    std::sync::Mutex::new(None);
+static PREFETCHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Makes the loupe previews of `photos` (path and library rotation) in the
+/// background, at low priority, so stepping to the next photo finds its
+/// preview ready. A newer call replaces whatever is still waiting: only
+/// where the user is heading matters.
+pub fn prefetch_loupes(cache: &ThumbnailCache, photos: Vec<(PathBuf, u8)>) {
+    use std::sync::atomic::Ordering;
+    if photos.is_empty() {
+        return;
+    }
+    *PREFETCH.lock().unwrap() = Some((cache.clone(), photos));
+    if PREFETCHING.swap(true, Ordering::AcqRel) {
+        return; // the running worker will pick the new list up
+    }
+    let spawned = std::thread::Builder::new()
+        .name("loupe-prefetch".into())
+        .spawn(|| {
+            rustyedit_processing::enter_background();
+            loop {
+                let next = {
+                    let mut queue = PREFETCH.lock().unwrap();
+                    match queue.as_mut() {
+                        Some((_, photos)) if !photos.is_empty() => {
+                            let photo = photos.remove(0);
+                            queue.as_ref().map(|(cache, _)| (cache.clone(), photo))
+                        }
+                        _ => {
+                            *queue = None;
+                            PREFETCHING.store(false, Ordering::Release);
+                            return;
+                        }
+                    }
+                };
+                if let Some((cache, (path, quarters))) = next {
+                    let _ = cache.ensure_loupe_rotated(&path, quarters);
+                }
+            }
+        });
+    if spawned.is_err() {
+        PREFETCHING.store(false, Ordering::Release);
+    }
+}
+
 /// What importing one photo produced.
 fn cache_base() -> PathBuf {
     dirs::cache_dir()
@@ -537,5 +686,76 @@ mod batch_tests {
         let all = generate_thumbnails(&cache, &assets, &AtomicUsize::new(0), false);
         assert_eq!(all.iter().map(|i| i.id).collect::<Vec<_>>(), vec![0, 1, 2, 3, 4]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    fn dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("rustyedit-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn file(folder: &Path, name: &str, len: usize, age_secs: u64) -> PathBuf {
+        let path = folder.join(name);
+        std::fs::write(&path, vec![0u8; len]).unwrap();
+        let f = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+        f.set_modified(SystemTime::now() - Duration::from_secs(age_secs)).unwrap();
+        path
+    }
+
+    #[test]
+    fn pruning_drops_full_then_loupe_then_thumbnails_oldest_first() {
+        let root = dir("prune");
+        let folder = root.join("abc");
+        std::fs::create_dir_all(&folder).unwrap();
+        let old_thumb = file(&folder, "1.jpg", 100, 900);
+        let new_thumb = file(&folder, "2.jpg", 100, 10);
+        let old_loupe = file(&folder, "1-loupe.jpg", 100, 800);
+        let new_loupe = file(&folder, "2-loupe-rot1.jpg", 100, 20);
+        let full = file(&folder, "2-full.jpg", 100, 5);
+        // Within the limit: nothing goes.
+        assert_eq!(prune_dir(&root, 500), 0);
+        // One over: the full-size preview, though it is the newest file.
+        assert_eq!(prune_dir(&root, 400), 100);
+        assert!(!full.exists() && old_loupe.exists());
+        // Two over: then the older loupe preview.
+        prune_dir(&root, 300);
+        assert!(!old_loupe.exists() && new_loupe.exists());
+        // Thumbnails are the last to go, the older first.
+        prune_dir(&root, 200);
+        assert!(!new_loupe.exists() && old_thumb.exists() && new_thumb.exists());
+        prune_dir(&root, 100);
+        assert!(!old_thumb.exists() && new_thumb.exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_cached_thumbnail_remembers_its_photos_size() {
+        let root = dir("dims");
+        let photo = root.join("p.jpg");
+        image::RgbImage::from_pixel(640, 480, image::Rgb([9, 9, 9])).save(&photo).unwrap();
+        let cache = ThumbnailCache::for_folder(&root);
+        assert_eq!(cache.ensure(&photo).map(|(_, w, h)| (w, h)).unwrap(), (640, 480));
+        let thumb = cache.cached(&photo).unwrap();
+        assert_eq!(read_dims(&thumb), Some((640, 480)));
+        // A cached thumbnail is answered from the sidecar, not by reading
+        // the photo again (told apart here by planting a different size).
+        write_dims(&thumb, 7, 5);
+        assert_eq!(cache.ensure(&photo).map(|(_, w, h)| (w, h)).unwrap(), (7, 5));
+        // A cache made before sidecars existed fills one in.
+        std::fs::remove_file(dims_path(&thumb)).unwrap();
+        assert_eq!(cache.ensure(&photo).map(|(_, w, h)| (w, h)).unwrap(), (640, 480));
+        assert_eq!(read_dims(&thumb), Some((640, 480)));
+        // Forgetting a photo takes its sidecar too.
+        cache.forget(&photo);
+        assert!(!dims_path(&thumb).exists() && !thumb.exists());
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(thumb.parent().unwrap());
     }
 }

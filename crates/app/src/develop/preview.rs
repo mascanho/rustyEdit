@@ -102,7 +102,7 @@ impl LivePreview {
             self.retire(old);
         }
         self.before_key = None;
-        if let Some(old) = self.detail.take() {
+        for old in self.detail.take() {
             self.retire(old);
         }
         self.shown_frame = FrameSettings::default();

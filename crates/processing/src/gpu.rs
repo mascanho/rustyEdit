@@ -735,6 +735,12 @@ impl Gpu {
             Output::Detail { .. } => Some(Channel::Detail),
             Output::Rgb { .. } => None,
         };
+        // Interactive renders go first: counted before waiting for the
+        // pool, so background work sees them coming.
+        let _interactive = channel.map(|_| crate::priority::Interactive::begin());
+        if channel.is_none() {
+            crate::priority::yield_to_interactive();
+        }
         let mut pools = match channel {
             Some(_) => Some(self.pools.lock().ok()?),
             None => None,

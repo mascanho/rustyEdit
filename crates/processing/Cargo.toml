@@ -14,3 +14,6 @@ moxcms = "0.8.1"
 rawler = "0.8.0"
 # Watermark text, laid out with the system fonts (already built for the UI).
 resvg = { version = "0.45.1", default-features = false, features = ["text", "system-fonts", "memmap-fonts"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

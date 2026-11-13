@@ -9,6 +9,11 @@
 //! the enlarged preview shows instead, so dragging stays as quick as at
 //! Fit. It only runs where the GPU can do it (see
 //! `rustyedit_processing::detail_is_fast`).
+//!
+//! Renders are tiles with a margin: each covers the screen plus a quarter
+//! of it on every side, so panning a little (or nudging the zoom back) needs
+//! no new render. The last few tiles are kept, so going back to where you
+//! were is instant too.
 
 use std::{sync::Arc, time::Duration};
 
@@ -23,6 +28,15 @@ const SETTLE: Duration = Duration::from_millis(140);
 /// Left, top, width, height as fractions of the cropped photo.
 pub(crate) type Region = (f32, f32, f32, f32);
 
+/// Extra photo around the screen that a tile covers, as a fraction of the
+/// screen's size on each side (tried in turn until the tile fits `MAX_TILE`).
+const MARGINS: [f32; 3] = [0.25, 0.12, 0.0];
+/// The largest tile edge and pixel count rendered, to keep GPU memory in check.
+const MAX_TILE_EDGE: u32 = 6144;
+const MAX_TILE_PIXELS: u64 = 26_000_000;
+/// Finished tiles kept for the photo being edited (the newest first).
+const KEEP_TILES: usize = 3;
+
 /// What a detail render is of: the photo, its settings, the region
 /// (fractions of the cropped photo) and the pixel size it's delivered at.
 #[derive(Clone, Copy, PartialEq)]
@@ -35,9 +49,10 @@ pub(crate) struct DetailKey {
 
 #[derive(Default)]
 pub(crate) struct DetailView {
-    /// The last finished render and what it is of.
-    pub(crate) shown: Option<(Arc<RenderImage>, DetailKey)>,
-    /// What was last asked for (waiting to settle, or rendering).
+    /// Finished renders and what they are of, the newest first.
+    tiles: Vec<(Arc<RenderImage>, DetailKey)>,
+    /// What was last asked for (waiting to settle, or rendering): the tile,
+    /// margin included.
     requested: Option<DetailKey>,
     busy: bool,
     /// The settle timer; replacing it cancels the previous one.
@@ -45,12 +60,84 @@ pub(crate) struct DetailView {
 }
 
 impl DetailView {
-    /// Takes the shown render out (to be retired), forgetting any request.
-    pub(crate) fn take(&mut self) -> Option<Arc<RenderImage>> {
+    /// Takes every finished render out (to be retired), forgetting any
+    /// request.
+    pub(crate) fn take(&mut self) -> Vec<Arc<RenderImage>> {
         self.requested = None;
         self.timer = None;
-        self.shown.take().map(|(image, _)| image)
+        self.tiles.drain(..).map(|(image, _)| image).collect()
     }
+
+    /// The newest tile that shows everything `wanted` needs, as sharp.
+    fn covering(&self, wanted: &DetailKey) -> Option<usize> {
+        self.tiles.iter().position(|(_, tile)| covers(tile, wanted))
+    }
+
+    /// Adds a finished tile; returns the ones it replaces or pushes out, to
+    /// be retired.
+    fn insert(&mut self, image: Arc<RenderImage>, key: DetailKey) -> Vec<Arc<RenderImage>> {
+        let mut gone = Vec::new();
+        let old = std::mem::take(&mut self.tiles);
+        self.tiles.push((image, key));
+        for (image, tile) in old {
+            // Another photo or other edits: useless now. Already inside
+            // the new tile: redundant.
+            let same = tile.asset == key.asset && tile.settings == key.settings;
+            if same && !covers(&key, &tile) && self.tiles.len() < KEEP_TILES {
+                self.tiles.push((image, tile));
+            } else {
+                gone.push(image);
+            }
+        }
+        gone
+    }
+}
+
+/// Whether `tile` shows all of `wanted` at least as sharply: the same photo
+/// and edits, the region inside it and no coarser (a hair of slack for
+/// rounding).
+fn covers(tile: &DetailKey, wanted: &DetailKey) -> bool {
+    const EPS: f32 = 1e-4;
+    let (tl, tt, tw, th) = tile.region;
+    let (wl, wt, ww, wh) = wanted.region;
+    let density = |k: &DetailKey| k.size.0 as f32 / k.region.2.max(1e-6);
+    tile.asset == wanted.asset
+        && tile.settings == wanted.settings
+        && wl >= tl - EPS
+        && wt >= tt - EPS
+        && wl + ww <= tl + tw + EPS
+        && wt + wh <= tt + th + EPS
+        && density(tile) >= density(wanted) * 0.97
+}
+
+/// The tile to render for what's on screen: the screen's region plus the
+/// largest margin of `MARGINS` that keeps it within the tile limits, at the
+/// same pixel density.
+fn with_margin(wanted: DetailKey) -> DetailKey {
+    let (l, t, w, h) = wanted.region;
+    let (sw, sh) = (wanted.size.0 as f32, wanted.size.1 as f32);
+    for margin in MARGINS {
+        let left = (l - margin * w).max(0.0);
+        let top = (t - margin * h).max(0.0);
+        let right = (l + w + margin * w).min(1.0);
+        let bottom = (t + h + margin * h).min(1.0);
+        let (nw, nh) = (right - left, bottom - top);
+        let size = (
+            (sw * nw / w).round().max(1.0) as u32,
+            (sh * nh / h).round().max(1.0) as u32,
+        );
+        let fits = size.0 <= MAX_TILE_EDGE
+            && size.1 <= MAX_TILE_EDGE
+            && size.0 as u64 * size.1 as u64 <= MAX_TILE_PIXELS;
+        if fits || margin == 0.0 {
+            return DetailKey {
+                region: (left, top, nw, nh),
+                size: if margin == 0.0 { wanted.size } else { size },
+                ..wanted
+            };
+        }
+    }
+    wanted
 }
 
 impl Workspace {
@@ -170,9 +257,21 @@ impl Workspace {
             return None;
         }
         let asset = self.catalog.selected_asset()?;
-        let (image, key) = self.live_preview.detail.shown.as_ref()?;
-        (key.asset == asset.id && key.settings == asset.develop)
-            .then(|| (image.clone(), key.region))
+        let detail = &self.live_preview.detail;
+        // A tile that shows the whole view; failing that the newest one of
+        // this photo and these edits, which fills in part of it while the
+        // next renders.
+        let tiles = || {
+            detail
+                .tiles
+                .iter()
+                .filter(|(_, k)| k.asset == asset.id && k.settings == asset.develop)
+        };
+        let best = self
+            .wanted_detail()
+            .and_then(|wanted| tiles().find(|(_, k)| covers(k, &wanted)))
+            .or_else(|| tiles().next())?;
+        Some((best.0.clone(), best.1.region))
     }
 
     /// Called as the window is drawn: asks for a new detail render once the
@@ -183,13 +282,20 @@ impl Workspace {
             self.live_preview.detail.timer = None;
             return;
         };
-        let detail = &self.live_preview.detail;
-        if detail.shown.as_ref().map(|(_, k)| k) == Some(&wanted)
-            || detail.requested == Some(wanted)
-        {
+        let detail = &mut self.live_preview.detail;
+        // Already shown by a tile (kept at the front, so it's the last to
+        // go), or about to be by the one being rendered.
+        if let Some(at) = detail.covering(&wanted) {
+            let tile = detail.tiles.remove(at);
+            detail.tiles.insert(0, tile);
+            detail.requested = None;
+            detail.timer = None;
             return;
         }
-        self.live_preview.detail.requested = Some(wanted);
+        if detail.requested.as_ref().is_some_and(|r| covers(r, &wanted)) {
+            return;
+        }
+        detail.requested = Some(with_margin(wanted));
         self.live_preview.detail.timer = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(SETTLE).await;
             this.update(cx, |this, cx| this.start_detail_render(cx)).ok();
@@ -204,7 +310,7 @@ impl Workspace {
             return;
         }
         // The latest view, which may have moved since the timer started.
-        let Some(key) = self.wanted_detail() else {
+        let Some(key) = self.wanted_detail().map(with_margin) else {
             return;
         };
         let Some(full) = self.full_source.clone() else {
@@ -224,8 +330,7 @@ impl Workspace {
                 let detail = &mut this.live_preview.detail;
                 detail.busy = false;
                 if this.preview_epoch == epoch {
-                    let old = detail.shown.replace((image, key)).map(|(old, _)| old);
-                    if let Some(old) = old {
+                    for old in detail.insert(image, key) {
                         this.live_preview.retire_image(old);
                     }
                 } else {
@@ -240,5 +345,88 @@ impl Workspace {
             .ok();
         })
         .detach();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(region: Region, size: (u32, u32)) -> DetailKey {
+        DetailKey { asset: 1, settings: DevelopSettings::default(), region, size }
+    }
+
+    fn image() -> Arc<RenderImage> {
+        Arc::new(RenderImage::new(vec![image::Frame::new(image::RgbaImage::new(1, 1))]))
+    }
+
+    #[test]
+    fn the_tile_has_a_margin_at_the_same_sharpness() {
+        let screen = key((0.4, 0.4, 0.1, 0.1), (1000, 800));
+        let tile = with_margin(screen);
+        // A quarter of the screen more on each side, the same pixels per
+        // photo pixel.
+        assert!((tile.region.0 - 0.375).abs() < 1e-5 && (tile.region.2 - 0.15).abs() < 1e-5);
+        assert_eq!(tile.size, (1500, 1200));
+        assert!(covers(&tile, &screen));
+        // A small pan stays inside it; a big one doesn't.
+        assert!(covers(&tile, &key((0.42, 0.38, 0.1, 0.1), (1000, 800))));
+        assert!(!covers(&tile, &key((0.6, 0.4, 0.1, 0.1), (1000, 800))));
+    }
+
+    #[test]
+    fn the_margin_stops_at_the_photos_edge_and_shrinks_for_huge_screens() {
+        let at_edge = with_margin(key((0.0, 0.0, 0.2, 0.2), (1000, 1000)));
+        assert_eq!(at_edge.region.0, 0.0);
+        assert!((at_edge.region.2 - 0.25).abs() < 1e-5);
+        // An 8K-wide view can't take any margin on top of the cap.
+        let huge = key((0.2, 0.2, 0.5, 0.5), (6000, 3000));
+        let tile = with_margin(huge);
+        assert!(tile.size.0 <= MAX_TILE_EDGE && tile.size.1 <= MAX_TILE_EDGE);
+        assert!(covers(&tile, &huge));
+    }
+
+    #[test]
+    fn a_blurrier_or_other_tile_does_not_cover() {
+        let screen = key((0.4, 0.4, 0.1, 0.1), (1000, 800));
+        // Zoomed in further: needs more pixels per photo pixel.
+        let sharper = key((0.42, 0.42, 0.05, 0.05), (1000, 800));
+        assert!(!covers(&screen, &sharper));
+        // Zoomed out slightly (same pixels over a bigger region = coarser).
+        let coarser = key((0.4, 0.4, 0.1, 0.1), (900, 720));
+        assert!(!covers(&coarser, &screen));
+        let mut other = screen;
+        other.asset = 2;
+        assert!(!covers(&screen, &other));
+        other = screen;
+        other.settings.exposure = 1.0;
+        assert!(!covers(&screen, &other));
+    }
+
+    #[test]
+    fn recent_tiles_are_kept_and_stale_ones_dropped() {
+        let mut view = DetailView::default();
+        let a = key((0.0, 0.0, 0.2, 0.2), (400, 400));
+        let b = key((0.5, 0.5, 0.2, 0.2), (400, 400));
+        assert!(view.insert(image(), a).is_empty());
+        assert!(view.insert(image(), b).is_empty());
+        // Going back to `a` needs no render.
+        assert_eq!(view.covering(&a), Some(1));
+        // A tile that contains an older one replaces it.
+        let wide = key((0.0, 0.0, 0.4, 0.4), (800, 800));
+        assert_eq!(view.insert(image(), wide).len(), 1);
+        assert_eq!(view.tiles.len(), 2);
+        // Never more than KEEP_TILES.
+        let c = key((0.8, 0.0, 0.1, 0.1), (200, 200));
+        let d = key((0.8, 0.8, 0.1, 0.1), (200, 200));
+        view.insert(image(), c);
+        view.insert(image(), d);
+        assert_eq!(view.tiles.len(), KEEP_TILES);
+        // Edits to the photo make every old tile stale.
+        let mut edited = d;
+        edited.settings.exposure = 0.5;
+        assert_eq!(view.insert(image(), edited).len(), KEEP_TILES);
+        assert_eq!(view.tiles.len(), 1);
+        assert_eq!(view.take().len(), 1);
     }
 }

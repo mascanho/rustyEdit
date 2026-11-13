@@ -5366,6 +5366,7 @@ dependencies = [
  "bytemuck",
  "half",
  "image",
+ "libc",
  "moxcms",
  "pollster 1.0.1",
  "rawler",

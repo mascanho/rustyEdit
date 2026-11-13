@@ -64,7 +64,10 @@ impl Workspace {
             });
         }
         if let Some((done, total)) = self.export_run.as_ref().and_then(|r| r.progress()) {
-            let (detail, progress) = of(done, total, "photos");
+            let (mut detail, progress) = of(done, total, "photos");
+            if !self.export_queue.is_empty() {
+                detail = format!("{detail} \u{00B7} {} queued", self.export_queue.len());
+            }
             out.push(Activity {
                 id: "export",
                 icon: Icon::Upload,
@@ -251,9 +254,7 @@ impl Workspace {
                                     .hover(|el| el.bg(theme.danger.opacity(0.15)).text_color(theme.danger))
                                     .child("Cancel")
                                     .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
-                                        if let Some(run) = &this.export_run {
-                                            run.cancel();
-                                        }
+                                        this.cancel_exports();
                                         cx.notify();
                                     })),
                             )

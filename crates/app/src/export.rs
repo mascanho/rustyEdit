@@ -99,6 +99,12 @@ impl ExportRun {
     }
 }
 
+/// An export waiting for the one in progress to finish.
+pub(crate) struct QueuedExport {
+    jobs: Vec<(usize, Asset)>,
+    destination: PathBuf,
+}
+
 pub(crate) struct ExportRun {
     /// Position in the export (drives sequence naming) and the photo.
     jobs: Vec<(usize, Asset)>,
@@ -212,14 +218,15 @@ impl Workspace {
         .detach();
     }
 
-    fn start_export(&mut self, cx: &mut Context<Self>) {
-        if self
-            .export_run
+    fn export_running(&self) -> bool {
+        self.export_run
             .as_ref()
             .is_some_and(|r| r.finished.is_none())
-        {
-            return;
-        }
+    }
+
+    /// Starts the export, or, if one is already running, queues it to start
+    /// when that finishes.
+    fn start_export(&mut self, cx: &mut Context<Self>) {
         let Some(destination) = self.export_options.destination.clone() else {
             self.export_message = Some("Choose a destination folder first.".into());
             cx.notify();
@@ -236,7 +243,39 @@ impl Workspace {
             cx.notify();
             return;
         }
-        self.run_export(jobs, destination, cx);
+        self.run_or_queue_export(jobs, destination, cx);
+    }
+
+    fn run_or_queue_export(
+        &mut self,
+        jobs: Vec<(usize, Asset)>,
+        destination: PathBuf,
+        cx: &mut Context<Self>,
+    ) {
+        if self.export_running() {
+            let count = jobs.len();
+            self.export_queue.push_back(QueuedExport { jobs, destination });
+            self.export_message = Some(
+                format!(
+                    "{count} photo{} queued behind the running export ({} export{} waiting).",
+                    if count == 1 { "" } else { "s" },
+                    self.export_queue.len(),
+                    if self.export_queue.len() == 1 { "" } else { "s" },
+                )
+                .into(),
+            );
+            cx.notify();
+        } else {
+            self.run_export(jobs, destination, cx);
+        }
+    }
+
+    /// Stops the running export and drops what was waiting behind it.
+    pub(crate) fn cancel_exports(&mut self) {
+        self.export_queue.clear();
+        if let Some(run) = &self.export_run {
+            run.cancel();
+        }
     }
 
     /// Exports only the photos that failed in the last run.
@@ -252,7 +291,7 @@ impl Workspace {
             .collect();
         let destination = run.destination.clone();
         if !jobs.is_empty() {
-            self.run_export(jobs, destination, cx);
+            self.run_or_queue_export(jobs, destination, cx);
         }
     }
 
@@ -297,26 +336,31 @@ impl Workspace {
                     .clamp(1, 3);
                 std::thread::scope(|scope| {
                     for _ in 0..workers {
-                        scope.spawn(|| loop {
-                            if cancel.load(Ordering::Relaxed) {
-                                break;
+                        scope.spawn(|| {
+                            // Exporting is background work: the photo being
+                            // edited keeps the CPU and the GPU.
+                            rustyedit_processing::enter_background();
+                            loop {
+                                if cancel.load(Ordering::Relaxed) {
+                                    break;
+                                }
+                                let i = next.fetch_add(1, Ordering::Relaxed);
+                                let Some((n, asset)) = jobs.get(i) else { break };
+                                status.lock().unwrap()[i] = ItemStatus::Working;
+                                let result = export_one(
+                                    asset,
+                                    *n,
+                                    &options,
+                                    watermark.as_ref(),
+                                    &destination,
+                                    &claimed,
+                                );
+                                status.lock().unwrap()[i] = match result {
+                                    Ok(Some(bytes)) => ItemStatus::Done(bytes),
+                                    Ok(None) => ItemStatus::Skipped,
+                                    Err(error) => ItemStatus::Failed(error.to_string()),
+                                };
                             }
-                            let i = next.fetch_add(1, Ordering::Relaxed);
-                            let Some((n, asset)) = jobs.get(i) else { break };
-                            status.lock().unwrap()[i] = ItemStatus::Working;
-                            let result = export_one(
-                                asset,
-                                *n,
-                                &options,
-                                watermark.as_ref(),
-                                &destination,
-                                &claimed,
-                            );
-                            status.lock().unwrap()[i] = match result {
-                                Ok(Some(bytes)) => ItemStatus::Done(bytes),
-                                Ok(None) => ItemStatus::Skipped,
-                                Err(error) => ItemStatus::Failed(error.to_string()),
-                            };
                         });
                     }
                 });
@@ -345,6 +389,11 @@ impl Workspace {
                     if open {
                         reveal(&run.destination);
                     }
+                }
+                // The next queued export, unless this one was cancelled
+                // (which also emptied the queue).
+                if let Some(next) = this.export_queue.pop_front() {
+                    this.run_export(next.jobs, next.destination, cx);
                 }
                 cx.notify();
             })
@@ -639,12 +688,14 @@ impl Workspace {
                 .cursor_pointer()
                 .hover(|el| el.opacity(0.9))
                 .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| {
-                    if let Some(run) = &this.export_run {
-                        run.cancel.store(true, Ordering::Relaxed);
-                    }
+                    this.cancel_exports();
                     cx.notify();
                 }))
-                .child("Cancel export")
+                .child(if self.export_queue.is_empty() {
+                    "Cancel export".to_string()
+                } else {
+                    format!("Cancel export (+{} queued)", self.export_queue.len())
+                })
         } else if ready {
             footer_button
                 .bg(theme.accent)
@@ -668,8 +719,30 @@ impl Workspace {
                     "Choose a destination to export".to_string()
                 })
         };
-        let footer =
-            rustyedit_ui::panel_footer(&theme, vec![vec![footer_button.into_any_element()]]);
+        let mut footer_rows = vec![vec![footer_button.into_any_element()]];
+        // While one export runs, the next can be lined up behind it.
+        if running && ready {
+            footer_rows.push(vec![div()
+                .id("export-queue-add")
+                .flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .h(sp(28.0))
+                .rounded_md()
+                .bg(theme.surface_elevated)
+                .text_color(theme.text)
+                .text_size(sp(rustyedit_ui::type_size::LABEL))
+                .cursor_pointer()
+                .hover(|el| el.opacity(0.9))
+                .on_click(cx.listener(|this, _: &ClickEvent, _w, cx| this.start_export(cx)))
+                .child(format!(
+                    "Add {count} photo{} to the queue",
+                    if count == 1 { "" } else { "s" }
+                ))
+                .into_any_element()]);
+        }
+        let footer = rustyedit_ui::panel_footer(&theme, footer_rows);
 
         let panel = rustyedit_ui::side_panel(
             "export-side-panel",
